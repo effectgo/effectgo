@@ -1,0 +1,30 @@
+# Stub rules for github.com/go-fuego/fuego v0.20.0 (module cache copy).
+#
+# Body() is the method of the Context interface. ContextWithBody[B] and
+# ContextNoBody are aliases of Context[B, any] and Context[any, any]; a rule on
+# either resolves to the origin method, so this one rule covers all three.
+#
+# Evidence (paths relative to fuego@v0.20.0):
+#   ctx.go:357-364     netHttpContext.Body caches and returns body(*c)
+#   ctx.go:546-599     body(): every return path of the content-type switch
+#   ctx.go:560-568     user-registered content-type SerDes (OptionWithContentTypeSerDes):
+#                      Deserialize error returned raw (ctx.go:562); type mismatch is
+#                      fmt.Errorf (ctx.go:566)                                  -> ?
+#   ctx.go:584-586     application/octet-stream: io.ReadAll error returned raw   -> ?
+#   ctx.go:590         application/octet-stream: fmt.Errorf (wrong body type)    -> ?
+#   ctx.go:570-578     text/plain (readString), form (readURLEncoded), xml, yaml, json:
+#   deserialization.go:99   read(): decode failure -> BadRequestError           (json/xml/yaml)
+#   deserialization.go:121  readString(): read failure -> BadRequestError       (text/plain)
+#   deserialization.go:170  readURLEncoded(): fmt.Errorf("cannot parse form: %w") -> ?
+#   deserialization.go:178  readURLEncoded(): decode failure -> BadRequestError (form)
+#   deserialization.go:196  transform(): InTransform failure -> BadRequestError
+#   deserialization.go:213-221 TransformAndValidate: transform, then validate
+#   validation.go:48   validate(): fmt.Errorf("validation error: %w") when the
+#                      validator itself fails (InvalidValidationError)           -> ?
+#   validation.go:51-74 validate(): a field validation failure returns the
+#                      HTTPError VALUE (Status 400, Title "Validation Error")  -> type:HTTPError
+#
+# So the body path returns BadRequestError, HTTPError, and unclassified errors
+# (user SerDes, form/octet-stream wrapping and raw read errors, validator
+# misuse). The unclassified part is declared as "?" and is not hidden.
+errors (github.com/go-fuego/fuego.ContextWithBody).Body type:github.com/go-fuego/fuego.BadRequestError,type:github.com/go-fuego/fuego.HTTPError,?

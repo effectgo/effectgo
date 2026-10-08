@@ -1,0 +1,65 @@
+# Standard-library stub rules, shared by the effects and errset analyzers.
+#
+# Both verbs live in this one file. The effects analyzer reads the "effects"
+# rules and the errset analyzer reads the "errors" rules; each ignores the
+# other's lines. Use it with:
+#   effectgo -stubs=/abs/path/stubs/stdlib.stubs ./...
+#   go vet -vettool=$(which effectgo) -stubs=/abs/path/stubs/stdlib.stubs ./...
+# or EFFECTGO_STUBS=/abs/path/stubs/stdlib.stubs.
+
+## ---- effects rules -------------------------------------------------------
+
+# error is predeclared, so the target is written (error).Error. Its
+# implementations are arbitrary, but in practice Error returns a message that
+# was built earlier. Declaring it pure removes the "unknown via error.Error"
+# false positive on every error-formatting function. Any real effect in an
+# implementation (for example, one that logs) is a choice the implementer made.
+effects (error).Error pure
+
+# fmt.Stringer is the interface behind %v and Println on values. String is
+# conventionally a formatting function over the receiver's fields, so it is
+# pure. The conventional exceptions (a String method that reads a clock or a
+# database) are a violation of that convention, not of this stub.
+effects (fmt.Stringer).String pure
+
+# io interfaces: io.Writer.Write, io.Reader.Read and io.Closer.Close are
+# deliberately NOT listed. Their effects depend entirely on the implementation
+# (a file, a socket, a buffer), so no single contract is true. They stay
+# unknown, which is the honest answer, and a caller can use a contract with
+# allow unknown or name a concrete type.
+#
+# Functions in io that call those interface methods are unknown for the same
+# reason. Declaring them unknown explicitly documents the fact and is what the
+# analyzer would say anyway, so these lines mainly make the boundary visible.
+effects io.Copy unknown
+effects io.CopyN unknown
+effects io.ReadAll unknown
+effects io.ReadFull unknown
+effects io.WriteString unknown
+
+# io constructors only build a value that wraps their arguments. They do no
+# I/O until the wrapper is used, so they are pure.
+effects io.LimitReader pure
+effects io.MultiReader pure
+effects io.MultiWriter pure
+effects io.TeeReader pure
+effects io.NopCloser pure
+effects io.Pipe pure
+
+## ---- errors rules (errset) -----------------------------------------------
+
+# Stub rules for a few standard library functions. Each rule was checked
+# against the Go 1.26.8 source under $GOROOT/src (paths below are relative to it).
+#
+# strconv.Atoi, ParseInt, ParseUint, ParseBool: strconv/number.go wraps every
+# error from internal/strconv with toError (number.go:231-244), which turns
+# ErrSyntax, ErrRange, ErrBase and ErrBitSize into *NumError (syntaxError,
+# rangeError, baseError, bitSizeError). internal/strconv returns only those
+# four values (atoi.go, atob.go), so the only error type is *NumError.
+# toError's final "return err" is unreachable for these callers.
+errors strconv.Atoi type:strconv.NumError
+errors strconv.ParseInt type:strconv.NumError
+errors strconv.ParseUint type:strconv.NumError
+errors strconv.ParseBool type:strconv.NumError
+# net/url.Parse: url.go:399-411 wraps every failure in &Error{"parse", ...}.
+errors net/url.Parse type:net/url.Error

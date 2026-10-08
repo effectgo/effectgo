@@ -1,0 +1,1493 @@
+// Package errset is a go/analysis analyzer that infers the set of error
+// variants a Go function can return, lets developers declare error
+// contracts, and checks that every error an HTTP handler can produce is
+// covered by the project's error-to-HTTP mapper.
+//
+// Directives:
+//
+//	//effectgo:errors A, B, pkg.C, ?, iface:pkg.I
+//	        on a function: every inferred variant must be allowed.
+//	        on an interface method, or on an interface type (all methods;
+//	        a method-level directive overrides it): the method's contract.
+//	//effectgo:errmap                   the function is func(error) error mapping errors to HTTP
+//	//effectgo:handler M                 the function is an HTTP handler checked against errmap M
+//
+// Variants are sentinels (package-level error vars), error types (named
+// non-interface types implementing error), abstract interface variants
+// ("iface:pkg.I": some error whose type implements I), "param:i" (an error
+// produced by calling the function's own func parameter i, substituted at
+// call sites) and "?" (opaque: origin unknown).
+//
+// Stub files (see stubs.go) can state the error set of a function or
+// method; they take precedence over contracts and inference.
+package errset
+
+import (
+	"go/ast"
+	"go/build"
+	"go/constant"
+	"go/token"
+	"go/types"
+	"os"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+
+	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/types/typeutil"
+)
+
+// Kinds of variant.
+const (
+	KindSentinel = "sentinel"
+	KindType     = "type"
+	KindIface    = "iface"
+	KindParam    = "param"
+	KindOpaque   = "opaque"
+)
+
+const (
+	opaqueKey   = "?"
+	ifacePrefix = "iface:"
+	paramPrefix = "param:"
+)
+
+// Variant is one error that a function may return.
+type Variant struct {
+	Key     string   // "pkgpath.Name" for sentinels and types; "iface:pkgpath.I"; "param:i"; "?" for opaque
+	Name    string   // display name: "domain.ErrNotFound", "domain.ValidationError", "some fuego.ErrorWithStatus", "param:1", "?"
+	Kind    string   // one of the Kind constants
+	Methods []string // method set as "Name(params)(results)"; used to match interface As targets
+	Chain   []string // witness: callee names from the reporting function down to the origin function
+}
+
+// ErrFact is exported on every function with a body in a analyzed package.
+type ErrFact struct {
+	Errors     []Variant // error result set (may contain param:i)
+	HasHandler bool      // the function returns at least one func literal with an error result
+	Handler    []Variant // union of the error sets of those returned literals
+}
+
+// AFact marks ErrFact as an analysis fact.
+func (*ErrFact) AFact() {}
+
+func (f *ErrFact) String() string {
+	return "errset: errors=" + variantNames(f.Errors) + " handler=" + variantNames(f.Handler)
+}
+
+// ContractFact is exported on an interface method that has a //effectgo:errors contract.
+type ContractFact struct {
+	Allowed []Variant
+}
+
+// AFact marks ContractFact as an analysis fact.
+func (*ContractFact) AFact() {}
+
+func (f *ContractFact) String() string {
+	return "errset-contract: " + variantNames(f.Allowed)
+}
+
+// Iface is an interface that an errors.As call targets. A variant counts as
+// mapped if its method set includes all of Methods.
+type Iface struct {
+	Key     string // "pkgpath.Name", or "" for an unnamed interface
+	Name    string
+	Methods []string
+}
+
+// ErrmapFact is exported on //effectgo:errmap functions.
+type ErrmapFact struct {
+	Mapped []string // variant keys matched by errors.Is, == / case, errors.As on a concrete type
+	Ifaces []Iface  // interface targets of errors.As / type switches
+}
+
+// AFact marks ErrmapFact as an analysis fact.
+func (*ErrmapFact) AFact() {}
+
+func (f *ErrmapFact) String() string {
+	var names []string
+	for _, i := range f.Ifaces {
+		names = append(names, "iface:"+i.Name)
+	}
+	return "errset-errmap: mapped=" + strings.Join(f.Mapped, ",") + " " + strings.Join(names, ",")
+}
+
+// Result is the ResultType of the errset analyzer: for every function of the
+// package with a body, its error set. The signature analyzer reads it.
+type Result map[*types.Func]FuncErrors
+
+// FuncErrors is the error set of one function. When the function returns
+// handler literals (Handler is true), Variants is the handler set, which is
+// what an HTTP boundary check sees; otherwise it is the function's own set.
+type FuncErrors struct {
+	Variants []Variant
+	Handler  bool
+}
+
+// Analyzer is the errset analyzer.
+var Analyzer = &analysis.Analyzer{
+	Name:       "errset",
+	Doc:        "infers error sets of Go functions, checks //effectgo:errors contracts and //effectgo:handler coverage by //effectgo:errmap",
+	Run:        run,
+	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact)},
+	ResultType: reflect.TypeOf(Result{}),
+}
+
+// effectsKinds are the directive keywords of the effects analyzer. Both
+// analyzers read the //effectgo: prefix; each skips the other's keywords.
+var effectsKinds = map[string]bool{"pure": true, "allow": true, "package": true}
+
+// Flags of the errset analyzer. The stub files are shared (-stubs, see
+// internal/stubs), so there is no errset.stubs flag.
+var (
+	reportFlag       bool
+	ignoreOpaqueFlag bool
+)
+
+func init() {
+	Analyzer.Flags.BoolVar(&reportFlag, "report", false, "print the inferred error set of every function with an error result")
+	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") errors in handler checks")
+}
+
+var (
+	errorType  = types.Universe.Lookup("error").Type()
+	errorIface = errorType.Underlying().(*types.Interface)
+)
+
+// ---- errSet ----
+
+// errSet maps a variant key to its variant. Each key keeps the shortest
+// witness chain seen so far.
+type errSet map[string]Variant
+
+// put adds v and reports whether the set changed.
+func (s errSet) put(v Variant) bool {
+	old, ok := s[v.Key]
+	if !ok || len(v.Chain) < len(old.Chain) {
+		s[v.Key] = v
+		return true
+	}
+	return false
+}
+
+func (s errSet) putAll(o errSet) bool {
+	changed := false
+	for _, v := range o {
+		if s.put(v) {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// prefixed returns a copy of s with name prepended to every witness chain.
+func (s errSet) prefixed(name string) errSet {
+	out := errSet{}
+	for _, v := range s {
+		v.Chain = append([]string{name}, v.Chain...)
+		out.put(v)
+	}
+	return out
+}
+
+func (s errSet) list() []Variant {
+	keys := make([]string, 0, len(s))
+	for k := range s {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]Variant, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, s[k])
+	}
+	return out
+}
+
+func setOf(vs ...Variant) errSet {
+	s := errSet{}
+	for _, v := range vs {
+		s.put(v)
+	}
+	return s
+}
+
+func opaqueVariant(chain ...string) Variant {
+	return Variant{Key: opaqueKey, Name: "?", Kind: KindOpaque, Chain: chain}
+}
+
+func paramVariant(i int) Variant {
+	name := paramPrefix + strconv.Itoa(i)
+	return Variant{Key: name, Name: name, Kind: KindParam}
+}
+
+// paramIndex returns i for a param:i variant, or -1.
+func paramIndex(v Variant) int {
+	if v.Kind != KindParam {
+		return -1
+	}
+	i, err := strconv.Atoi(strings.TrimPrefix(v.Key, paramPrefix))
+	if err != nil {
+		return -1
+	}
+	return i
+}
+
+// displayOrder sorts variants by name, with the opaque "?" last.
+func displayOrder(vs []Variant) []Variant {
+	out := append([]Variant(nil), vs...)
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if (a.Kind == KindOpaque) != (b.Kind == KindOpaque) {
+			return b.Kind == KindOpaque
+		}
+		return a.Name < b.Name
+	})
+	return out
+}
+
+func variantNames(vs []Variant) string {
+	if len(vs) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(vs))
+	for _, v := range displayOrder(vs) {
+		names = append(names, v.Name)
+	}
+	return strings.Join(names, " | ")
+}
+
+func via(chain []string) string {
+	if len(chain) == 0 {
+		return ""
+	}
+	return " (via " + strings.Join(chain, " → ") + ")"
+}
+
+// ---- type helpers ----
+
+func implementsError(t types.Type) bool {
+	if t == nil {
+		return false
+	}
+	return types.Implements(t, errorIface) || types.Implements(types.NewPointer(t), errorIface)
+}
+
+// namedErrorType returns the named non-interface type T for T or *T when T implements error.
+func namedErrorType(t types.Type) *types.Named {
+	if t == nil {
+		return nil
+	}
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(p.Elem())
+	}
+	n, ok := t.(*types.Named)
+	if !ok || types.IsInterface(n) || !implementsError(n) {
+		return nil
+	}
+	return n
+}
+
+func objKey(o types.Object) string {
+	if o.Pkg() == nil {
+		return o.Name()
+	}
+	return o.Pkg().Path() + "." + o.Name()
+}
+
+func objDisplay(o types.Object) string {
+	if o.Pkg() == nil {
+		return o.Name()
+	}
+	return o.Pkg().Name() + "." + o.Name()
+}
+
+// methodsOf returns the method set of t (pointer method set for concrete
+// types, the declared methods for interfaces).
+func methodsOf(t types.Type) []string {
+	t = types.Unalias(t)
+	if p, ok := t.(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	var out []string
+	if types.IsInterface(t) {
+		iface := t.Underlying().(*types.Interface)
+		for i := 0; i < iface.NumMethods(); i++ {
+			m := iface.Method(i)
+			out = append(out, sigKey(m.Name(), m.Type().(*types.Signature)))
+		}
+	} else {
+		ms := types.NewMethodSet(types.NewPointer(t))
+		for i := 0; i < ms.Len(); i++ {
+			f := ms.At(i).Obj().(*types.Func)
+			out = append(out, sigKey(f.Name(), f.Type().(*types.Signature)))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sigKey(name string, sig *types.Signature) string {
+	q := func(p *types.Package) string { return p.Path() }
+	var b strings.Builder
+	b.WriteString(name)
+	b.WriteString("(")
+	for i := 0; i < sig.Params().Len(); i++ {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(types.TypeString(sig.Params().At(i).Type(), q))
+	}
+	b.WriteString(")(")
+	for i := 0; i < sig.Results().Len(); i++ {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		b.WriteString(types.TypeString(sig.Results().At(i).Type(), q))
+	}
+	b.WriteString(")")
+	return b.String()
+}
+
+func typeVariant(n *types.Named) Variant {
+	return Variant{Key: objKey(n.Obj()), Name: objDisplay(n.Obj()), Kind: KindType, Methods: methodsOf(n)}
+}
+
+// ifaceVariant is the abstract variant "some pkg.I" for a named interface.
+func ifaceVariant(n *types.Named) Variant {
+	return Variant{Key: ifacePrefix + objKey(n.Obj()), Name: "some " + objDisplay(n.Obj()), Kind: KindIface, Methods: methodsOf(n)}
+}
+
+// variantFromObject turns a package-level object into a variant of the given
+// kind. It reports false when the object does not have that kind.
+func variantFromObject(obj types.Object, kind string) (Variant, bool) {
+	switch kind {
+	case KindSentinel:
+		v, ok := sentinelKey(obj)
+		if !ok {
+			return Variant{}, false
+		}
+		return Variant{Key: objKey(v), Name: objDisplay(v), Kind: KindSentinel, Methods: methodsOf(v.Type())}, true
+	case KindType:
+		tn, ok := obj.(*types.TypeName)
+		if !ok {
+			return Variant{}, false
+		}
+		n := namedErrorType(tn.Type())
+		if n == nil {
+			return Variant{}, false
+		}
+		return typeVariant(n), true
+	case KindIface:
+		tn, ok := obj.(*types.TypeName)
+		if !ok {
+			return Variant{}, false
+		}
+		n, ok := types.Unalias(tn.Type()).(*types.Named)
+		if !ok || !types.IsInterface(n) {
+			return Variant{}, false
+		}
+		return ifaceVariant(n), true
+	}
+	return Variant{}, false
+}
+
+func sentinelKey(obj types.Object) (*types.Var, bool) {
+	v, ok := obj.(*types.Var)
+	if !ok || v.Pkg() == nil || v.IsField() || v.Parent() != v.Pkg().Scope() {
+		return nil, false
+	}
+	if !implementsError(v.Type()) {
+		return nil, false
+	}
+	return v, true
+}
+
+func funcName(f *types.Func) string {
+	if recv := f.Type().(*types.Signature).Recv(); recv != nil {
+		t := types.Unalias(recv.Type())
+		if p, ok := t.(*types.Pointer); ok {
+			t = types.Unalias(p.Elem())
+		}
+		if n, ok := t.(*types.Named); ok {
+			return n.Obj().Name() + "." + f.Name()
+		}
+	}
+	return f.Name()
+}
+
+// recvTypeName returns the name of the named receiver type of a method, or "".
+func recvTypeName(f *types.Func) string {
+	recv := f.Type().(*types.Signature).Recv()
+	if recv == nil {
+		return ""
+	}
+	t := types.Unalias(recv.Type())
+	if p, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(p.Elem())
+	}
+	if n, ok := t.(*types.Named); ok {
+		return n.Obj().Name()
+	}
+	return ""
+}
+
+func isInterfaceMethod(f *types.Func) bool {
+	recv := f.Type().(*types.Signature).Recv()
+	return recv != nil && types.IsInterface(recv.Type())
+}
+
+var stdCache sync.Map
+
+// isStd reports whether path is a standard library package, by looking for
+// its source directory under GOROOT. Facts exist for std packages too, so
+// std callees must be checked explicitly.
+func isStd(path string) bool {
+	if v, ok := stdCache.Load(path); ok {
+		return v.(bool)
+	}
+	_, err := os.Stat(filepath.Join(build.Default.GOROOT, "src", filepath.FromSlash(path)))
+	std := err == nil && !strings.Contains(path, ".")
+	stdCache.Store(path, std)
+	return std
+}
+
+func unparen(e ast.Expr) ast.Expr {
+	for {
+		p, ok := e.(*ast.ParenExpr)
+		if !ok {
+			return e
+		}
+		e = p.X
+	}
+}
+
+// errIndex returns the index of the last result implementing error, or -1.
+func errIndex(sig *types.Signature) int {
+	for i := sig.Results().Len() - 1; i >= 0; i-- {
+		if implementsError(sig.Results().At(i).Type()) {
+			return i
+		}
+	}
+	return -1
+}
+
+// walkOwn visits body without descending into nested function literals.
+func walkOwn(body ast.Node, f func(ast.Node)) {
+	ast.Inspect(body, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		if _, ok := n.(*ast.FuncLit); ok && n != body {
+			return false
+		}
+		f(n)
+		return true
+	})
+}
+
+func paramVars(info *types.Info, recv *ast.FieldList, ft *ast.FuncType, set map[*types.Var]bool) {
+	for _, fl := range []*ast.FieldList{recv, ft.Params} {
+		if fl == nil {
+			continue
+		}
+		for _, f := range fl.List {
+			for _, n := range f.Names {
+				if v, ok := info.Defs[n].(*types.Var); ok {
+					set[v] = true
+				}
+			}
+		}
+	}
+}
+
+// ownParamIndex maps each parameter of a declared function (not of nested
+// literals) to its 0-based position in the parameter list. The receiver is
+// not counted.
+func ownParamIndex(info *types.Info, ft *ast.FuncType) map[*types.Var]int {
+	out := map[*types.Var]int{}
+	if ft.Params == nil {
+		return out
+	}
+	idx := 0
+	for _, f := range ft.Params.List {
+		if len(f.Names) == 0 {
+			idx++
+			continue
+		}
+		for _, n := range f.Names {
+			if v, ok := info.Defs[n].(*types.Var); ok {
+				out[v] = idx
+			}
+			idx++
+		}
+	}
+	return out
+}
+
+// ---- per-unit flow analysis ----
+
+type flowRec struct {
+	v      *types.Var
+	src    ast.Expr   // assigned expression
+	typ    types.Type // type-switch case type, if src is nil
+	opaque bool
+}
+
+type flowCtx struct {
+	p         *pkgState
+	info      *types.Info
+	recs      []flowRec
+	flow      map[*types.Var]errSet // error set of each local error variable, flow-insensitive
+	params    map[*types.Var]bool   // every parameter of the unit and of nested literals
+	ownParams map[*types.Var]int    // parameters of the declared function only
+}
+
+func (p *pkgState) newFlow(recv *ast.FieldList, ft *ast.FuncType, body *ast.BlockStmt, own bool) *flowCtx {
+	c := &flowCtx{p: p, info: p.pass.TypesInfo, flow: map[*types.Var]errSet{}, params: map[*types.Var]bool{}}
+	paramVars(c.info, recv, ft, c.params)
+	if own {
+		c.ownParams = ownParamIndex(c.info, ft)
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.FuncLit:
+			paramVars(c.info, nil, x.Type, c.params)
+		case *ast.AssignStmt:
+			c.assign(x.Lhs, x.Rhs)
+		case *ast.ValueSpec:
+			lhs := make([]ast.Expr, len(x.Names))
+			for i, id := range x.Names {
+				lhs[i] = id
+			}
+			if len(x.Values) > 0 {
+				c.assign(lhs, x.Values)
+			}
+		case *ast.RangeStmt:
+			for _, e := range []ast.Expr{x.Key, x.Value} {
+				if v := c.localVar(e); v != nil && implementsError(v.Type()) {
+					c.recs = append(c.recs, flowRec{v: v, opaque: true})
+				}
+			}
+		case *ast.TypeSwitchStmt:
+			for _, s := range x.Body.List {
+				cc := s.(*ast.CaseClause)
+				v, ok := c.info.Implicits[cc].(*types.Var)
+				if !ok {
+					continue
+				}
+				if len(cc.List) == 1 {
+					c.recs = append(c.recs, flowRec{v: v, typ: c.info.TypeOf(cc.List[0])})
+				} else {
+					c.recs = append(c.recs, flowRec{v: v, opaque: true})
+				}
+			}
+		}
+		return true
+	})
+	c.solve()
+	return c
+}
+
+func (c *flowCtx) localVar(e ast.Expr) *types.Var {
+	id, ok := unparen(e).(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	v, ok := c.info.ObjectOf(id).(*types.Var)
+	if !ok || v.Pkg() == nil || v.Parent() == v.Pkg().Scope() {
+		return nil
+	}
+	return v
+}
+
+func (c *flowCtx) assign(lhs, rhs []ast.Expr) {
+	for i, l := range lhs {
+		v := c.localVar(l)
+		if v == nil || !implementsError(v.Type()) {
+			continue
+		}
+		switch {
+		case len(lhs) == len(rhs):
+			c.recs = append(c.recs, flowRec{v: v, src: rhs[i]})
+		case len(rhs) == 1:
+			c.recs = append(c.recs, flowRec{v: v, src: rhs[0]})
+		default:
+			c.recs = append(c.recs, flowRec{v: v, opaque: true})
+		}
+	}
+}
+
+func (c *flowCtx) solve() {
+	for changed := true; changed; {
+		changed = false
+		for _, r := range c.recs {
+			var add errSet
+			switch {
+			case r.opaque:
+				add = setOf(opaqueVariant())
+			case r.typ != nil:
+				add = c.typeSet(r.typ)
+			default:
+				add = c.exprSet(r.src)
+			}
+			dst := c.flow[r.v]
+			if dst == nil {
+				dst = errSet{}
+				c.flow[r.v] = dst
+			}
+			if dst.putAll(add) {
+				changed = true
+			}
+		}
+	}
+}
+
+func (c *flowCtx) typeSet(t types.Type) errSet {
+	if n := namedErrorType(t); n != nil {
+		return setOf(typeVariant(n))
+	}
+	return setOf(opaqueVariant())
+}
+
+// exprSet returns the error set of an expression of error type.
+func (c *flowCtx) exprSet(e ast.Expr) errSet {
+	e = unparen(e)
+	if tv, ok := c.info.Types[e]; ok && tv.IsNil() {
+		return errSet{}
+	}
+	if t := c.compositeType(e); t != nil {
+		return c.typeSet(t)
+	}
+	switch x := e.(type) {
+	case *ast.Ident:
+		return c.identSet(c.info.Uses[x])
+	case *ast.SelectorExpr:
+		if v, ok := c.info.Uses[x.Sel].(*types.Var); ok && v.IsField() {
+			return setOf(opaqueVariant())
+		}
+		return c.identSet(c.info.Uses[x.Sel])
+	case *ast.CallExpr:
+		return c.callSet(x)
+	}
+	return setOf(opaqueVariant())
+}
+
+// compositeType returns the type of T{}, &T{} or new(T) so the caller can
+// treat it as a variant. It returns nil for every other expression.
+func (c *flowCtx) compositeType(e ast.Expr) types.Type {
+	switch x := e.(type) {
+	case *ast.CompositeLit:
+		return c.info.TypeOf(x)
+	case *ast.UnaryExpr:
+		if _, ok := unparen(x.X).(*ast.CompositeLit); ok && x.Op == token.AND {
+			return c.info.TypeOf(x)
+		}
+	case *ast.CallExpr:
+		if id, ok := unparen(x.Fun).(*ast.Ident); ok {
+			if b, ok := c.info.Uses[id].(*types.Builtin); ok && b.Name() == "new" {
+				return c.info.TypeOf(x)
+			}
+		}
+	}
+	return nil
+}
+
+func (c *flowCtx) identSet(obj types.Object) errSet {
+	v, ok := obj.(*types.Var)
+	if !ok {
+		return setOf(opaqueVariant())
+	}
+	if sv, ok := sentinelKey(v); ok {
+		return setOf(Variant{Key: objKey(sv), Name: objDisplay(sv), Kind: KindSentinel, Methods: methodsOf(sv.Type())})
+	}
+	if v.Pkg() != nil && v.Parent() == v.Pkg().Scope() {
+		return setOf(opaqueVariant()) // package var that is not an error sentinel
+	}
+	if c.params[v] {
+		return setOf(opaqueVariant())
+	}
+	out := errSet{}
+	out.putAll(c.flow[v])
+	return out
+}
+
+func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
+	if tv, ok := c.info.Types[call.Fun]; ok && tv.IsType() {
+		return setOf(opaqueVariant()) // conversion
+	}
+	callee := typeutil.StaticCallee(c.info, call)
+	if callee == nil {
+		return c.dynamicCallSet(call)
+	}
+	callee = callee.Origin()
+	if s, ok := c.p.stubSet(callee); ok {
+		return s.prefixed(stubLabel(callee))
+	}
+	name := funcName(callee)
+	pkg := callee.Pkg()
+	if pkg != nil {
+		switch {
+		case pkg.Path() == "fmt" && callee.Name() == "Errorf":
+			return c.errorfSet(call)
+		case pkg.Path() == "errors" && callee.Name() == "Join":
+			return c.joinSet(call)
+		}
+	}
+	if pkg == nil {
+		return setOf(opaqueVariant(name))
+	}
+	if isStd(pkg.Path()) {
+		return setOf(opaqueVariant(pkg.Name() + "." + name))
+	}
+	if pkg == c.p.pass.Pkg {
+		if w, ok := c.p.work[callee]; ok {
+			return c.bind(w.errs, call, name)
+		}
+		return setOf(opaqueVariant(name))
+	}
+	var f ErrFact
+	if c.p.pass.ImportObjectFact(callee, &f) {
+		return c.bind(setOf(f.Errors...), call, name)
+	}
+	return setOf(opaqueVariant(pkg.Name() + "." + name))
+}
+
+// dynamicCallSet handles calls that have no static callee: calls of the
+// declared function's own parameters, calls of interface methods (contract
+// or opaque) and calls of other func values (opaque).
+func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
+	fun := unparen(call.Fun)
+	if id, ok := fun.(*ast.Ident); ok {
+		if v, ok := c.info.Uses[id].(*types.Var); ok {
+			if i, ok := c.ownParams[v]; ok {
+				return setOf(paramVariant(i))
+			}
+		}
+	}
+	if sel, ok := fun.(*ast.SelectorExpr); ok {
+		if m, ok := c.info.Uses[sel.Sel].(*types.Func); ok && isInterfaceMethod(m) {
+			m = m.Origin()
+			if s, ok := c.p.stubSet(m); ok {
+				return s.prefixed(stubLabel(m))
+			}
+			if allowed, ok := c.p.contractOf(m); ok {
+				label := "(" + recvTypeName(m) + ")." + m.Name() + " [contract]"
+				out := errSet{}
+				for _, v := range allowed {
+					v.Chain = []string{label}
+					out.put(v)
+				}
+				return out
+			}
+		}
+	}
+	return setOf(opaqueVariant(types.ExprString(call.Fun)))
+}
+
+// bind substitutes the param:i variants of a callee's error set with the
+// error sets of the call's arguments, and prefixes every witness with the
+// callee name. An argument that cannot be followed gives "?".
+func (c *flowCtx) bind(s errSet, call *ast.CallExpr, name string) errSet {
+	out := errSet{}
+	for _, v := range s {
+		if v.Kind != KindParam {
+			v.Chain = append([]string{name}, v.Chain...)
+			out.put(v)
+			continue
+		}
+		i := paramIndex(v)
+		if i < 0 || i >= len(call.Args) || call.Ellipsis.IsValid() {
+			out.put(opaqueVariant(name))
+			continue
+		}
+		out.putAll(c.argSet(call.Args[i]).prefixed(name))
+	}
+	return out
+}
+
+// argSet is the error set that a func-typed argument can produce when called.
+func (c *flowCtx) argSet(arg ast.Expr) errSet {
+	switch x := unparen(arg).(type) {
+	case *ast.FuncLit:
+		sig, ok := c.info.TypeOf(x).(*types.Signature)
+		if !ok || errIndex(sig) < 0 {
+			return errSet{}
+		}
+		return c.returnsErr(sig, x.Body)
+	case *ast.Ident, *ast.SelectorExpr:
+		var obj types.Object
+		if id, ok := x.(*ast.Ident); ok {
+			obj = c.info.Uses[id]
+		} else {
+			obj = c.info.Uses[x.(*ast.SelectorExpr).Sel]
+		}
+		if v, ok := obj.(*types.Var); ok {
+			if i, ok := c.ownParams[v]; ok {
+				return setOf(paramVariant(i)) // the caller's own parameter: composes
+			}
+		}
+		if fn, ok := obj.(*types.Func); ok {
+			return c.namedFuncSet(fn.Origin())
+		}
+	}
+	return setOf(opaqueVariant())
+}
+
+// namedFuncSet is the error set of a named function or method used as a value.
+// Its own unresolved parameters cannot be bound here, so they become "?".
+func (c *flowCtx) namedFuncSet(fn *types.Func) errSet {
+	if s, ok := c.p.stubSet(fn); ok {
+		return s.prefixed(stubLabel(fn))
+	}
+	label := funcName(fn)
+	var src []Variant
+	switch {
+	case fn.Pkg() == nil || isStd(fn.Pkg().Path()):
+		return setOf(opaqueVariant(label))
+	case fn.Pkg() == c.p.pass.Pkg:
+		w, ok := c.p.work[fn]
+		if !ok {
+			return setOf(opaqueVariant(label))
+		}
+		src = w.errs.list()
+	default:
+		var f ErrFact
+		if !c.p.pass.ImportObjectFact(fn, &f) {
+			return setOf(opaqueVariant(label))
+		}
+		src = f.Errors
+	}
+	out := errSet{}
+	for _, v := range src {
+		if v.Kind == KindParam {
+			out.put(opaqueVariant(label))
+			continue
+		}
+		v.Chain = append([]string{label}, v.Chain...)
+		out.put(v)
+	}
+	return out
+}
+
+// errorfSet: fmt.Errorf is the union of its %w arguments. Without a constant
+// format, or with no %w verb, the result is opaque.
+func (c *flowCtx) errorfSet(call *ast.CallExpr) errSet {
+	fail := setOf(opaqueVariant("fmt.Errorf"))
+	if call.Ellipsis.IsValid() || len(call.Args) == 0 {
+		return fail
+	}
+	tv := c.info.Types[call.Args[0]]
+	if tv.Value == nil || tv.Value.Kind() != constant.String {
+		return fail
+	}
+	idxs, ok := wrapVerbArgs(constant.StringVal(tv.Value))
+	if !ok || len(idxs) == 0 {
+		return fail
+	}
+	out := errSet{}
+	for _, i := range idxs {
+		if i+1 >= len(call.Args) {
+			return fail
+		}
+		out.putAll(c.exprSet(call.Args[i+1]))
+	}
+	return out
+}
+
+// wrapVerbArgs returns the 0-based variadic argument indexes consumed by %w
+// verbs. It reports false for formats it cannot follow (explicit indexes).
+func wrapVerbArgs(s string) ([]int, bool) {
+	var idxs []int
+	arg := 0
+	isDigit := func(b byte) bool { return b >= '0' && b <= '9' }
+	for i := 0; i < len(s); i++ {
+		if s[i] != '%' {
+			continue
+		}
+		i++
+		if i >= len(s) {
+			return nil, false
+		}
+		if s[i] == '%' {
+			continue
+		}
+		for i < len(s) && strings.IndexByte("+-# 0", s[i]) >= 0 {
+			i++
+		}
+		if i < len(s) && s[i] == '*' {
+			arg++
+			i++
+		} else {
+			for i < len(s) && isDigit(s[i]) {
+				i++
+			}
+		}
+		if i < len(s) && s[i] == '.' {
+			i++
+			if i < len(s) && s[i] == '*' {
+				arg++
+				i++
+			} else {
+				for i < len(s) && isDigit(s[i]) {
+					i++
+				}
+			}
+		}
+		if i >= len(s) || s[i] == '[' {
+			return nil, false
+		}
+		if s[i] == 'w' {
+			idxs = append(idxs, arg)
+		}
+		arg++
+	}
+	return idxs, true
+}
+
+// joinSet: errors.Join is the union of its arguments.
+func (c *flowCtx) joinSet(call *ast.CallExpr) errSet {
+	if call.Ellipsis.IsValid() {
+		return setOf(opaqueVariant("errors.Join"))
+	}
+	out := errSet{}
+	for _, a := range call.Args {
+		out.putAll(c.exprSet(a))
+	}
+	return out
+}
+
+// returnsErr is the union of the error results of the return statements in
+// body (not descending into nested literals).
+func (c *flowCtx) returnsErr(sig *types.Signature, body *ast.BlockStmt) errSet {
+	out := errSet{}
+	idx := errIndex(sig)
+	if idx < 0 {
+		return out
+	}
+	var named *types.Var
+	if rv := sig.Results().At(idx); rv.Name() != "" && rv.Name() != "_" {
+		named = rv
+	}
+	walkOwn(body, func(n ast.Node) {
+		r, ok := n.(*ast.ReturnStmt)
+		if !ok {
+			return
+		}
+		switch {
+		case len(r.Results) == 0:
+			if named != nil {
+				out.putAll(c.identSet(named))
+			}
+		case len(r.Results) == 1 && sig.Results().Len() > 1:
+			out.putAll(c.exprSet(r.Results[0]))
+		case idx < len(r.Results):
+			out.putAll(c.exprSet(r.Results[idx]))
+		}
+	})
+	return out
+}
+
+// ---- package-level analysis ----
+
+type fnUnit struct {
+	decl *ast.FuncDecl
+	obj  *types.Func
+	sig  *types.Signature
+}
+
+type work struct {
+	errs       errSet
+	handler    errSet
+	hasHandler bool
+}
+
+// effective is the handler set when the function has one, otherwise its error set.
+func (w *work) effective() errSet {
+	if w.hasHandler {
+		return w.handler
+	}
+	return w.errs
+}
+
+type pkgState struct {
+	pass      *analysis.Pass
+	units     []*fnUnit
+	work      map[*types.Func]*work
+	contracts map[*types.Func][]Variant // interface method contracts declared in this package
+	stubs     map[string]errSet         // stub rules by target key
+	pkgIndex  map[string]*types.Package // transitive import graph by path
+}
+
+func run(pass *analysis.Pass) (any, error) {
+	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}}
+	for _, f := range pass.Files {
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Body == nil {
+				continue
+			}
+			obj, ok := pass.TypesInfo.Defs[fd.Name].(*types.Func)
+			if !ok {
+				continue
+			}
+			p.units = append(p.units, &fnUnit{decl: fd, obj: obj, sig: obj.Type().(*types.Signature)})
+		}
+	}
+
+	if err := p.loadStubs(); err != nil {
+		return nil, err
+	}
+	p.collectInterfaceContracts()
+	p.solve()
+	for _, u := range p.units {
+		w := p.work[u.obj]
+		pass.ExportObjectFact(u.obj, &ErrFact{
+			Errors:     w.errs.list(),
+			HasHandler: w.hasHandler,
+			Handler:    w.handler.list(),
+		})
+	}
+
+	for _, u := range p.units {
+		for _, d := range directivesOf(u.decl.Doc) {
+			if d.kind == "errmap" {
+				p.exportErrmap(u)
+			}
+		}
+	}
+
+	for _, u := range p.units {
+		p.checkDirectives(u)
+	}
+	p.checkConformance()
+
+	if reportFlag {
+		for _, u := range p.units {
+			w := p.work[u.obj]
+			if errIndex(u.sig) >= 0 {
+				pass.Reportf(u.decl.Name.Pos(), "errors of %s: %s", funcName(u.obj), variantNames(w.errs.list()))
+			}
+			if w.hasHandler {
+				pass.Reportf(u.decl.Name.Pos(), "handler errors of %s: %s", funcName(u.obj), variantNames(w.handler.list()))
+			}
+		}
+	}
+
+	res := Result{}
+	for _, u := range p.units {
+		w := p.work[u.obj]
+		res[u.obj] = FuncErrors{Variants: w.effective().list(), Handler: w.hasHandler}
+	}
+	return res, nil
+}
+
+// solve computes the same-package error sets as a fixed point over the call
+// graph. Functions with a stub keep the stub's set.
+func (p *pkgState) solve() {
+	for _, u := range p.units {
+		w := &work{errs: errSet{}, handler: errSet{}}
+		if s, ok := p.stubSet(u.obj); ok {
+			w.errs.putAll(s)
+		}
+		p.work[u.obj] = w
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, u := range p.units {
+			if _, ok := p.stubSet(u.obj); ok {
+				continue
+			}
+			errs, handler, has := p.compute(u)
+			w := p.work[u.obj]
+			if w.errs.putAll(errs) {
+				changed = true
+			}
+			if w.handler.putAll(handler) {
+				changed = true
+			}
+			if has && !w.hasHandler {
+				w.hasHandler = true
+				changed = true
+			}
+		}
+	}
+}
+
+// compute evaluates one function against the current sets of its callees.
+func (p *pkgState) compute(u *fnUnit) (errs, handler errSet, hasHandler bool) {
+	c := p.newFlow(u.decl.Recv, u.decl.Type, u.decl.Body, true)
+	errs = c.returnsErr(u.sig, u.decl.Body)
+	handler = errSet{}
+	walkOwn(u.decl.Body, func(n ast.Node) {
+		r, ok := n.(*ast.ReturnStmt)
+		if !ok {
+			return
+		}
+		for _, res := range r.Results {
+			lit, ok := unparen(res).(*ast.FuncLit)
+			if !ok {
+				continue
+			}
+			ls, ok := c.info.TypeOf(lit).(*types.Signature)
+			if !ok || errIndex(ls) < 0 {
+				continue
+			}
+			hasHandler = true
+			handler.putAll(c.returnsErr(ls, lit.Body))
+		}
+	})
+	return errs, handler, hasHandler
+}
+
+// ---- directives ----
+
+type directive struct {
+	kind string
+	arg  string
+	pos  token.Pos
+}
+
+func directivesOf(cg *ast.CommentGroup) []directive {
+	if cg == nil {
+		return nil
+	}
+	var out []directive
+	for _, c := range cg.List {
+		if !strings.HasPrefix(c.Text, "//effectgo:") {
+			continue
+		}
+		body := strings.TrimPrefix(c.Text, "//effectgo:")
+		kind, arg, _ := strings.Cut(body, " ")
+		if i := strings.Index(arg, "//"); i >= 0 {
+			arg = arg[:i]
+		}
+		out = append(out, directive{kind: strings.TrimSpace(kind), arg: strings.TrimSpace(arg), pos: c.Pos()})
+	}
+	return out
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (p *pkgState) fileOf(pos token.Pos) *ast.File {
+	for _, f := range p.pass.Files {
+		if f.Pos() <= pos && pos <= f.End() {
+			return f
+		}
+	}
+	return nil
+}
+
+// resolve finds the object named by name ("X", "*X", or "pkg.X"). A qualified
+// name is resolved through the imports of the file that contains pos.
+func (p *pkgState) resolve(name string, pos token.Pos) types.Object {
+	name = strings.TrimPrefix(name, "*")
+	qual, base, qualified := strings.Cut(name, ".")
+	if !qualified {
+		return p.pass.Pkg.Scope().Lookup(name)
+	}
+	file := p.fileOf(pos)
+	if file == nil {
+		return nil
+	}
+	for _, imp := range file.Imports {
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			continue
+		}
+		alias := ""
+		if imp.Name != nil {
+			alias = imp.Name.Name
+		}
+		for _, ip := range p.pass.Pkg.Imports() {
+			if ip.Path() != path {
+				continue
+			}
+			if (alias != "" && alias == qual) || (alias == "" && ip.Name() == qual) {
+				return ip.Scope().Lookup(base)
+			}
+		}
+	}
+	return nil
+}
+
+// contractVariant resolves one name of a //effectgo:errors directive.
+func (p *pkgState) contractVariant(name string, pos token.Pos) (Variant, bool) {
+	if name == opaqueKey {
+		return opaqueVariant(), true
+	}
+	if rest, ok := strings.CutPrefix(name, ifacePrefix); ok {
+		return variantFromObject(p.resolve(rest, pos), KindIface)
+	}
+	obj := p.resolve(name, pos)
+	if v, ok := variantFromObject(obj, KindSentinel); ok {
+		return v, true
+	}
+	return variantFromObject(obj, KindType)
+}
+
+// resolveContract resolves the names of the //effectgo:errors directives in
+// dirs. Unresolvable names are reported at pos.
+func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string) []Variant {
+	allowed := []Variant{}
+	for _, d := range dirs {
+		if d.kind != "errors" {
+			continue
+		}
+		for _, name := range splitList(d.arg) {
+			v, ok := p.contractVariant(name, pos)
+			if !ok {
+				p.pass.Reportf(pos, "effectgo:errors: cannot resolve %q in %s", name, owner)
+				continue
+			}
+			allowed = append(allowed, v)
+		}
+	}
+	return allowed
+}
+
+// allowedBy reports whether variant v is permitted by a contract. Unresolved
+// parameters are always allowed. An abstract iface:J contract allows a
+// variant whose method set includes J's methods.
+func allowedBy(v Variant, allowed []Variant) bool {
+	if v.Kind == KindParam {
+		return true
+	}
+	for _, a := range allowed {
+		if a.Key == v.Key {
+			return true
+		}
+		if a.Kind == KindIface && v.Kind != KindOpaque && implementsAll(v.Methods, a.Methods) && len(v.Methods) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *pkgState) checkDirectives(u *fnUnit) {
+	var dirs []directive
+	for _, d := range directivesOf(u.decl.Doc) {
+		switch {
+		case d.kind == "errors" || d.kind == "errmap" || d.kind == "handler":
+			dirs = append(dirs, d)
+		case effectsKinds[d.kind]:
+			// a contract of the effects analyzer, which checks it
+		default:
+			p.pass.Reportf(u.decl.Name.Pos(), "unknown directive //effectgo:%s", d.kind)
+		}
+	}
+
+	hasContract := false
+	for _, d := range dirs {
+		if d.kind == "errors" {
+			hasContract = true
+		}
+	}
+	if hasContract {
+		allowed := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
+		for _, v := range displayOrder(p.work[u.obj].effective().list()) {
+			if allowedBy(v, allowed) {
+				continue
+			}
+			p.pass.Reportf(u.decl.Name.Pos(), "%s may return %s%s, not in its //effectgo:errors contract", funcName(u.obj), v.Name, via(v.Chain))
+		}
+	}
+
+	for _, d := range dirs {
+		if d.kind == "handler" {
+			p.checkHandler(u, d)
+		}
+	}
+}
+
+// exportErrmap validates an errmap function and exports its ErrmapFact.
+func (p *pkgState) exportErrmap(u *fnUnit) {
+	sig := u.sig
+	if sig.Params().Len() != 1 || sig.Results().Len() != 1 ||
+		!types.Identical(sig.Params().At(0).Type(), errorType) ||
+		!types.Identical(sig.Results().At(0).Type(), errorType) {
+		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:errmap: %s must have signature func(error) error", funcName(u.obj))
+		return
+	}
+	mapped := map[string]bool{}
+	ifaces := map[string]Iface{}
+	addType := func(t types.Type) {
+		t = types.Unalias(t)
+		if ptr, ok := t.(*types.Pointer); ok {
+			t = types.Unalias(ptr.Elem())
+		}
+		if types.IsInterface(t) {
+			var key, name string
+			if n, ok := t.(*types.Named); ok {
+				key, name = objKey(n.Obj()), objDisplay(n.Obj())
+			}
+			ifaces[key+"|"+strings.Join(methodsOf(t), ";")] = Iface{Key: key, Name: name, Methods: methodsOf(t)}
+			return
+		}
+		if n, ok := t.(*types.Named); ok && implementsError(n) {
+			mapped[objKey(n.Obj())] = true
+		}
+	}
+	sentinelOf := func(e ast.Expr) (string, bool) {
+		id, ok := unparen(e).(*ast.Ident)
+		var obj types.Object
+		if ok {
+			obj = p.pass.TypesInfo.Uses[id]
+		} else if sel, ok := unparen(e).(*ast.SelectorExpr); ok {
+			obj = p.pass.TypesInfo.Uses[sel.Sel]
+		}
+		if v, ok := sentinelKey(obj); ok {
+			return objKey(v), true
+		}
+		return "", false
+	}
+
+	ast.Inspect(u.decl.Body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CallExpr:
+			f := typeutil.StaticCallee(p.pass.TypesInfo, x)
+			if f == nil || f.Pkg() == nil || f.Pkg().Path() != "errors" || len(x.Args) != 2 {
+				return true
+			}
+			switch f.Name() {
+			case "Is":
+				if k, ok := sentinelOf(x.Args[1]); ok {
+					mapped[k] = true
+				}
+			case "As":
+				if u, ok := unparen(x.Args[1]).(*ast.UnaryExpr); ok && u.Op == token.AND {
+					if t := p.pass.TypesInfo.TypeOf(u.X); t != nil {
+						addType(t)
+					}
+				}
+			}
+		case *ast.BinaryExpr:
+			if x.Op == token.EQL || x.Op == token.NEQ {
+				if k, ok := sentinelOf(x.Y); ok {
+					mapped[k] = true
+				}
+				if k, ok := sentinelOf(x.X); ok {
+					mapped[k] = true
+				}
+			}
+		case *ast.SwitchStmt:
+			for _, s := range x.Body.List {
+				cc := s.(*ast.CaseClause)
+				for _, e := range cc.List {
+					if k, ok := sentinelOf(e); ok {
+						mapped[k] = true
+					}
+				}
+			}
+		case *ast.TypeSwitchStmt:
+			for _, s := range x.Body.List {
+				cc := s.(*ast.CaseClause)
+				for _, e := range cc.List {
+					if t := p.pass.TypesInfo.TypeOf(e); t != nil && (implementsError(t) || types.IsInterface(t)) {
+						addType(t)
+					}
+				}
+			}
+		}
+		return true
+	})
+
+	fact := &ErrmapFact{}
+	for k := range mapped {
+		fact.Mapped = append(fact.Mapped, k)
+	}
+	sort.Strings(fact.Mapped)
+	keys := make([]string, 0, len(ifaces))
+	for k := range ifaces {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fact.Ifaces = append(fact.Ifaces, ifaces[k])
+	}
+	p.pass.ExportObjectFact(u.obj, fact)
+}
+
+// covered reports whether errmap m maps variant v. Opaque and unresolved
+// parameter variants are never covered.
+func covered(v Variant, m *ErrmapFact) bool {
+	if v.Kind == KindOpaque || v.Kind == KindParam {
+		return false
+	}
+	for _, k := range m.Mapped {
+		if k == v.Key {
+			return true
+		}
+	}
+	for _, i := range m.Ifaces {
+		if i.Key != "" && v.Key == ifacePrefix+i.Key {
+			return true
+		}
+		if v.Kind != KindOpaque && implementsAll(v.Methods, i.Methods) {
+			return true
+		}
+	}
+	return false
+}
+
+func implementsAll(have, need []string) bool {
+	set := make(map[string]bool, len(have))
+	for _, h := range have {
+		set[h] = true
+	}
+	for _, n := range need {
+		if !set[n] {
+			return false
+		}
+	}
+	return true
+}
+
+func (p *pkgState) checkHandler(u *fnUnit, d directive) {
+	obj := p.resolve(d.arg, u.decl.Pos())
+	if obj == nil {
+		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:handler: cannot resolve %q", d.arg)
+		return
+	}
+	f, ok := obj.(*types.Func)
+	if !ok {
+		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:handler: %q is not a function", d.arg)
+		return
+	}
+	var m ErrmapFact
+	if !p.pass.ImportObjectFact(f, &m) {
+		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:handler: %s is not a //effectgo:errmap function", d.arg)
+		return
+	}
+	mname := objDisplay(f)
+	for _, v := range displayOrder(p.work[u.obj].effective().list()) {
+		if covered(v, &m) {
+			continue
+		}
+		switch v.Kind {
+		case KindOpaque:
+			if ignoreOpaqueFlag {
+				continue
+			}
+			p.pass.Reportf(u.decl.Name.Pos(), "handler %s may return an unclassified error%s, which errmap %s does not map → HTTP 500", funcName(u.obj), via(v.Chain), mname)
+		case KindParam:
+			if ignoreOpaqueFlag {
+				continue
+			}
+			p.pass.Reportf(u.decl.Name.Pos(), "handler %s may return an unresolved %s error%s, which errmap %s does not map → HTTP 500", funcName(u.obj), v.Name, via(v.Chain), mname)
+		default:
+			p.pass.Reportf(u.decl.Name.Pos(), "handler %s may return %s%s, which errmap %s does not map → HTTP 500", funcName(u.obj), v.Name, via(v.Chain), mname)
+		}
+	}
+}

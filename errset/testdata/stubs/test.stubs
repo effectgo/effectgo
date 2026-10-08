@@ -1,0 +1,6 @@
+# Test stub file. Comments and effects lines are fine.
+effects stubdep.Lookup io     # errset ignores effects lines
+errors stubdep.Lookup stubdep.ErrA,iface:stubdep.Status
+errors stubdep.Hard none
+errors (stubdep.Repo).Find iface:stubdep.Status
+errors strconv.Atoi type:strconv.NumError

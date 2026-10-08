@@ -1,0 +1,6 @@
+# Stubs for TestStubOverride (test only). They claim time.Now is pure, which overrides
+# the taxonomy; give io.Writer.Write a net effect; and carry an errors line that the
+# effects analyzer must ignore (it names a function, which is a valid target form).
+effects time.Now pure
+effects (io.Writer).Write net
+errors stubbed.Fail none

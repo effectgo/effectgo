@@ -1,0 +1,4 @@
+# Deliberately malformed (TestMalformedStubIsHardError): line 4 names an unknown effect.
+effects time.Now pure
+effects time.Since pure
+effects time.Until tiem
