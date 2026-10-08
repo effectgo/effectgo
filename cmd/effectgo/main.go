@@ -4,6 +4,7 @@
 //	effectgo ./...                                  effects and errset diagnostics
 //	effectgo -stubs=stubs/stdlib.stubs ./...        the same, with stub files
 //	effectgo sig ./...                              inferred Effect<A, E, R> signatures
+//	effectgo openapi [-merge|-check spec.json] ./... OpenAPI error responses of the routes
 //	go vet -vettool=$(which effectgo) ./...         go vet, cached correctly (see identity)
 //
 // Flags: -stubs (shared by effects and errset; falls back to $EFFECTGO_STUBS),
@@ -37,6 +38,9 @@ func main() {
 	if len(os.Args) == 2 && os.Args[1] == "-V=full" {
 		printIdentity()
 		return
+	}
+	if len(os.Args) > 1 && os.Args[1] == "openapi" {
+		os.Exit(runOpenAPI(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)
