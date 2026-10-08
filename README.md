@@ -62,6 +62,7 @@ One binary, two ways to run it:
 effectgo ./...                                      # standalone: effects and errset diagnostics
 go vet -vettool=$(which effectgo) ./...             # the same checks through go vet
 effectgo sig ./...                                  # signatures only (see below)
+effectgo openapi [-merge|-check spec.json] ./...    # OpenAPI error responses (see below)
 ```
 
 Flags (the same spelling standalone and under `go vet`):
@@ -103,16 +104,50 @@ Unknown keywords are reported. In the combined binary, an unknown keyword is rep
 
 ## Stub file format
 
-A stub file describes code that effectgo does not analyze, as a `.d.ts` file does in TypeScript. One rule per line, `#` starts a comment, fields are separated by spaces, exactly three fields:
+A stub file describes code that effectgo does not analyze, as a `.d.ts` file does in TypeScript. One rule per line, `#` starts a comment, fields are separated by spaces. Each verb has a fixed number of fields:
 
 ```
 effects <target> <effect,effect,...>     # or: pure        (read by effects)
 errors  <target> <variant,variant,...>   # or: none        (read by errset)
+status  (pkgpath.Type) <code>            #                 (read by errset)
+route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>  (read by openapi)
 ```
 
-Targets: `pkgpath.Func`, `(pkgpath.Type).Method`, `(*pkgpath.Type).Method`, `(pkgpath.Iface).Method`, `(error).Error`. Variants: `pkgpath.Name` (sentinel), `type:pkgpath.Type`, `iface:pkgpath.Iface`, or `?`.
+Targets: `pkgpath.Func`, `(pkgpath.Type).Method`, `(*pkgpath.Type).Method`, `(pkgpath.Iface).Method`, `(error).Error`. A `status` target is a type. Variants: `pkgpath.Name` (sentinel), `type:pkgpath.Type`, `iface:pkgpath.Iface`, or `?`. Indexes are 0-based.
 
 Shipped files: `stubs/stdlib.stubs` (both verbs, with evidence comments) and `stubs/fuego.stubs` (the Fuego `Body()` rule, with source references). A malformed line is a hard error that names the file and line.
+
+## OpenAPI error docs
+
+`effectgo openapi` derives the error responses of each route from its handler's error set and its `//effectgo:handler` errmap. Fuego's documentation of errors is written by hand (`OptionAddError`); this command states what the code can return, with a witness for each response, and it can check or merge a document.
+
+```
+$ cd examples/todo && effectgo openapi -stubs=$STUBS ./...    # a fragment; undocumented routes go to stderr
+PUT /v3/todos/{id}  (x-effectgo-handler: v3Update(...))
+  400  Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via parseID)
+  404  Not Found: domain.ErrNotFound (via Service.Update → Store.modify)
+  500  Internal Server Error: domain.ErrConflict (via Service.Update → Store.checkTitle)
+  default  Unknown status: ? (via (Context).Body [stub]); fuego.HTTPError (via (Context).Body [stub])
+```
+
+In the examples below, `STUBS` is the comma-separated absolute paths of `stubs/stdlib.stubs` and `stubs/fuego.stubs`.
+
+The fragment has `paths.<path>.<method>.responses.<code>`. Each response has a `description` and an `x-effectgo-errors` list. A variant whose status is unknown goes under `default`, and it is never given a guessed code. v1 and v2 of the example are undocumented: v1 has no errmap directive, and v2 wraps its handlers in `httpres.NoBody` and `WithBody`. The reasons are printed.
+
+```
+effectgo openapi -stubs=$STUBS -check spec.json ./...   # drift; exit 1 when a code is missing from spec.json
+effectgo openapi -stubs=$STUBS -merge spec.json ./...   # the document with the error responses replaced
+```
+
+`-check` reports `missing` codes (the code can produce them, the document does not; these exit 1), `stale` codes (documented, but no variant produces them; only for complete routes), and `unchecked` routes. Against Fuego's own document for the todo server, it reports:
+
+```
+PUT /v3/todos/{id}:
+  missing default: ?, fuego.HTTPError
+summary: 2 missing, 5 stale, 0 not in document, 10 unchecked
+```
+
+Fuego's document has 400, 404 and 500 on every operation, not 404 only, so the stale lines are its generic 500s. `-merge` keeps everything except the 4xx, 5xx and `default` responses of the routes it knows, and references the `HTTPError` schema. The merged document of the example validates with kin-openapi, and a runtime test checks that the statuses observed for `PUT /v3/todos/{id}` are documented. NOTES.md, "OpenAPI", has the full outputs and the evidence.
 
 ## `effectgo sig`
 
@@ -148,6 +183,7 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 | `effects/` | the effects analyzer |
 | `errset/` | the errset analyzer |
 | `signature/` | the `Effect<A, E, R>` analyzer, reached through `effectgo sig` |
+| `openapi/` | the route analyzer and the OpenAPI fragment, merge and check output, reached through `effectgo openapi` |
 | `internal/stubs/` | the shared stub-file parser |
 | `cmd/effectgo/` | the binary |
 | `stubs/` | shipped stub files |
