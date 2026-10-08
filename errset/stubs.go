@@ -20,6 +20,7 @@ package errset
 import (
 	"fmt"
 	"go/types"
+	"strconv"
 	"strings"
 
 	"github.com/faintghost/effectgo/internal/stubs"
@@ -108,6 +109,14 @@ func (p *pkgState) loadStubs() error {
 	if err != nil {
 		return err
 	}
+	var statusRules []statusRule
+	for _, r := range rules {
+		if r.Verb == stubs.VerbStatus {
+			code, _ := strconv.Atoi(r.Value) // checked by internal/stubs
+			statusRules = append(statusRules, statusRule{pkg: r.Target.Pkg, typ: r.Target.Type, code: code})
+		}
+	}
+	p.loadStatusStubs(statusRules)
 	p.stubs = map[string]errSet{}
 	for _, r := range errRules {
 		set := errSet{}
@@ -203,7 +212,7 @@ func (p *pkgState) stubVariant(t stubToken) (Variant, error) {
 		}
 		return identityVariant(t), nil
 	}
-	v, ok := variantFromObject(obj, t.kind)
+	v, ok := p.variantFromObject(obj, t.kind)
 	if !ok {
 		return Variant{}, fmt.Errorf("%s is not a %s", t.qual, map[string]string{
 			KindSentinel: "sentinel error variable",
@@ -222,7 +231,8 @@ func identityVariant(t stubToken) Variant {
 	case KindSentinel:
 		return Variant{Key: t.qual, Name: short, Kind: KindSentinel}
 	case KindType:
-		return Variant{Key: t.qual, Name: short, Kind: KindType}
+		// Its methods are unknown, so its status is too.
+		return Variant{Key: t.qual, Name: short, Kind: KindType, DynamicStatus: true}
 	default:
 		return Variant{Key: ifacePrefix + t.qual, Name: "some " + short, Kind: KindIface}
 	}

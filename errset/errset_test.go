@@ -98,3 +98,12 @@ func TestStubs(t *testing.T) {
 	setStubs(t, filepath.Join(testdata(t), "stubs", "test.stubs"))
 	analysistest.Run(t, testdata(t), errset.Analyzer, "stubuse")
 }
+
+// TestStatusInference covers constant StatusCode inference (ConstErr), the stub
+// fallback (StubErr), HTTPErr{Status: 409} literals, passthrough, uncovered
+// errors (500) and unknown statuses (default). See errset/status.go.
+func TestStatusInference(t *testing.T) {
+	setStubs(t, filepath.Join(testdata(t), "stubs", "status.stubs"))
+	setFlag(t, "statuses", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "status")
+}

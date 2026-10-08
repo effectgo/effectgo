@@ -62,6 +62,12 @@ type Variant struct {
 	Kind    string   // one of the Kind constants
 	Methods []string // method set as "Name(params)(results)"; used to match interface As targets
 	Chain   []string // witness: callee names from the reporting function down to the origin function
+	// Status is the HTTP status that Fuego gives this error when no errmap maps
+	// it, from the StatusCode method of its type (or a stub). 0 when unknown.
+	Status int
+	// DynamicStatus is true for a type whose StatusCode is not a constant (its
+	// status depends on the value); such a variant has no known status.
+	DynamicStatus bool
 }
 
 // ErrFact is exported on every function with a body in a analyzed package.
@@ -100,8 +106,9 @@ type Iface struct {
 
 // ErrmapFact is exported on //effectgo:errmap functions.
 type ErrmapFact struct {
-	Mapped []string // variant keys matched by errors.Is, == / case, errors.As on a concrete type
-	Ifaces []Iface  // interface targets of errors.As / type switches
+	Mapped   []string // variant keys matched by errors.Is, == / case, errors.As on a concrete type
+	Ifaces   []Iface  // interface targets of errors.As / type switches
+	Branches []Branch // the rules in the order they are tried; they give the HTTP status (see status.go)
 }
 
 // AFact marks ErrmapFact as an analysis fact.
@@ -132,7 +139,7 @@ var Analyzer = &analysis.Analyzer{
 	Name:       "errset",
 	Doc:        "infers error sets of Go functions, checks //effectgo:errors contracts and //effectgo:handler coverage by //effectgo:errmap",
 	Run:        run,
-	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact)},
+	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact), new(StatusFact)},
 	ResultType: reflect.TypeOf(Result{}),
 }
 
@@ -145,11 +152,13 @@ var effectsKinds = map[string]bool{"pure": true, "allow": true, "package": true}
 var (
 	reportFlag       bool
 	ignoreOpaqueFlag bool
+	statusesFlag     bool
 )
 
 func init() {
 	Analyzer.Flags.BoolVar(&reportFlag, "report", false, "print the inferred error set of every function with an error result")
 	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") errors in handler checks")
+	Analyzer.Flags.BoolVar(&statusesFlag, "statuses", false, "print the HTTP status of every variant of each //effectgo:handler function")
 }
 
 var (
@@ -352,8 +361,11 @@ func sigKey(name string, sig *types.Signature) string {
 	return b.String()
 }
 
-func typeVariant(n *types.Named) Variant {
-	return Variant{Key: objKey(n.Obj()), Name: objDisplay(n.Obj()), Kind: KindType, Methods: methodsOf(n)}
+// typeVariant is the variant of a named error type, with its HTTP status.
+func (p *pkgState) typeVariant(n *types.Named) Variant {
+	v := Variant{Key: objKey(n.Obj()), Name: objDisplay(n.Obj()), Kind: KindType, Methods: methodsOf(n)}
+	v.Status, v.DynamicStatus = p.typeStatus(n)
+	return v
 }
 
 // ifaceVariant is the abstract variant "some pkg.I" for a named interface.
@@ -363,7 +375,7 @@ func ifaceVariant(n *types.Named) Variant {
 
 // variantFromObject turns a package-level object into a variant of the given
 // kind. It reports false when the object does not have that kind.
-func variantFromObject(obj types.Object, kind string) (Variant, bool) {
+func (p *pkgState) variantFromObject(obj types.Object, kind string) (Variant, bool) {
 	switch kind {
 	case KindSentinel:
 		v, ok := sentinelKey(obj)
@@ -380,7 +392,7 @@ func variantFromObject(obj types.Object, kind string) (Variant, bool) {
 		if n == nil {
 			return Variant{}, false
 		}
-		return typeVariant(n), true
+		return p.typeVariant(n), true
 	case KindIface:
 		tn, ok := obj.(*types.TypeName)
 		if !ok {
@@ -648,7 +660,7 @@ func (c *flowCtx) solve() {
 
 func (c *flowCtx) typeSet(t types.Type) errSet {
 	if n := namedErrorType(t); n != nil {
-		return setOf(typeVariant(n))
+		return setOf(c.p.typeVariant(n))
 	}
 	return setOf(opaqueVariant())
 }
@@ -1020,10 +1032,14 @@ type pkgState struct {
 	contracts map[*types.Func][]Variant // interface method contracts declared in this package
 	stubs     map[string]errSet         // stub rules by target key
 	pkgIndex  map[string]*types.Package // transitive import graph by path
+	// statusDecls holds the constant StatusCode methods of this package.
+	statusDecls map[*types.Func]int
+	// statusStubs holds the "status" stub rules by canonical type key.
+	statusStubs map[string]int
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}}
+	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}}
 	for _, f := range pass.Files {
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
@@ -1038,6 +1054,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
+	p.collectStatus()
 	if err := p.loadStubs(); err != nil {
 		return nil, err
 	}
@@ -1064,6 +1081,14 @@ func run(pass *analysis.Pass) (any, error) {
 		p.checkDirectives(u)
 	}
 	p.checkConformance()
+
+	if statusesFlag {
+		for _, u := range p.units {
+			if d, ok := handlerOf(u); ok {
+				p.reportStatuses(u, d)
+			}
+		}
+	}
 
 	if reportFlag {
 		for _, u := range p.units {
@@ -1228,13 +1253,13 @@ func (p *pkgState) contractVariant(name string, pos token.Pos) (Variant, bool) {
 		return opaqueVariant(), true
 	}
 	if rest, ok := strings.CutPrefix(name, ifacePrefix); ok {
-		return variantFromObject(p.resolve(rest, pos), KindIface)
+		return p.variantFromObject(p.resolve(rest, pos), KindIface)
 	}
 	obj := p.resolve(name, pos)
-	if v, ok := variantFromObject(obj, KindSentinel); ok {
+	if v, ok := p.variantFromObject(obj, KindSentinel); ok {
 		return v, true
 	}
-	return variantFromObject(obj, KindType)
+	return p.variantFromObject(obj, KindType)
 }
 
 // resolveContract resolves the names of the //effectgo:errors directives in
@@ -1403,7 +1428,7 @@ func (p *pkgState) exportErrmap(u *fnUnit) {
 		return true
 	})
 
-	fact := &ErrmapFact{}
+	fact := &ErrmapFact{Branches: p.errmapBranches(u)}
 	for k := range mapped {
 		fact.Mapped = append(fact.Mapped, k)
 	}

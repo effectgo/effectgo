@@ -1,0 +1,4 @@
+# Stub rules for the status test package.
+status (status.StubErr) 422
+status (status.ConstErr) 418
+errors status.Opaque iface:status.StatusError

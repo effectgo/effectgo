@@ -28,3 +28,21 @@
 # (user SerDes, form/octet-stream wrapping and raw read errors, validator
 # misuse). The unclassified part is declared as "?" and is not hidden.
 errors (github.com/go-fuego/fuego.ContextWithBody).Body type:github.com/go-fuego/fuego.BadRequestError,type:github.com/go-fuego/fuego.HTTPError,?
+## ---- status rules (errset, fallback) -------------------------------------
+# A status line gives the HTTP status of an error type when its StatusCode()
+# method is not read (errset/status.go). Inference from the method body comes
+# first, so these lines matter only where fuego's facts are not available.
+# Each constant is from fuego v0.20.0 errors.go, one "StatusCode() int" body
+# that returns a constant (the line numbers are of those bodies).
+#
+# fuego.HTTPError is NOT listed: its StatusCode (errors.go:90-95) returns 500
+# when Status is 0 and Status otherwise, so its status depends on the value.
+# It is unknown, and the OpenAPI output documents it as "default".
+status (github.com/go-fuego/fuego.BadRequestError) 400       # errors.go:115
+status (github.com/go-fuego/fuego.NotFoundError) 404         # errors.go:129
+status (github.com/go-fuego/fuego.UnauthorizedError) 401     # errors.go:143
+status (github.com/go-fuego/fuego.ForbiddenError) 403        # errors.go:157
+status (github.com/go-fuego/fuego.ConflictError) 409         # errors.go:171
+status (github.com/go-fuego/fuego.NotAcceptableError) 406    # errors.go:188
+status (github.com/go-fuego/fuego.PathParamNotFoundError) 422       # ctx.go:268
+status (github.com/go-fuego/fuego.PathParamInvalidTypeError) 422    # ctx.go:285

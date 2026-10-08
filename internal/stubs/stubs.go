@@ -5,15 +5,18 @@
 //
 //	effects <target> <effect,effect,...>   # or the word: pure
 //	errors  <target> <variant,variant,...> # or the word: none
+//	status  (pkgpath.Type) <code>
+//	route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>
 //
 // '#' starts a comment and fields are separated by whitespace. A target is
 // pkgpath.Func, (pkgpath.Type).Method, (*pkgpath.Type).Method, or
 // (pkgpath.Iface).Method; the predeclared error type is written (error).Error.
+// A status target is a type, (pkgpath.Type). A route target is a function.
 //
-// This package checks the syntax that both analyzers share: the verb, the
-// field count and the target. Each analyzer then checks and consumes the rules
-// of its own verb: effects reads effects rules, errset reads errors rules.
-// Both analyzers accept a file that mixes the two verbs.
+// This package checks the syntax that all analyzers share: the verb, the field
+// count, the target and the shape of the value. Each analyzer then consumes the
+// rules of its own verbs: effects reads effects rules, errset reads errors and
+// status rules, openapi reads route rules. Analyzers ignore the other verbs.
 //
 // Which files are loaded: the -stubs flag (comma-separated paths), or, when
 // the flag is empty, the EFFECTGO_STUBS environment variable.
@@ -23,6 +26,7 @@ import (
 	"fmt"
 	"go/token"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -33,11 +37,24 @@ const Env = "EFFECTGO_STUBS"
 // command line; the analyzers read it through Paths.
 var Flag string
 
-// The two verbs of a stub rule.
+// The verbs of a stub rule.
 const (
 	VerbEffects = "effects"
 	VerbErrors  = "errors"
+	VerbStatus  = "status"
+	VerbRoute   = "route"
 )
+
+// verbArity is the number of fields of each verb, the verb included.
+var verbArity = map[string]int{
+	VerbEffects: 3,
+	VerbErrors:  3,
+	VerbStatus:  3,
+	VerbRoute:   5,
+}
+
+// Methods accepted by a route rule.
+var routeMethods = map[string]bool{"GET": true, "POST": true, "PUT": true, "PATCH": true, "DELETE": true}
 
 // Paths returns the stub files named by Flag, or by $EFFECTGO_STUBS when Flag
 // is blank.
@@ -116,6 +133,23 @@ func ParseTarget(s string) (Target, error) {
 	return t, nil
 }
 
+// ParseTypeTarget parses a type target written (pkgpath.Type). The result has
+// Method false and an empty Name.
+func ParseTypeTarget(s string) (Target, error) {
+	if !strings.HasPrefix(s, "(") || !strings.HasSuffix(s, ")") {
+		return Target{}, fmt.Errorf("target %q: want (pkgpath.Type)", s)
+	}
+	inner := s[1 : len(s)-1]
+	if strings.HasPrefix(inner, "*") {
+		return Target{}, fmt.Errorf("target %q: a status target is a value type, not a pointer", s)
+	}
+	pkg, typ, err := SplitQual(inner)
+	if err != nil {
+		return Target{}, fmt.Errorf("target %v", err)
+	}
+	return Target{Pkg: pkg, Type: typ}, nil
+}
+
 // SplitQual splits "pkgpath.Name" at its last dot.
 func SplitQual(s string) (string, string, error) {
 	i := strings.LastIndexByte(s, '.')
@@ -133,9 +167,10 @@ func SplitQual(s string) (string, string, error) {
 type Rule struct {
 	File   string
 	Line   int
-	Verb   string // VerbEffects or VerbErrors
+	Verb   string // one of the Verb constants
 	Target Target
-	Value  string // the third field, unparsed: an effect list or "pure" for effects; a variant list or "none" for errors
+	Value  string   // the third field, unparsed: an effect list or "pure" (effects); a variant list or "none" (errors); the code (status); the method (route)
+	Args   []string // route only: the path and handler argument indexes
 }
 
 // ParseFile reads and parses one stub file. See Parse.
@@ -178,21 +213,58 @@ func Parse(name string, data []byte) ([]Rule, error) {
 			return fmt.Errorf("%s:%d: %s", name, i+1, fmt.Sprintf(format, a...))
 		}
 		verb := f[0]
-		if verb != VerbEffects && verb != VerbErrors {
-			return nil, fail("unknown verb %q (want effects or errors)", verb)
+		arity, known := verbArity[verb]
+		if !known {
+			return nil, fail("unknown verb %q (want effects, errors, status or route)", verb)
 		}
-		if len(f) != 3 {
-			label := "variants"
-			if verb == VerbEffects {
-				label = "effects"
-			}
-			return nil, fail("%s wants <target> <%s> with no spaces, got %d fields", verb, label, len(f))
+		if len(f) != arity {
+			return nil, fail("%s", arityMessage(verb, len(f)))
 		}
-		t, err := ParseTarget(f[1])
+		r := Rule{File: name, Line: i + 1, Verb: verb, Value: f[2]}
+		var err error
+		if verb == VerbStatus {
+			r.Target, err = ParseTypeTarget(f[1])
+		} else {
+			r.Target, err = ParseTarget(f[1])
+		}
 		if err != nil {
 			return nil, fail("%v", err)
 		}
-		rules = append(rules, Rule{File: name, Line: i + 1, Verb: verb, Target: t, Value: f[2]})
+		switch verb {
+		case VerbStatus:
+			code, err := strconv.Atoi(f[2])
+			if err != nil || code < 100 || code > 599 {
+				return nil, fail("status wants an HTTP status code (100-599), got %q", f[2])
+			}
+		case VerbRoute:
+			if r.Target.Method {
+				return nil, fail("route target %q must be a function, not a method", f[1])
+			}
+			if !routeMethods[f[2]] {
+				return nil, fail("route method %q (want GET, POST, PUT, PATCH or DELETE)", f[2])
+			}
+			r.Value = f[2]
+			r.Args = []string{f[3], f[4]}
+			for _, a := range r.Args {
+				if n, err := strconv.Atoi(a); err != nil || n < 0 {
+					return nil, fail("route argument index %q must be a non-negative integer", a)
+				}
+			}
+		}
+		rules = append(rules, r)
 	}
 	return rules, nil
+}
+
+func arityMessage(verb string, got int) string {
+	switch verb {
+	case VerbEffects:
+		return fmt.Sprintf("effects wants <target> <effects> with no spaces, got %d fields", got)
+	case VerbErrors:
+		return fmt.Sprintf("errors wants <target> <variants> with no spaces, got %d fields", got)
+	case VerbStatus:
+		return fmt.Sprintf("status wants (pkgpath.Type) <code>, got %d fields", got)
+	default:
+		return fmt.Sprintf("route wants <target> <METHOD> <pathArgIndex> <handlerArgIndex>, got %d fields", got)
+	}
 }
