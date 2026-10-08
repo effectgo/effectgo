@@ -416,6 +416,7 @@ Fuego v0.20.0 evidence (module cache, `github.com/go-fuego/fuego@v0.20.0`):
 - The JSON error sender starts at 500 and only an `ErrorWithStatus` overrides it: `serialization.go:210-216` (`status := http.StatusInternalServerError` at 211; the override at 212-215). So a plain error reaches the client as 500.
 - Constant `StatusCode` bodies, with status stub lines in `stubs/fuego.stubs`: `errors.go:115` (400), `:129` (404), `:143` (401), `:157` (403), `:171` (409), `:188` (406); `ctx.go:268` and `:285` (422).
 - `fuego.HTTPError.StatusCode` is dynamic (`errors.go:90-95`: 500 when `Status` is 0, else `Status`). It has no stub line, so its status is unknown.
+- The facts work across packages: with the `status` lines removed from a copy of `fuego.stubs` (the `route` rules kept), `fuego.BadRequestError` is still 400 and the todo document is unchanged. That 400 comes from the `StatusFact` that the errset analyzer exported for fuego's method.
 
 Deviation: the task says an uncovered error maps to 500. That holds for plain errors. An uncovered error that implements `StatusCode` keeps its own status, which is what `ErrorHandler` does (`errors.go:237-239`). A sentinel (`errors.New`) is assumed plain; its initializer is not read. Recorded as a limitation.
 
