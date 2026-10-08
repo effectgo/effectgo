@@ -85,15 +85,15 @@ func v1Update(svc *domain.Service) func(fuego.ContextWithBody[updateReq]) (domai
 	}
 }
 
-func v1Delete(svc *domain.Service) func(fuego.ContextNoBody) (struct{}, error) {
-	return func(c fuego.ContextNoBody) (struct{}, error) {
+func v1Delete(svc *domain.Service) func(fuego.ContextNoBody) (deleted, error) {
+	return func(c fuego.ContextNoBody) (deleted, error) {
 		id, err := parseID(c)
 		if err != nil {
-			return struct{}{}, err
+			return deleted{}, err
 		}
 		if err := svc.Delete(id); err != nil {
-			return struct{}{}, v1Err(err)
+			return deleted{}, v1Err(err)
 		}
-		return struct{}{}, nil
+		return deleted{}, nil
 	}
 }

@@ -25,6 +25,11 @@ type updateReq struct {
 	Done  *bool   `json:"done,omitempty"`
 }
 
+// deleted is the response of the DELETE routes: an empty object. It is named
+// because Fuego documents an unnamed struct{} response as a schema with an empty
+// name, which OpenAPI validators reject (openapi_validate_test.go).
+type deleted struct{}
+
 // parseID reads the {id} path parameter. Any non-positive-integer value is a
 // 400. (Fuego's own PathParamIntErr would return 422, so it is not used.)
 func parseID(c interface{ PathParam(string) string }) (int, error) {
