@@ -46,3 +46,15 @@ status (github.com/go-fuego/fuego.ConflictError) 409         # errors.go:171
 status (github.com/go-fuego/fuego.NotAcceptableError) 406    # errors.go:188
 status (github.com/go-fuego/fuego.PathParamNotFoundError) 422       # ctx.go:268
 status (github.com/go-fuego/fuego.PathParamInvalidTypeError) 422    # ctx.go:285
+## ---- route rules (openapi) ------------------------------------------------
+# A route rule names a registration function, its method, and the 0-based
+# indexes of its path and handler arguments (openapi/openapi.go). Fuego's
+# route functions take (s *Server, path string, controller, options...)
+# (net_http_mux.go:50-68): the path is argument 1 and the handler is argument 2.
+# The functions are generic; the rule names the origin, which matches every
+# instantiation.
+route github.com/go-fuego/fuego.Get GET 1 2       # net_http_mux.go:50
+route github.com/go-fuego/fuego.Post POST 1 2     # net_http_mux.go:54
+route github.com/go-fuego/fuego.Delete DELETE 1 2 # net_http_mux.go:58
+route github.com/go-fuego/fuego.Put PUT 1 2       # net_http_mux.go:62
+route github.com/go-fuego/fuego.Patch PATCH 1 2   # net_http_mux.go:66

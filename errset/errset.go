@@ -122,9 +122,15 @@ func (f *ErrmapFact) String() string {
 	return "errset-errmap: mapped=" + strings.Join(f.Mapped, ",") + " " + strings.Join(names, ",")
 }
 
-// Result is the ResultType of the errset analyzer: for every function of the
-// package with a body, its error set. The signature analyzer reads it.
-type Result map[*types.Func]FuncErrors
+// Result is the ResultType of the errset analyzer. The signature and openapi
+// analyzers read it. Facts are not shared between analyzers, so the result is
+// the only way to read this package's errmaps and literals from another
+// analyzer.
+type Result struct {
+	Funcs    map[*types.Func]FuncErrors  // every function with a body
+	Literals map[*ast.FuncLit]FuncErrors // every func literal with an error result, in this package
+	Errmaps  map[*types.Func]*ErrmapFact // every valid //effectgo:errmap function of this package
+}
 
 // FuncErrors is the error set of one function. When the function returns
 // handler literals (Handler is true), Variants is the handler set, which is
@@ -132,6 +138,12 @@ type Result map[*types.Func]FuncErrors
 type FuncErrors struct {
 	Variants []Variant
 	Handler  bool
+	// HandlerDirective is the argument of the //effectgo:handler directive as
+	// written ("httpres.ToHTTPError"), or "" when there is none.
+	HandlerDirective string
+	// Errmap is the errmap function that the directive names, or nil when there
+	// is no directive or it does not resolve to a function.
+	Errmap *types.Func
 }
 
 // Analyzer is the errset analyzer.
@@ -1036,10 +1048,12 @@ type pkgState struct {
 	statusDecls map[*types.Func]int
 	// statusStubs holds the "status" stub rules by canonical type key.
 	statusStubs map[string]int
+	// errmaps holds the errmap facts of this package, by function.
+	errmaps map[*types.Func]*ErrmapFact
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}}
+	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}}
 	for _, f := range pass.Files {
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
@@ -1072,7 +1086,9 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, u := range p.units {
 		for _, d := range directivesOf(u.decl.Doc) {
 			if d.kind == "errmap" {
-				p.exportErrmap(u)
+				if f := p.exportErrmap(u); f != nil {
+					p.errmaps[u.obj] = f
+				}
 			}
 		}
 	}
@@ -1102,10 +1118,11 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
-	res := Result{}
+	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps}
 	for _, u := range p.units {
 		w := p.work[u.obj]
-		res[u.obj] = FuncErrors{Variants: w.effective().list(), Handler: w.hasHandler}
+		arg, errmap := p.handlerRef(u)
+		res.Funcs[u.obj] = FuncErrors{Variants: w.effective().list(), Handler: w.hasHandler, HandlerDirective: arg, Errmap: errmap}
 	}
 	return res, nil
 }
@@ -1337,13 +1354,14 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 }
 
 // exportErrmap validates an errmap function and exports its ErrmapFact.
-func (p *pkgState) exportErrmap(u *fnUnit) {
+// It returns the fact, or nil when the signature is wrong.
+func (p *pkgState) exportErrmap(u *fnUnit) *ErrmapFact {
 	sig := u.sig
 	if sig.Params().Len() != 1 || sig.Results().Len() != 1 ||
 		!types.Identical(sig.Params().At(0).Type(), errorType) ||
 		!types.Identical(sig.Results().At(0).Type(), errorType) {
 		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:errmap: %s must have signature func(error) error", funcName(u.obj))
-		return
+		return nil
 	}
 	mapped := map[string]bool{}
 	ifaces := map[string]Iface{}
@@ -1442,6 +1460,40 @@ func (p *pkgState) exportErrmap(u *fnUnit) {
 		fact.Ifaces = append(fact.Ifaces, ifaces[k])
 	}
 	p.pass.ExportObjectFact(u.obj, fact)
+	return fact
+}
+
+// handlerRef returns the argument of the //effectgo:handler directive of u
+// and the errmap function it names (nil when it does not resolve).
+func (p *pkgState) handlerRef(u *fnUnit) (string, *types.Func) {
+	d, ok := handlerOf(u)
+	if !ok {
+		return "", nil
+	}
+	f, _ := p.resolve(d.arg, u.decl.Pos()).(*types.Func)
+	return d.arg, f
+}
+
+// literalSets returns the error set of every func literal with an error result
+// in the package. A literal's returns are read in the flow context of the
+// declared function that encloses it, so its locals are the enclosing ones.
+func (p *pkgState) literalSets() map[*ast.FuncLit]FuncErrors {
+	out := map[*ast.FuncLit]FuncErrors{}
+	for _, u := range p.units {
+		c := p.newFlow(u.decl.Recv, u.decl.Type, u.decl.Body, true)
+		ast.Inspect(u.decl.Body, func(n ast.Node) bool {
+			lit, ok := n.(*ast.FuncLit)
+			if !ok {
+				return true
+			}
+			ls, ok := c.info.TypeOf(lit).(*types.Signature)
+			if ok && errIndex(ls) >= 0 {
+				out[lit] = FuncErrors{Variants: c.returnsErr(ls, lit.Body).list()}
+			}
+			return true
+		})
+	}
+	return out
 }
 
 // covered reports whether errmap m maps variant v. Opaque and unresolved
