@@ -79,6 +79,8 @@ Flags (the same spelling standalone and under `go vet`):
 | `-errset.witness` | also print one `witness of <F>: <variant> via <chain>` line per variant (`witness of <F> [handler]: …` for handler sets) |
 | `-errset.ignoreopaque` | do not report opaque (`?`) and fresh (`new@`) errors in handler checks |
 
+With no stub file configured (neither `-stubs` nor `$EFFECTGO_STUBS`), a standalone, `sig` or `openapi` run prints one warning line to stderr. go vet runs stay quiet.
+
 ### Witness lines
 
 `-effects.witness` and `-errset.witness` add lines next to the report lines; the `effects of` and `errors of` lines are unchanged:
@@ -234,7 +236,7 @@ This section describes the other tools at a high level, as their own documentati
 The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main ones:
 
 - Interface method calls and calls through func values are `unknown` or `param:i` unless a contract or stub covers them.
-- Stdlib effects and errors are modelled by a table and by stubs. Anything outside them is invisible (effects) or opaque (`?`, errset).
+- Stdlib effects and errors are modelled by a table and by stubs. Anything outside them is invisible (effects) or opaque (`?`, errset), except `errors.New` and constant-format `fmt.Errorf` without `%w`, which are fresh (`new@pkg.F`).
 - Errset is flow-insensitive: an error variable that is assigned anywhere in a function contributes to its set everywhere.
 - `go vet` cache: see "Usage" above for files named only by `-stubs`.
 

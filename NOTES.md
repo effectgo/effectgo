@@ -21,6 +21,9 @@ Tags used in the limitation lists:
 | `cmd/effectgo/` | the binary: a multichecker, plus the `-V=full` identity and the `sig` subcommand |
 | `stubs/stdlib.stubs` | stdlib rules: `effects` lines (effects) and `errors` lines (errset) in one file |
 | `stubs/fuego.stubs` | Fuego `Body()` rule (errset), with source references |
+| `stubs/pgx.stubs` | pgx v5 driver rules: `db` for `Row`/`Rows`/`Tx`/`Conn`/`Pool`, and their sentinel errors |
+| `stubs/gin.stubs` | gin `*Context` rules: response writers and body readers (`net`), query/header readers (`pure`) |
+| `stubs/huma.stubs` | Huma v2 `huma.NewError`, a package-level func variable (`pure`) |
 | `examples/layers/` | the effects demo (own module) |
 | `examples/todo/` | the errset realworld (own module): ErrConflict unmapped, and the form-body `?` path |
 | `examples/run.sh` | builds the binary and runs it on both examples, standalone and under go vet |
@@ -157,7 +160,7 @@ Any other literal (passed, stored in a field, returned, sent) gets a state of it
 | | stdlib | 27.2 | 93.3 | 24.4 | 7.8 | 606 |
 | | all | 26.7 | 93.3 | 24.4 | 6.8 | 606 |
 
-What did not move: the `?` share of error sets is nearly unchanged (92.7 to 95.2 on order-mgmt, where `?` is the default for interface calls and for `fmt.Errorf` without `%w`). What did move is the set composition: the share of functions whose error set is only `?` fell on kuzma-wms (50.3 to 26.3) and arcteryx-console (69.1 to 38.7), and the average number of named variants fell on order-mgmt (4.06 to 1.48) because dependency-internal error types are now `?` under the pgx stubs. db on kuzma-wms drops with the features alone (41.0 to 35.2) because route-registration functions no longer inherit the database calls of their handler literals; that is the intended correction.
+What did not move: the `?` share of error sets is nearly unchanged (92.7 to 95.2 on order-mgmt, where `?` is the default for interface calls and, at the time of this measurement, for `fmt.Errorf` without `%w`; that case is a fresh `new@pkg.F` variant now, see "Report tooling & error variants"). What did move is the set composition: the share of functions whose error set is only `?` fell on kuzma-wms (50.3 to 26.3) and arcteryx-console (69.1 to 38.7), and the average number of named variants fell on order-mgmt (4.06 to 1.48) because dependency-internal error types are now `?` under the pgx stubs. db on kuzma-wms drops with the features alone (41.0 to 35.2) because route-registration functions no longer inherit the database calls of their handler literals; that is the intended correction.
 
 Spot check (seed 42, 5 changed effect sets per project, read against the source): 15 of 15 consistent with the code. The changes are: a pgxpool or database/sql method now `db`; an `unknown` removed because the call went through `context.Context.Value`, `os.FileInfo.Mode`, `sql.Result.RowsAffected` or a local closure; route-registration and handler-constructor functions losing the effects of literals they return or hand to a registrar. One case needs a caveat: a constructor that returns a struct of default implementations (`defaultRunnerDeps`) lost its `net`/`rand`/`spawn` effects, which now show as `unknown` at the field calls. That follows from the rule that a stored literal is not charged to its constructor.
 
@@ -223,6 +226,7 @@ Known gaps: a function that returns a func value that is not a literal (for exam
 - `-stubs` is registered in `cmd/effectgo` on the global flag set, so `go vet` advertises it (it appears in `-flags`) and forwards it. **[run]** `go vet -vettool=… -stubs=…` on both examples.
 - `$EFFECTGO_STUBS` is used when `-stubs` is empty. Both forms are accepted for both analyzers.
 - Analyzer flags stay prefixed by the multichecker: `-effects.report`, `-errset.report`, `-errset.ignoreopaque`. The standalone prototypes had unprefixed names (`-report`); the single multichecker binary uses the prefixed names everywhere.
+- **No stub files warning.** A standalone, `sig` or `openapi` run with neither a non-empty `-stubs` (or `--stubs`) argument nor a non-empty `$EFFECTGO_STUBS` prints one line to stderr: `effectgo: warning: no stub files loaded (set EFFECTGO_STUBS or -stubs); results for stdlib/driver calls will be less precise`. The decision reads the raw arguments, since the flag is parsed inside `multichecker.Main`. The go vet probes (`-flags`, `-V=…`) and a `.cfg` invocation never print it, because go vet runs the tool once per package. **[test]** `cmd/effectgo` `TestNoStubsWarning`. It was added after an eval run silently used no stub files (see "Determinism").
 
 ### Determinism
 
@@ -266,7 +270,7 @@ Known gaps: a function that returns a func value that is not a literal (for exam
 - **[test]** Func-value calls: a parameter gives `param:i` and is substituted at call sites; other func values give `?` (`limits.viaFuncValue`).
 - **[test]** Method values give `?` (`limits.viaMethodValue`), even when the method is known. Struct fields give `?` (`limits.viaField`).
 - **[test]** Generics: a concrete sentinel returned by a generic function is tracked (`limits.genErr`); a type-parameter error gives `?` (`limits.wrapT`).
-- **[test]** Stdlib errors are opaque except `fmt.Errorf` with `%w` and `errors.Join`; `%v` gives `?` (`basic`, `opaque`, `basic.wrapV`). Stubs can name stdlib types (`strconv.NumError`).
+- **[test]** Stdlib errors are opaque except `fmt.Errorf` with `%w`, `errors.Join`, and the fresh cases `errors.New` and constant-format `fmt.Errorf` without `%w` (`new@pkg.F`, see "Report tooling & error variants"); `%v` gives `?` (`basic`, `opaque`, `basic.wrapV`). Stubs can name stdlib types (`strconv.NumError`).
 - **[reading]** A non-constant format string gives `?`. Sentinel aliases (`var ErrAlias = ErrNotFound`) are separate variants.
 - **[test]** Interface matching by method-signature strings: `*ValidationError` matches the `StatusError` target. **[reading]** in general.
 - **[reading]** One witness per variant (the shortest). Directives are read on `FuncDecl`s and interface declarations only, not on literals.
