@@ -162,6 +162,16 @@ Known gaps: a function that returns a func value that is not a literal (for exam
 - `$EFFECTGO_STUBS` is used when `-stubs` is empty. Both forms are accepted for both analyzers.
 - Analyzer flags stay prefixed by the multichecker: `-effects.report`, `-errset.report`, `-errset.ignoreopaque`. The standalone prototypes had unprefixed names (`-report`); the single multichecker binary uses the prefixed names everywhere.
 
+### Determinism
+
+**Reported symptom.** On order-mgmt, a cold-cache run and a warm run differed in 78 report entries (67 effects, 11 errset). **Root cause: a configuration difference, not nondeterminism in the analyzer.** The saved cold report equals a run with `EFFECTGO_STUBS=stubs/stdlib.stubs`, and the saved warm report equals a run without it (every non-cache-path line is identical). Stubs change results: `io.ReadFull` becomes `unknown`, `(error).Error` becomes pure, `strconv.Atoi` gets an error set. The 78 entries are exactly the stub-dependent ones (42 gained `unknown`, 25 lost it, 11 errset). Reports are comparable only when they were produced with the same stub files.
+
+**Checked, no difference.** Same configuration with fresh and warm caches, with `GOMAXPROCS=1`, and with the sequential action graph (`-debug=p`) against the parallel one. `go test -race` is clean for `effects`, `errset` and `cmd/effectgo`.
+
+**Guard.** `cmd/effectgo/determinism_test.go` (`TestOutputIndependentOfScheduling`) runs both analyzers over `examples/layers` in the sequential graph and in parallel at `GOMAXPROCS` 1, 4 and 8, and requires identical diagnostics, effect sets and error sets, witness chains included. It guards scheduling and fact passing. It does not cover stub configuration, and it has not been shown to fail on a seeded ordering bug.
+
+**Known path dependence.** Test packages include generated test main files that `go/packages` writes into GOCACHE. Their report lines carry the cache path (`/root/.cache/go-build/…-d:81:6: effects of main: {exit}`), so compare runs with the same cache location or filter those lines.
+
 ## Vet cache identity
 
 **The bug.** go vet caches results under the vet tool's identity and the vet flags, not under the contents of stub files. An edited stub gave the same output with the prototype. **[run]** (baseline below.)
