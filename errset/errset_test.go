@@ -16,6 +16,12 @@ import (
 // inherited value must not reach them.
 func TestMain(m *testing.M) {
 	os.Unsetenv(stubs.Env)
+	// EFFECTGO_TEST_ENGINE=ssa runs the whole suite with the SSA engine.
+	if e := os.Getenv("EFFECTGO_TEST_ENGINE"); e != "" {
+		if err := errset.Analyzer.Flags.Set("engine", e); err != nil {
+			panic(err)
+		}
+	}
 	os.Exit(m.Run())
 }
 

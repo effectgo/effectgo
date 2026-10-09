@@ -27,6 +27,7 @@
 package errset
 
 import (
+	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/token"
@@ -40,6 +41,7 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/internal/goroot"
@@ -195,6 +197,7 @@ var (
 	witnessFlag      bool
 	ignoreOpaqueFlag bool
 	statusesFlag     bool
+	engineFlag       string
 )
 
 func init() {
@@ -202,6 +205,7 @@ func init() {
 	Analyzer.Flags.BoolVar(&witnessFlag, "witness", false, "print one \"witness of <F>: <variant> via <chain>\" line per variant of the error sets")
 	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") and fresh (new@) errors in handler checks")
 	Analyzer.Flags.BoolVar(&statusesFlag, "statuses", false, "print the HTTP status of every variant of each //effectgo:handler function")
+	Analyzer.Flags.StringVar(&engineFlag, "engine", engineAST, "error-set engine: ast (flow-insensitive) or ssa (flow-sensitive, SSA values)")
 }
 
 var (
@@ -1018,23 +1022,29 @@ func (c *flowCtx) argSet(arg ast.Expr) errSet {
 // namedFuncSet is the error set of a named function or method used as a value.
 // Its own unresolved parameters cannot be bound here, so they become "?".
 func (c *flowCtx) namedFuncSet(fn *types.Func) errSet {
-	if s, ok := c.p.stubSet(fn); ok {
+	return c.p.namedFuncSet(fn)
+}
+
+// namedFuncSet is the error set of a named function used as a value (see
+// flowCtx.namedFuncSet). It is shared by both engines.
+func (p *pkgState) namedFuncSet(fn *types.Func) errSet {
+	if s, ok := p.stubSet(fn); ok {
 		return s.prefixed(stubLabel(fn))
 	}
 	label := funcName(fn)
 	var src []Variant
 	switch {
-	case fn.Pkg() == nil || isStd(c.p.pass.Fset, fn.Pkg()):
+	case fn.Pkg() == nil || isStd(p.pass.Fset, fn.Pkg()):
 		return setOf(opaqueVariant(label))
-	case fn.Pkg() == c.p.pass.Pkg:
-		w, ok := c.p.work[fn]
+	case fn.Pkg() == p.pass.Pkg:
+		w, ok := p.work[fn]
 		if !ok {
 			return setOf(opaqueVariant(label))
 		}
 		src = w.errs.list()
 	default:
 		var f ErrFact
-		if !c.p.pass.ImportObjectFact(fn, &f) {
+		if !p.pass.ImportObjectFact(fn, &f) {
 			return setOf(opaqueVariant(label))
 		}
 		src = f.Errors
@@ -1059,14 +1069,7 @@ func (c *flowCtx) freshSet(origin string) errSet {
 	if c.owner == "" {
 		return setOf(opaqueVariant(origin))
 	}
-	pkg := c.p.pass.Pkg
-	return setOf(Variant{
-		Key:   "new:" + pkg.Path() + "." + c.owner,
-		Name:  freshPrefix + pkg.Name() + "." + c.owner,
-		Kind:  KindFresh,
-		Pkg:   pkg.Path(),
-		Ident: lastComponent(c.owner),
-	})
+	return setOf(c.p.freshVariant(c.owner))
 }
 
 // lastComponent returns the part of a function display name after the last dot.
@@ -1237,10 +1240,24 @@ type pkgState struct {
 	// statusFuncs holds the status rules that name a function or variable, by
 	// pkgpath.Name (see carried.go).
 	statusFuncs map[string]stubs.StatusValue
+	// The SSA engine (see ssa.go): useSSA is set when the package was lowered,
+	// ssaProg holds it, callAt maps a call's opening parenthesis to its AST
+	// call, and litSets holds the literal sets that the SSA engine computed.
+	useSSA  bool
+	ssaProg *ssa.Program
+	callAt  map[token.Pos]*ast.CallExpr
+	litSets map[*ast.FuncLit]FuncErrors
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}}
+	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}, litSets: map[*ast.FuncLit]FuncErrors{}}
+	switch engineFlag {
+	case engineAST:
+	case engineSSA:
+		p.useSSA = p.buildSSA()
+	default:
+		return nil, fmt.Errorf("errset: unknown -errset.engine %q (want ast or ssa)", engineFlag)
+	}
 	for _, f := range pass.Files {
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
@@ -1364,6 +1381,11 @@ func (p *pkgState) solve() {
 
 // compute evaluates one function against the current sets of its callees.
 func (p *pkgState) compute(u *fnUnit) (errs, handler errSet, hasHandler bool) {
+	if p.useSSA {
+		if e, h, has, ok := p.computeSSA(u); ok {
+			return e, h, has
+		}
+	}
 	c := p.newFlow(u)
 	errs = c.returnsErr(u.sig, u.decl.Body)
 	handler = errSet{}
@@ -1722,6 +1744,12 @@ func (p *pkgState) handlerRef(u *fnUnit) (string, *types.Func) {
 // declared function that encloses it, so its locals are the enclosing ones.
 func (p *pkgState) literalSets() map[*ast.FuncLit]FuncErrors {
 	out := map[*ast.FuncLit]FuncErrors{}
+	defer func() {
+		// The SSA engine's literal sets replace the AST ones where it ran.
+		for lit, fe := range p.litSets {
+			out[lit] = fe
+		}
+	}()
 	for _, u := range p.units {
 		c := p.newFlow(u)
 		ast.Inspect(u.decl.Body, func(n ast.Node) bool {
