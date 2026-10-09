@@ -13,3 +13,8 @@ ignoredBuiltDependencies: # pnpm 10
   - sharp
 minimumReleaseAgeExclude:
     - '@cloudflare/nimbus-docs@0.17.0'
+# Hoist satteri's platform bindings to node_modules/ so the prerender bundle,
+# which inlines satteri and resolves its native binding from dist/.prerender/,
+# can find them under pnpm's strict layout ("Cannot find native binding").
+publicHoistPattern:
+  - '@bruits/*'
