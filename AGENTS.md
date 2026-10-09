@@ -26,15 +26,16 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 - `effectgo ./...`: the four analyzers, zero configuration. Exit 3 means diagnostics.
 - `go vet -vettool=$(which effectgo) ./...`: the same through go vet. Exit 1 means diagnostics.
 - `effectgo sig ./...`: one `Effect<A, E, R>` line per function (exit 3 when printed; the lines go to stderr).
-- Report flags: `-effects.report`, `-effects.witness`, `-errset.report`, `-errset.witness`, `-errset.statuses`. They print information, not diagnostics.
+- Report flags: `-effects.report`, `-effects.witness`, `-errset.report`, `-errset.witness`, `-errset.statuses`. They print information, not diagnostics. `-effects.all` and `-errset.all` print the violations that the root rule hides.
 - HTTP checks: `effectgo http ./...`, `http-gin`, `http-huma`, and `openapi -check spec.json ./...` (exit 1 on a missing code). See [docs/guide/http-checks.md](docs/guide/http-checks.md).
 - Stub files: the zero configuration reads the shipped stubs and the module's `effectgo.stubs`. `-stubs=…` or `$EFFECTGO_STUBS` replace it entirely. Stub syntax: [docs/reference/stubs.md](docs/reference/stubs.md). What the shipped stubs cover, target by target: [docs/reference/stub-coverage.md](docs/reference/stub-coverage.md).
-- Test files are skipped standalone unless `-test=true`.
+- Test files are analyzed by default, as under `go vet`; `-test=false` skips them. The standalone run ends with a summary line on stderr (`effectgo: N packages analysed (M test variants), K findings`).
 
 ### How to read a diagnostic
 
 - `F is declared //effectgo:pure but has effect time via F → g → time.Now`: `F` breaks its contract; the chain is the call path to the source of the effect.
 - `F may return X (via …), not in its //effectgo:errors contract`: an error variant the contract does not allow.
+- A function whose violation is only the consequence of a callee's violation is not reported: the callee is, and fixing it fixes the caller. The summary line counts the hidden ones; `-effects.all` and `-errset.all` print them. See [the root rule](docs/reference/analyzers.md#root-rule).
 - `handler H may return X (via …), which errmap M does not map → HTTP 500`: the errmap has no case for `X`, so the response is 500.
 - In error sets: `?` is an error of unknown origin; `new@pkg.F` is a fresh error created in `F` (not matchable by `errors.Is`); `param:i` is the error of the function's parameter `i`; `unknown` in effects is a call the analysis cannot resolve.
 - `(none)` in an error set means no error can be returned.
@@ -57,7 +58,7 @@ Each lesson is a mistake a first-time user made with effectgo, and the page that
 - **In net/http, check an inner method that returns an error.** A `func(w, r)` handler has no error result, so a directive on it checks nothing. Put `//effectgo:handler` on the method that returns the error, and let a thin adapter write the response. See [HTTP checks](docs/guide/http-checks.md#nethttp-handlers).
 - **Mark enums and sealed sets explicitly.** A named integer is not an enum unless it has `//effectgo:sealed`, and an interface is sealed by an unexported marker method, not by the directive alone. See [Directives](docs/reference/directives.md#when-an-interface-needs-effectgosealed).
 - **Read the chain, then the origin.** The first words name the function that breaks the contract; the last witness step is the call that introduced the effect. A run of `cannot resolve` lines is one bad name repeated, and a `?` or `new@` in an error set is an error that `errors.Is` cannot match. See [Analyzers](docs/reference/analyzers.md#errset) and [Error sets](docs/reference/errors.md#variants).
-- **Run both entry points, and confirm the package was analysed.** Standalone runs skip `_test.go` files and a clean run prints nothing. Run `go vet -vettool=…` as well, and use `effectgo sig` to see the signatures of a package. See [Getting started](docs/guide/getting-started.md#a-clean-run-is-not-a-full-run).
+- **Confirm the package was analysed.** A clean standalone run prints only the summary line, which counts the packages it analysed. Use `effectgo sig` to see the signatures of a package. See [Getting started](docs/guide/getting-started.md#a-clean-run-is-not-a-full-run).
 
 ### Caching gotchas
 

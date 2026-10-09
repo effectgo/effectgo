@@ -34,7 +34,7 @@ Put a `.golangci.yml` at the module root. The example is `examples/editor/.golan
 ```yaml
 version: "2"
 run:
-  tests: false              # effectgo ./... skips _test.go files by default; match it here
+  tests: true               # effectgo ./... analyses _test.go files by default; match it here
 linters:
   default: none
   enable:

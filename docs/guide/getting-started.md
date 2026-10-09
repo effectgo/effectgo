@@ -50,18 +50,19 @@ Diagnostics are written to stderr. Paths are absolute in the standalone run and 
 
 ## A clean run is not a full run
 
-A run with no output proves two things and no more: the analyzers ran without an error, and they found nothing they could prove. It does not show which packages were analysed. To confirm that a package was analysed, print its signatures:
+The standalone run ends with a summary line on stderr. It says how many packages it analysed, how many test variants, and how many findings it printed:
+
+```text
+effectgo: 1 package analysed (1 test variant), 0 findings
+```
+
+A clean run therefore shows that the package was analysed. The analyzers ran without an error and found nothing they could prove. To see the signatures of a package, print them:
 
 ```text
 effectgo sig ./domain     # one Effect<A, E, R> line per function; exit status 3 when it printed
 ```
 
-Standalone runs also skip `_test.go` files, so a clean standalone run can hide a finding in a test. `go vet` analyses the test files. Run both commands on each package (verified: a test function with `//effectgo:pure` that calls `time.Now` is reported by `go vet` and not by the standalone run):
-
-```text
-effectgo ./...
-go vet -vettool=$(which effectgo) ./...
-```
+The standalone run analyses `_test.go` files by default, as `go vet` does: a test function with `//effectgo:pure` that calls `time.Now` is reported by both commands (`-test=false` skips the test files). See [Command line](../reference/cli.md#test-files) and [the summary line](../reference/cli.md#summary-line).
 
 Note that `effectgo sig` exits with 3 when it succeeds, because each signature is printed as a diagnostic. A script must read that as success.
 

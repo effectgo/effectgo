@@ -15,11 +15,46 @@ The binary contains five analyzers. Four report diagnostics in the normal run; `
 
 A diagnostic is reported only when the code is provably at risk. A rule that cannot be proved is silent. Each analyzer is deterministic: the same input gives the same output (see [Determinism](../journal/03-p1-determinism-vet-identity.md)).
 
+## Root rule
+
+A contract violation often shows up in several functions at once. When `Outer` calls `Inner` and `Inner` breaks its own contract, `Outer` breaks its contract through `Inner`. Fixing `Inner` fixes `Outer`, so reporting both repeats one fact, and the first line names the caller as if the caller were at fault. The analyzers report the root only.
+
+- **effects.** A violation of `F` for effect `e` is not reported when every source of `e` in `F` is a call to a declared function that itself violates its own contract for `e`. The callee's violation is reported, and fixing it fixes `F`.
+- **errset.** A violation of `F` for variant `X` is not reported when `X` reaches `F` through a declared callee that itself violates its contract for `X`, and no other call of `F` may return `X` unless that call is such a callee.
+
+The rule is conservative: `F` is reported when any of these holds.
+
+- `F` has the effect or the variant from its own body, or from a stub, an interface method, a call through a func value, or a func-typed argument.
+- A callee that is a source does not violate: it has no contract, its contract allows the effect or variant, or it is a stub or an interface method.
+- A callee is not analyzed: the standard library, or a dependency without facts.
+- For errset, `F` is a handler (its effective set is the handler set).
+
+Example, from a scratch module with `Stamp`, `Post` and `Close` under `//effectgo:pure`, and `Find` and `Get` under `//effectgo:errors ?`. `Stamp` and `Find` are the roots:
+
+```text
+ROOT/ledger/ledger.go:12:6: Stamp is declared //effectgo:pure but has effect time via Stamp → time.Now
+ROOT/ledger/ledger.go:24:6: Find may return ledger.ErrMissing, not in its //effectgo:errors contract
+effectgo: 1 package analysed (0 test variants), 2 findings, 3 duplicates hidden (-effects.all or -errset.all to show them)
+```
+
+`Post`, `Close` and `Get` are hidden. `-effects.all` prints the effects ones, and `-errset.all` the errset one:
+
+```text
+ROOT/ledger/ledger.go:16:6: Post is declared //effectgo:pure but has effect time via Post → Stamp → time.Now
+ROOT/ledger/ledger.go:20:6: Close is declared //effectgo:pure but has effect time via Close → Post → Stamp → time.Now
+ROOT/ledger/ledger.go:12:6: Stamp is declared //effectgo:pure but has effect time via Stamp → time.Now
+ROOT/ledger/ledger.go:24:6: Find may return ledger.ErrMissing, not in its //effectgo:errors contract
+ROOT/ledger/ledger.go:28:6: Get may return ledger.ErrMissing (via Find), not in its //effectgo:errors contract
+effectgo: 1 package analysed (0 test variants), 5 findings
+```
+
+The flags are `-effects.all` and `-errset.all`; each one turns the rule off for its analyzer, standalone and under `go vet` alike (`go vet -vettool=effectgo -effects.all ./...`). The hidden count in the summary line counts the violations that the rule suppressed in the root packages (see [CLI](cli.md#summary-line)). The rule is the same under `go vet`, where the analyzers run through the tool interface; the summary line is not printed there. Facts carry the information across packages: a callee in a dependency that violates its contract hides its callers in the importing package.
+
 ## effects
 
 | Message | When |
 |---|---|
-| `<F> is declared <contract> but has effect <e> via <witness>` | a function exceeds its contract; one per function and effect, at the name. `<contract>` is the directive text, for example `//effectgo:pure`, `//effectgo:allow db`, `//effectgo:package pure` |
+| `<F> is declared <contract> but has effect <e> via <witness>` | a function exceeds its contract; one per function and effect, at the name, unless the [root rule](#root-rule) hides it. `<contract>` is the directive text, for example `//effectgo:pure`, `//effectgo:allow db`, `//effectgo:package pure` |
 | `(<Recv>).<M> violates contract of (<I>).<M> [<contract>]: has effect <e> via <witness>` | a method implementation exceeds an interface contract |
 | `effects of <F>: {<e>, …}` | `-effects.report`; `{}` when empty |
 | `witness of <F>: <e> via <chain>` | `-effects.witness` |

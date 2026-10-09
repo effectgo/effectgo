@@ -7,7 +7,7 @@ One binary, `effectgo`, runs in four ways:
 
 | Way | Command | What runs |
 |---|---|---|
-| standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive; test files skipped by default |
+| standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive; test files analyzed by default; ends with a summary line |
 | go vet | `go vet -vettool=$(which effectgo) ./...` | the same four analyzers, through `go vet` |
 | sig | `effectgo sig ./...` | signatures only |
 | subcommands | `effectgo openapi`, `http-gin`, `http-huma`, `http` | the OpenAPI and HTTP checks |
@@ -46,7 +46,9 @@ These are the same in standalone and go vet runs. The multichecker prefixes each
 | `-errset.ignoreopaque` | false | do not report opaque (`?`) and fresh (`new@`) errors in handler checks |
 | `-errset.engine=ssa\|ast` | `ssa` | `ssa`: flow-sensitive over SSA values (default); `ast`: the older flow-insensitive engine |
 | `-mustuse.allow=f,(*T).M` | empty | fully qualified functions whose results may be discarded |
-| `-test` | false (standalone) | analyze `_test.go` files too (see [Test files](#test-files)) |
+| `-effects.all` | false | report every `effects` violation, including the callers whose root is another function's violation (see [Analyzers](analyzers.md#effects)) |
+| `-errset.all` | false | report every `errset` contract violation, including the callers whose root is another function's violation (see [Analyzers](analyzers.md#errset)) |
+| `-test` | true (standalone and `sig`) | analyze `_test.go` files too, as `go vet` does; `-test=false` skips them (see [Test files](#test-files)) |
 
 Each `-errset.engine` value is accepted by the subcommands too.
 
@@ -56,9 +58,11 @@ The multichecker adds its own flags, for example `-json` (the driver's JSON diag
 
 The analyzer enable flags (`-effects`, `-errset`, `-mustuse`, `-exhaustive`) are the driver's. `-signature` enables the signature analyzer in the standalone binary; under `sig` it is already the only one.
 
+The standalone run is not the multichecker, so it accepts a smaller set of driver flags: `-test`, `-json` (the diagnostics as JSON on stdout), `-c` (lines of context), and the analyzer flags. `-fix`, `-diff`, `-debug`, `-cpuprofile`, `-memprofile` and `-trace` are not accepted there (exit 2). They still work under `go vet`, which runs the multichecker.
+
 ### sig
 
-`effectgo sig [-stubs] [-errset.engine] ./...`. Test files are skipped as in the standalone run.
+`effectgo sig [-stubs] [-errset.engine] [-test=false] ./...`. Test files are analyzed by default, as in the standalone run.
 
 ### openapi
 
@@ -106,8 +110,24 @@ The HTTP checks report their findings and exit 0; they are for reading and for J
 
 ## Test files
 
-- Standalone runs and `sig` skip `_test.go` files, and the generated `_testmain.go` packages of the build cache. Pass `-test=true` to analyze them.
-- `go vet` decides for itself which packages and test variants it passes to the tool, so `-test` has no effect under `go vet`. Under `go vet`, a test function with its own directive is checked; the same run standalone is clean only because the file is skipped. Run both to cover tests (see [Getting started](../guide/getting-started.md#a-clean-run-is-not-a-full-run)).
+- The standalone run and `sig` analyze `_test.go` files by default (`-test`), as `go vet` does. Each test variant (`p [p.test]`, `p_test [p.test]`) is one analysed package in the summary. Pass `-test=false` to skip the test files.
+- The generated test main packages (`p.test`) are not analyzed: they hold no source of their own.
+- `go vet` decides for itself which packages and test variants it passes to the tool, so `-test` has no effect under `go vet`. Both runs now see the same test files; the standalone run adds the summary line (see [Summary line](#summary-line)).
+
+## Summary line
+
+The standalone run ends with one line on stderr, after the diagnostics:
+
+```text
+effectgo: 8 packages analysed (5 test variants), 2 findings, 1 duplicate hidden (-effects.all or -errset.all to show them)
+```
+
+- `N packages analysed` counts the packages of the patterns and their dependencies that are roots of the run, without the test variants. `(M test variants)` counts the test variants (`-test` on).
+- `K findings` counts the distinct diagnostics printed. A diagnostic that the printer drops as a repeat of the same position and text is counted once.
+- `H duplicates hidden` appears only when the root rule suppressed some violations (see [Analyzers](analyzers.md#root-rule)). It is the number of violations that are not printed; `-effects.all` and `-errset.all` print them.
+- The line starts with `effectgo: ` and has no `path:line:col:` prefix, so a parser of the diagnostics does not read it as one. It is printed in `-json` mode too, on stderr, while the JSON goes to stdout.
+
+It is printed by the standalone run only. It is not printed under `go vet` (the same analyzers through the tool interface, with no place for a summary), by the golangci-lint plugin, or by `sig`, `openapi` and the `http*` subcommands. The exit codes do not depend on it.
 - `openapi` loads without tests.
 
 ## Standalone, go vet and the plugin
@@ -117,7 +137,8 @@ The HTTP checks report their findings and exit 0; they are for reading and for J
 | Analyzers | all four | all four | all four |
 | Report flags (`-effects.report`, `-errset.witness`, …) | yes | yes | no |
 | Output paths | absolute | relative to the package directory | golangci-lint's (absolute, with the linter name) |
-| Test files | skipped by default (`-test`) | decided by go vet | off with `run.tests: false` |
+| Test files | analyzed by default (`-test`) | decided by go vet | on with `run.tests: true` |
+| Summary line | yes (stderr, last line) | no | no |
 | Stub configuration | flag, env, or zero configuration | the same; `-stubs` is forwarded | `settings.stubs`, or zero configuration |
 | Caching | none | go vet caches under the tool identity (below) | golangci-lint's cache, which does not see stub edits |
 | Subcommands | yes | no | no |

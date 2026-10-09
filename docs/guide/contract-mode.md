@@ -129,7 +129,7 @@ Short answers, each with the page that has the details and the evidence:
 - **How do I use the errmap and handler checks with `net/http`?** Put the directive on a method that returns an error, and write the response in an adapter. See [HTTP checks](http-checks.md#nethttp-handlers).
 - **Why is a status `default` or `500`?** The errmap did not give a constant status for that variant. See [Directives](../reference/directives.md#how-an-errmap-gives-a-status) and [Error sets](../reference/errors.md#http-status).
 - **How do I install from the private repository?** Build from a clone with `go install ./cmd/effectgo`. See [Getting started](getting-started.md#install).
-- **Why does a clean standalone run miss a test finding?** Standalone runs skip `_test.go` files. Run `go vet` too. See [Getting started](getting-started.md#a-clean-run-is-not-a-full-run).
+- **Why does a clean standalone run show no test finding?** It analyses `_test.go` files by default, so a clean run covers them; pass `-test=false` to skip them. See [Getting started](getting-started.md#a-clean-run-is-not-a-full-run).
 
 ## The zero-false-positives promise
 
