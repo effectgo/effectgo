@@ -15,7 +15,7 @@
 // A type switch on a sealed interface, or an expression switch on an enum, with
 // no default clause must have a case for every variant. Variants are computed
 // from the non-test files of the declaring package, so a package and its
-// importers agree on them (see NOTES.md, "mustuse & exhaustive").
+// importers agree on them (see docs/journal/11-p4a-mustuse-exhaustive.md).
 package exhaustive
 
 import (
