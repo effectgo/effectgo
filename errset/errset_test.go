@@ -78,11 +78,10 @@ func TestReportFlag(t *testing.T) {
 }
 
 // TestASTFlowInsensitiveLimit pins the AST engine's flow-insensitive false
-// positive (testdata/src/limitsast). The SSA engine does not have it.
+// positive (testdata/src/limitsast). The SSA engine, the default, does not have
+// it (see ssaflow.guardReset).
 func TestASTFlowInsensitiveLimit(t *testing.T) {
-	if os.Getenv("EFFECTGO_TEST_ENGINE") == "ssa" {
-		t.Skip("the AST engine's limit; the SSA engine has no such false positive")
-	}
+	setFlag(t, "engine", "ast")
 	setFlag(t, "report", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "limitsast")
 }

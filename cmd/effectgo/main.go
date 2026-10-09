@@ -70,7 +70,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)
 		os.Args = withoutTests(os.Args)
-		signature.Analyzer.Flags.Var(engineFlag{}, "errset.engine", errsetEngineUsage)
+		os.Args = takeEngineFlag(os.Args)
 		multichecker.Main(signature.Analyzer)
 		return
 	}
@@ -182,6 +182,28 @@ type engineFlag struct{}
 func (engineFlag) String() string { return errset.Analyzer.Flags.Lookup("engine").Value.String() }
 
 func (engineFlag) Set(v string) error { return errset.Analyzer.Flags.Set("engine", v) }
+
+// takeEngineFlag applies a -errset.engine argument of the sig subcommand and
+// removes it from the arguments: multichecker would prefix an analyzer flag
+// with the analyzer's name, so the flag is read here instead.
+func takeEngineFlag(args []string) []string {
+	out := args[:1:1]
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-errset.engine" || a == "--errset.engine":
+			if i+1 < len(args) {
+				i++
+				_ = engineFlag{}.Set(args[i])
+			}
+		case strings.HasPrefix(a, "-errset.engine=") || strings.HasPrefix(a, "--errset.engine="):
+			_ = engineFlag{}.Set(a[strings.Index(a, "=")+1:])
+		default:
+			out = append(out, a)
+		}
+	}
+	return out
+}
 
 // bindEngine adds -errset.engine to a subcommand's flag set.
 func bindEngine(fs *flag.FlagSet) {

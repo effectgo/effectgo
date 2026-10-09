@@ -98,6 +98,19 @@ domain/service.go:42:19: witness of Service.Update: domain.ErrNotFound via Store
 
 The chain is the callee names from the function down to the origin, the function itself excluded. `(direct)` means the variant is created in the function. Effect chains use the same convention (`witness of F: time via Now → time.Now`). Witness lines print without the report flags too.
 
+### Flow-sensitive error sets (the default engine)
+
+The errset analyzer computes each function's error set over SSA values, so an error variable has the set of the value it holds at each point, not the union of every assignment to it. A guard narrows the value on each branch edge:
+
+- `errors.Is(err, S)`: true keeps `S`, its wrappers and unknown origins; false removes `S`;
+- `err == S`: as `errors.Is`, without the wrappers (`==` does not unwrap);
+- `err == nil` / `err != nil`: the nil edge carries nothing;
+- `errors.As(err, &x)` with a concrete type or an interface, and `v, ok := err.(T)`: true keeps the matching variants, false removes them;
+- a predicate `func(error) bool` that tests its parameter with `errors.Is` or `errors.As` (for example `IsValidation`);
+- `!` and `switch` (an if-chain) follow the same rules.
+
+A reassigned variable and a value reset in a guard (`err = nil`) therefore no longer carry the old errors. Findings can disappear (the guarded path no longer reaches the sink) and a few can appear (a call through a local closure is resolved to the literal, and a per-use default reads the variable at its own use). `-errset.engine=ast` selects the previous flow-insensitive engine; the flag is accepted by `effectgo`, `sig`, `openapi`, `http`, `http-gin` and `http-huma`. See NOTES.md, "Flow-sensitive error sets (P3)", for the rules, the evaluation and the limitations.
+
 ### Error variants: `new@` and `?`
 
 - `new@<pkg>.<Func>`: a fresh error created in `<Func>` without wrapping: `errors.New(...)`, or `fmt.Errorf` with a constant format and no `%w`, when the call is in a returned expression or flows into a returned local. There is one variant per creating function, not per call site, so that sets stay small. No `errors.Is` or `errors.As` can match it. A package-level `var ErrX = errors.New(...)` is still a sentinel.
@@ -260,7 +273,7 @@ The JSON schema is shared with the other HTTP adapters: `{"severity","framework"
 
 The result on the kuzma-wms backend (134 routes, static evidence only, see NOTES.md "Huma adapter"): 134 of 134 routes resolve; 543 variants, all with a known status; 355 reach the fallback 500 (65 high, 1 medium, 289 info). Most high findings are guard false positives: the same handler already maps the variant before the raw return. The manual check of a seeded sample of 21 rows found 19 false positives, 1 intended 500, and 1 medium false positive; the out-of-sample checks found 2 likely bugs. The table and the causes are in NOTES.md.
 
-Limitations: errset is flow-insensitive, so a guard that precedes a raw return, a variable that is reused for another call, and a guard inside a callee are not modelled; the analysis does not know that `Rows.Scan` never returns `sql.ErrNoRows`; a type that implements `GetStatus` (huma's other way to carry a status) is reported as unknown, not read.
+Limitations: the errset sets are flow-sensitive (see "Flow-sensitive error sets"), so a guard that precedes a raw return, a variable that is reused for another call, and a guard inside a callee are modelled; the analysis does not know that `Rows.Scan` never returns `sql.ErrNoRows`; a type that implements `GetStatus` (huma's other way to carry a status) is reported as unknown, not read.
 
 ## `effectgo sig`
 
@@ -298,7 +311,7 @@ Each record is one JSON object per line, with `severity`, `framework` (`gin`), `
 | `info` | `?` or `new@` reaches a 5xx response; hidden unless `-all` |
 | `leak` | a sink body carries `err.Error()` or an error formatted into a string (up to two composite literals deep); the status is the response status |
 
-The analysis is flow-insensitive per declaration (errset's sets), so a variable reused for two calls carries the variants of both. See NOTES.md, "Gin adapter", for the limitations and the evaluation on three services.
+The analysis reads each sink and each variant rule at its own use (errset's flow, see "Flow-sensitive error sets"): a variable reused for two calls carries only the variants of the call that reaches the sink, and a guard above a sink removes what it tests. See NOTES.md, "Gin adapter", for the limitations and the evaluation on three services.
 
 ## HTTP check: both adapters (`effectgo http`)
 
@@ -325,7 +338,7 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 
 - Interface method calls and calls through func values are `unknown` or `param:i` unless a contract or stub covers them.
 - Stdlib effects and errors are modelled by a table and by stubs. Anything outside them is invisible (effects) or opaque (`?`, errset), except `errors.New` and constant-format `fmt.Errorf` without `%w`, which are fresh (`new@pkg.F`).
-- Errset is flow-insensitive: an error variable that is assigned anywhere in a function contributes to its set everywhere.
+- Errset is flow-sensitive over SSA values, with the guard forms listed above; a captured or address-taken error variable is the union of its stores; a field, map value or channel receive is opaque. Generic function bodies, which SSA does not lower, use the AST engine (flow-insensitive). `-errset.engine=ast` selects the AST engine for everything.
 - `go vet` cache: see "Usage" above for files named only by `-stubs`.
 
 ## Layout

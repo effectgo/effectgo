@@ -205,7 +205,7 @@ func init() {
 	Analyzer.Flags.BoolVar(&witnessFlag, "witness", false, "print one \"witness of <F>: <variant> via <chain>\" line per variant of the error sets")
 	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") and fresh (new@) errors in handler checks")
 	Analyzer.Flags.BoolVar(&statusesFlag, "statuses", false, "print the HTTP status of every variant of each //effectgo:handler function")
-	Analyzer.Flags.StringVar(&engineFlag, "engine", engineAST, "error-set engine: ast (flow-insensitive) or ssa (flow-sensitive, SSA values)")
+	Analyzer.Flags.StringVar(&engineFlag, "engine", engineSSA, "error-set engine: ssa (flow-sensitive, SSA values; the default) or ast (flow-insensitive, the P2 engine)")
 }
 
 var (

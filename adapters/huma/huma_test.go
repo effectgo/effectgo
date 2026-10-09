@@ -282,7 +282,7 @@ func TestJSONSchema(t *testing.T) {
 }
 
 // TestMain runs the adapter tests with the error-set engine named by
-// EFFECTGO_TEST_ENGINE (ast or ssa); the default is the AST engine.
+// EFFECTGO_TEST_ENGINE (ast or ssa); the default is the SSA engine.
 func TestMain(m *testing.M) {
 	if e := os.Getenv("EFFECTGO_TEST_ENGINE"); e != "" {
 		if err := errset.Analyzer.Flags.Set("engine", e); err != nil {
