@@ -52,5 +52,6 @@ GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/
 - [Design](docs/design/architecture.md): [architecture](docs/design/architecture.md), [decisions](docs/design/decisions.md), [limitations](docs/design/limitations.md).
 - [Journal](docs/journal/index.md): the development history and its measurements.
 - [AGENTS.md](AGENTS.md): the entry point for coding agents, both those using effectgo and those developing it.
+- The documentation site built from `docs/` with Nimbus: see [site/README.md](site/README.md).
 
 Formerly goeffect.
