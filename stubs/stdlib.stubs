@@ -46,6 +46,69 @@ effects io.TeeReader pure
 effects io.NopCloser pure
 effects io.Pipe pure
 
+# io.Closer.Close and io.Reader/Writer stay unknown, as above. Close is the
+# clearest case: an *os.File closes a descriptor (fs), a net.Conn closes a
+# socket (net), and a bytes.Buffer-backed closer does nothing. No single effect
+# is true of the interface, so it is not stubbed.
+
+# context.Context (context/context.go:71-115). Deadline, Done and Value return
+# values that the context already holds; the channel returned by Done is
+# created on demand in memory (cancelCtx.Done, context.go:448). Err is pure too
+# (its contract is at context.go:110-115), and its errors are in the errors
+# section. Implementations other than those of package context are the
+# caller's responsibility.
+effects (context.Context).Deadline pure
+effects (context.Context).Done pure
+effects (context.Context).Err pure
+effects (context.Context).Value pure
+
+# context.CancelFunc is "type CancelFunc func()" (context/context.go:231). Calling
+# it cancels a context and closes its done channel: memory only, no I/O. This is a
+# named func type, so the rule applies to every call through a value of the type
+# (stub feature "named func type"), not to one declared function.
+effects (context.CancelFunc) pure
+
+# database/sql.Result (sql.go:3532-3543) is implemented by driverResult, whose
+# methods only call the driver's Result under a lock (sql.go:3546-3558). The
+# driver.Result contract (database/sql/driver/driver.go:316-325) describes the
+# values a finished query produced, so this is pure. Drivers that do I/O in
+# LastInsertId would break the contract, not the stub.
+effects (database/sql.Result).LastInsertId pure
+effects (database/sql.Result).RowsAffected pure
+
+# database/sql row and rows types. Row.Scan (sql.go:3486-3530) reads the next
+# row and closes the rows (defer r.rows.Close). Rows.Next reads from the
+# driver. Rows.Scan converts the current row's values, and Rows.Close releases
+# the connection. These touch the database, so they are db. Rows.Err
+# (sql.go:3136-3145) and Row.Err (sql.go:3527-3529) return stored errors and
+# are pure.
+effects (*database/sql.Row).Scan db
+effects (*database/sql.Row).Err pure
+effects (*database/sql.Rows).Next db
+effects (*database/sql.Rows).Scan db
+effects (*database/sql.Rows).Close db
+effects (*database/sql.Rows).Err pure
+
+# io/fs getters. FileInfo describes a file as of the Stat call (io/fs/fs.go:168-
+# 172), so its getters read memory. DirEntry.Name, IsDir and Type return values
+# fixed when the directory was read (fs/fs.go:103-124). DirEntry.Info is NOT
+# stubbed: it calls lstat again (fs.go:122), so its effect is fs.
+effects (io/fs.FileInfo).Name pure
+effects (io/fs.FileInfo).Size pure
+effects (io/fs.FileInfo).Mode pure
+effects (io/fs.FileInfo).ModTime pure
+effects (io/fs.FileInfo).IsDir pure
+effects (io/fs.FileInfo).Sys pure
+effects (io/fs.DirEntry).Name pure
+effects (io/fs.DirEntry).IsDir pure
+effects (io/fs.DirEntry).Type pure
+
+# http.ResponseWriter.Header returns the header map that WriteHeader will send
+# (net/http/server.go:111-117). It does not write to the connection, so it is
+# pure. Write and WriteHeader stay unknown: they write to the connection, and
+# the interface does not say which implementation is used.
+effects (net/http.ResponseWriter).Header pure
+
 ## ---- errors rules (errset) -----------------------------------------------
 
 # Stub rules for a few standard library functions. Each rule was checked
@@ -63,3 +126,20 @@ errors strconv.ParseUint type:strconv.NumError
 errors strconv.ParseBool type:strconv.NumError
 # net/url.Parse: url.go:399-411 wraps every failure in &Error{"parse", ...}.
 errors net/url.Parse type:net/url.Error
+
+# context.Context.Err: the two sentinels named in the interface contract
+# (context/context.go:110-115). Its errors are one of the two, by contract.
+errors (context.Context).Err context.Canceled,context.DeadlineExceeded
+
+# database/sql (sql.go). Row.Scan returns ErrNoRows when there is no row
+# (sql.go:3513, the "return ErrNoRows" of Row.Scan), r.err or rows.Err (driver
+# errors, opaque), and the scan error (opaque).
+errors (*database/sql.Row).Scan database/sql.ErrNoRows,?
+# Rows.Err returns the context error that stopped the iteration (sql.go:3011-3020,
+# ctx.Err()) or a driver error.
+errors (*database/sql.Rows).Err context.Canceled,context.DeadlineExceeded,?
+# Tx.Commit returns ErrTxDone when the transaction is finished, and tx.ctx.Err()
+# when the transaction's context ended (sql.go:2287-2300). Rollback returns
+# ErrTxDone or a driver error (sql.go:2358-2359).
+errors (*database/sql.Tx).Commit database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?
+errors (*database/sql.Tx).Rollback database/sql.ErrTxDone,?

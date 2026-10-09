@@ -22,8 +22,12 @@ func Bump() { // want Bump:`map\[global:` `Bump is declared //effectgo:pure but 
 	counter++
 }
 
+// Closure returns a literal that reads the clock. The literal is not run here,
+// so nothing is charged to Closure; the caller that runs the result is charged
+// instead (closure attribution, see testdata/src/closure).
+//
 //effectgo:pure
-func Closure() func() { // want Closure:`map\[time:` `Closure is declared //effectgo:pure but has effect time via Closure → time\.Now`
+func Closure() func() { // want Closure:`map\[\]`
 	return func() {
 		_ = time.Now()
 	}

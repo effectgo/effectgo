@@ -379,8 +379,10 @@ type fnState struct {
 	params  map[*types.Var]int // parameters of this function, by object
 }
 
-// callSite is a static call whose callee's effects are resolved in the fixed
-// point, so that placeholders can be substituted with the call's arguments.
+// callSite is a call whose callee's effects are resolved in the fixed point,
+// so that placeholders can be substituted with the call's arguments. A site
+// with a nil callee is a call through a func value: it only charges the func
+// literal arguments, since the callee is not known.
 type callSite struct {
 	callee *types.Func
 	call   *ast.CallExpr
@@ -438,6 +440,8 @@ type checker struct {
 	stubs     *stubTable
 	byObj     map[*types.Func]*fnState
 	contracts map[*types.Func]*ContractFact // contracts of interface methods declared in this package
+	lits      map[*ast.FuncLit]*fnState     // states of func literals that are not run by their function
+	litStates []*fnState
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -456,6 +460,7 @@ func run(pass *analysis.Pass) (any, error) {
 		stubs:     table,
 		byObj:     map[*types.Func]*fnState{},
 		contracts: map[*types.Func]*ContractFact{},
+		lits:      map[*ast.FuncLit]*fnState{},
 	}
 	pkgCon := parsePackageContract(pass)
 	c.exportInterfaceContracts()
@@ -492,12 +497,16 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, st := range states {
 		c.collect(st)
 	}
+	// States of the func literals that are not run by their function. They
+	// take part in the fixed point, so that their effects reach the callee
+	// they are passed to.
+	all := append(slices.Clone(states), c.litStates...)
 
 	// Fixed point over the call sites. Every change strictly shortens some
 	// witness or adds a new effect key, so this terminates; recursion is handled.
 	for changed := true; changed; {
 		changed = false
-		for _, st := range states {
+		for _, st := range all {
 			for _, site := range st.sites {
 				if c.applySite(st, site) {
 					changed = true
@@ -537,19 +546,35 @@ func run(pass *analysis.Pass) (any, error) {
 	return result, nil
 }
 
-// collect walks a function body (closures included) and records direct
-// effects and the call sites.
+// collect walks a declared function's body and records its direct effects and
+// its call sites. A func literal is charged to the function only when the
+// function runs it (see planLits); otherwise its body becomes a state of its
+// own, reached only through the parameter it is passed to (see argHits and
+// applySite).
 func (c *checker) collect(st *fnState) {
 	if st.decl.Body == nil {
 		return
 	}
+	plan := planLits(c.pass.TypesInfo, st.decl.Body)
+	c.walk(st, st.decl.Body, plan)
+}
+
+// walk records the direct effects and call sites of body into st. A func
+// literal that the plan marks as run is walked into st; any other literal gets
+// a state of its own, recorded in c.lits.
+func (c *checker) walk(st *fnState, body ast.Node, plan *litPlan) {
 	info := c.pass.TypesInfo
-	ast.Inspect(st.decl.Body, func(n ast.Node) bool {
+	ast.Inspect(body, func(n ast.Node) bool {
 		switch n := n.(type) {
+		case *ast.FuncLit:
+			if !plan.run[n] {
+				c.litState(st, n, plan)
+				return false
+			}
 		case *ast.GoStmt:
 			st.hit(EffSpawn, Step{Name: "go statement"})
 		case *ast.CallExpr:
-			c.collectCall(st, n)
+			c.collectCall(st, n, plan)
 		case *ast.Ident:
 			if v := pkgVar(info.Uses[n]); v != nil && v.Pkg().Path() == "os" {
 				switch v.Name() {
@@ -581,13 +606,184 @@ func (c *checker) collect(st *fnState) {
 	})
 }
 
-func (c *checker) collectCall(st *fnState, call *ast.CallExpr) {
+// litState creates the state of a func literal that the enclosing function
+// does not run. Its parameters are the enclosing function's (a call through
+// one of them from the literal is still the enclosing function's placeholder);
+// its own parameters are not placeholders, so calls through them are unknown,
+// as they were before.
+func (c *checker) litState(st *fnState, lit *ast.FuncLit, plan *litPlan) {
+	if _, ok := c.lits[lit]; ok {
+		return
+	}
+	pos := c.pass.Fset.Position(lit.Pos())
+	ls := &fnState{
+		self:    Step{Name: fmt.Sprintf("func literal (%s:%d)", filepath.Base(pos.Filename), pos.Line)},
+		display: st.display + ".func",
+		effs:    map[string]Witness{},
+		params:  st.params,
+	}
+	if st.obj != nil && st.obj.Pkg() != nil {
+		ls.self.Pkg, ls.self.Qual = st.obj.Pkg().Path(), st.obj.Pkg().Name()
+	}
+	c.lits[lit] = ls
+	c.litStates = append(c.litStates, ls)
+	c.walk(ls, lit.Body, plan)
+}
+
+// litPlan says which func literals of one declared function run inside it.
+type litPlan struct {
+	// run is the set of literals executed by the declared function (directly,
+	// through defer or go, or through a local variable that it calls). Their
+	// bodies are charged to the function.
+	run map[*ast.FuncLit]bool
+	// calls are the calls of a local variable bound to a run literal. The
+	// literal's body is already charged, so the call itself is not unknown.
+	calls map[*ast.CallExpr]bool
+}
+
+// planLits classifies the func literals of body. A literal is run when the
+// code that contains it executes it:
+//   - it is called in place, func(){...}(), including under defer and go;
+//   - it is the only value ever assigned to a local variable, and a call of
+//     that variable is made by code that runs (the declared function, or a
+//     literal that is itself run).
+//
+// Any other literal (passed, stored, returned, sent) is not run: its body is
+// charged only through the parameter it is passed to. A call of a local
+// variable made inside a literal that is not run is not a run call, so it
+// stays a call through a func value (unknown).
+func planLits(info *types.Info, body *ast.BlockStmt) *litPlan {
+	p := &litPlan{run: map[*ast.FuncLit]bool{}, calls: map[*ast.CallExpr]bool{}}
+	type ownedCall struct {
+		call  *ast.CallExpr
+		owner *ast.FuncLit // the literal whose own code makes the call; nil for the declared function
+	}
+	var calls []ownedCall
+	bound := map[*types.Var]*ast.FuncLit{}
+	writes := map[*types.Var]int{}
+	forEachOwn(body, nil, func(n ast.Node, owner *ast.FuncLit) {
+		switch n := n.(type) {
+		case *ast.CallExpr:
+			calls = append(calls, ownedCall{n, owner})
+			if lit, ok := ast.Unparen(n.Fun).(*ast.FuncLit); ok {
+				p.run[lit] = true
+			}
+		case *ast.AssignStmt:
+			for i, l := range n.Lhs {
+				v := localVarOf(info, l)
+				if v == nil {
+					continue
+				}
+				writes[v]++
+				if len(n.Lhs) == len(n.Rhs) {
+					if lit, ok := ast.Unparen(n.Rhs[i]).(*ast.FuncLit); ok {
+						bound[v] = lit
+					}
+				}
+			}
+		case *ast.ValueSpec:
+			for i, id := range n.Names {
+				v := localVarOf(info, id)
+				if v == nil || len(n.Values) == 0 {
+					continue // a declaration without a value is not a write
+				}
+				writes[v]++
+				if len(n.Values) == len(n.Names) {
+					if lit, ok := ast.Unparen(n.Values[i]).(*ast.FuncLit); ok {
+						bound[v] = lit
+					}
+				}
+			}
+		case *ast.RangeStmt:
+			for _, e := range []ast.Expr{n.Key, n.Value} {
+				if v := localVarOf(info, e); v != nil {
+					writes[v]++
+				}
+			}
+		}
+	})
+	// A bound literal runs when a run caller calls its variable. The variable
+	// must hold that literal for the whole function, so it is written once.
+	runs := func(owner *ast.FuncLit) bool { return owner == nil || p.run[owner] }
+	boundLit := func(c ownedCall) *ast.FuncLit {
+		v := localVarOf(info, c.call.Fun)
+		if v == nil || writes[v] != 1 {
+			return nil
+		}
+		return bound[v]
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, c := range calls {
+			if lit := boundLit(c); lit != nil && !p.run[lit] && runs(c.owner) {
+				p.run[lit] = true
+				changed = true
+			}
+		}
+	}
+	for _, c := range calls {
+		if lit := boundLit(c); lit != nil && p.run[lit] && runs(c.owner) {
+			p.calls[c.call] = true
+		}
+	}
+	return p
+}
+
+// forEachOwn calls f for every node under root that belongs to the code of
+// owner: it does not descend into a nested func literal, which is visited with
+// its own owner. The literal nodes themselves are not passed to f.
+func forEachOwn(root ast.Node, owner *ast.FuncLit, f func(ast.Node, *ast.FuncLit)) {
+	ast.Inspect(root, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		if lit, ok := n.(*ast.FuncLit); ok {
+			forEachOwn(lit.Body, lit, f)
+			return false
+		}
+		f(n, owner)
+		return true
+	})
+}
+
+// localVarOf returns the function-local variable that e names, or nil. Both a
+// defining and a using identifier count.
+func localVarOf(info *types.Info, e ast.Expr) *types.Var {
+	id, ok := ast.Unparen(e).(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	obj := info.Defs[id]
+	if obj == nil {
+		obj = info.Uses[id]
+	}
+	v, ok := obj.(*types.Var)
+	if !ok || v.IsField() || v.Pkg() == nil || v.Parent() == v.Pkg().Scope() {
+		return nil
+	}
+	return v
+}
+
+// hasFuncLitArg reports whether a call passes a func literal as an argument.
+func hasFuncLitArg(call *ast.CallExpr) bool {
+	for _, a := range call.Args {
+		if _, ok := ast.Unparen(a).(*ast.FuncLit); ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *checker) collectCall(st *fnState, call *ast.CallExpr, plan *litPlan) {
 	info := c.pass.TypesInfo
 	if tv, ok := info.Types[call.Fun]; ok && tv.IsType() {
 		return // conversion
 	}
 	if _, ok := ast.Unparen(call.Fun).(*ast.FuncLit); ok {
-		return // closure body is already walked as part of this function
+		return // a run literal: its body is already part of this function
+	}
+	if plan.calls[call] {
+		return // a call of a run literal bound to a local variable
 	}
 	switch obj := typeutil.Callee(info, call).(type) {
 	case *types.Builtin:
@@ -600,12 +796,28 @@ func (c *checker) collectCall(st *fnState, call *ast.CallExpr) {
 			for _, e := range sortedKeys(effs) {
 				st.offer(e, prepend(st.self, effs[e]))
 			}
+			// A taxonomy or interface callee may still run a literal argument.
+			if fn.Pkg() != nil && hasFuncLitArg(call) {
+				st.sites = append(st.sites, callSite{callee: fn, call: call, offset: methodExprOffset(info, call)})
+			}
 			return
 		}
 		if fn.Pkg() != nil {
 			st.sites = append(st.sites, callSite{callee: fn, call: call, offset: methodExprOffset(info, call)})
 		}
 	default:
+		// A call through a stubbed package variable or named func type.
+		if effs, ok := c.dynamicStub(info, call); ok {
+			for _, e := range sortedKeys(effs) {
+				st.offer(e, prepend(st.self, effs[e]))
+			}
+			return
+		}
+		// A literal argument of a call through a func value may be run by
+		// the callee, which is not known: charge it to the caller.
+		if hasFuncLitArg(call) {
+			st.sites = append(st.sites, callSite{call: call})
+		}
 		// Call through a func-typed variable, parameter or field, or of a
 		// call result. A call through one of this function's own parameters
 		// is the placeholder param:i; anything else is unknown.
@@ -668,6 +880,42 @@ func (c *checker) direct(fn *types.Func) (map[string]Witness, bool) {
 	return nil, false
 }
 
+// dynamicStub returns the stub effects of a call through a value that a stub
+// names. Two kinds of value are covered: a package-level variable of func
+// type (stub target "pkgpath.Var"), which takes precedence, and a value of a
+// named func type (stub target "(pkgpath.Type)"). A call is a dynamic call in
+// the sense of collectCall, so it has no callee body to analyze.
+func (c *checker) dynamicStub(info *types.Info, call *ast.CallExpr) (map[string]Witness, bool) {
+	fun := ast.Unparen(call.Fun)
+	var id *ast.Ident
+	switch f := fun.(type) {
+	case *ast.Ident:
+		id = f
+	case *ast.SelectorExpr:
+		if info.Selections[f] == nil { // qualified identifier pkg.Var
+			id = f.Sel
+		}
+	}
+	if id != nil {
+		if v := pkgVar(info.Uses[id]); v != nil {
+			key := v.Pkg().Path() + "." + v.Name()
+			if effs, ok := c.stubs.lookup(key); ok {
+				return witnessMap(effs, Step{Name: v.Name() + " [stub]", Pkg: v.Pkg().Path(), Qual: v.Pkg().Name()}), true
+			}
+		}
+	}
+	if n, ok := types.Unalias(info.TypeOf(call.Fun)).(*types.Named); ok {
+		o := n.Origin().Obj()
+		if o.Pkg() != nil {
+			key := "(" + o.Pkg().Path() + "." + o.Name() + ")"
+			if effs, ok := c.stubs.lookup(key); ok {
+				return witnessMap(effs, Step{Name: "(" + o.Name() + ") call [stub]", Pkg: o.Pkg().Path(), Qual: o.Pkg().Name()}), true
+			}
+		}
+	}
+	return nil, false
+}
+
 func witnessMap(effs []string, step Step) map[string]Witness {
 	out := make(map[string]Witness, len(effs))
 	for _, e := range effs {
@@ -715,7 +963,10 @@ func (c *checker) contractOf(fn *types.Func) *ContractFact {
 // of the callee are replaced by the effects of the argument.
 func (c *checker) applySite(st *fnState, site callSite) bool {
 	changed := false
-	effs := c.calleeEffects(site.callee)
+	var effs map[string]Witness
+	if site.callee != nil {
+		effs = c.calleeEffects(site.callee)
+	}
 	for _, e := range sortedKeys(effs) {
 		w := effs[e]
 		if i, ok := paramIndexOf(e); ok {
@@ -730,7 +981,54 @@ func (c *checker) applySite(st *fnState, site callSite) bool {
 			changed = true
 		}
 	}
+	// A callee with no body information (stdlib, or a dependency without
+	// facts) may run a func literal argument, and nothing says whether it
+	// does. Charge the literal to the caller, as the callee might run it.
+	if hasFuncLitArg(site.call) && (site.callee == nil || !c.bodyKnown(site.callee)) {
+		var via Step
+		if site.callee == nil {
+			via = dynStep(site.call.Fun)
+		} else {
+			via = stepOf(site.callee)
+		}
+		for _, arg := range site.call.Args {
+			lit, ok := ast.Unparen(arg).(*ast.FuncLit)
+			if !ok || c.lits[lit] == nil {
+				continue
+			}
+			ls := c.lits[lit]
+			for _, e := range sortedKeys(ls.effs) {
+				w := Witness{st.self, via}
+				w = append(w, ls.effs[e]...)
+				if st.offer(e, w) {
+					changed = true
+				}
+			}
+		}
+	}
 	return changed
+}
+
+// bodyKnown reports whether the effects of fn come from its body, a stub, or
+// an interface contract, so that a func literal passed to it is handled by
+// parameter polymorphism. A function without that information (a stdlib
+// function, or a dependency without facts) is not known to ignore its
+// argument.
+func (c *checker) bodyKnown(fn *types.Func) bool {
+	if c.byObj[fn] != nil {
+		return true
+	}
+	if isIfaceMethod(fn) {
+		return true
+	}
+	if _, ok := c.stubs.lookup(targetKey(fn)); ok {
+		return true
+	}
+	if fn.Pkg() == nil {
+		return false
+	}
+	var f EffectFact
+	return c.pass.ImportObjectFact(fn, &f)
 }
 
 // argHit is an effect that an argument supplies for a placeholder. tail is
@@ -752,8 +1050,19 @@ func (c *checker) argHits(st *fnState, site callSite, i int) []argHit {
 		return []argHit{{EffUnkn, Witness{{Name: "unknown argument (missing)"}}}}
 	}
 	arg := ast.Unparen(site.call.Args[idx])
-	if _, ok := arg.(*ast.FuncLit); ok {
-		return nil
+	if lit, ok := arg.(*ast.FuncLit); ok {
+		// The callee calls this parameter, so the literal's own effects are
+		// what the call performs. A literal the callee only stores charges
+		// nothing, because the callee's effects do not mention the parameter.
+		ls := c.lits[lit]
+		if ls == nil {
+			return nil
+		}
+		var out []argHit
+		for _, e := range sortedKeys(ls.effs) {
+			out = append(out, argHit{e, ls.effs[e]})
+		}
+		return out
 	}
 	if v := paramVar(info, arg); v != nil {
 		if j, ok := st.params[v]; ok {

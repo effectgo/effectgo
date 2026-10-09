@@ -1,0 +1,116 @@
+# Stub rules for github.com/gin-gonic/gin. Every line was checked against
+# gin v1.12.0 (the version of the evaluated services; module cache), by the
+# line numbers cited in the comments.
+#
+# Why gin needs stubs. A handler that calls c.JSON gets two false findings from
+# the analysis of gin itself: "panic" and "unknown". c.JSON calls c.Render
+# (context.go:1205-1207, 1152-1166), and Render calls c.Error on its error path
+# (context.go:1161-1164). c.Error panics on a nil error (context.go:252-255), and
+# the flow-insensitive analysis cannot see the guard that makes that impossible
+# here. Render also calls r.Render and r.WriteContentType on a render.Render
+# interface value, which is "unknown". Stubbing the response methods stops the
+# analysis from following into gin's implementation at all.
+#
+# The effect of a method is the effect of what it does to the process, as the
+# taxonomy does for net/http:
+#   net   writes to the client connection, or reads the request body (the
+#         body is a network stream on the server, read on first use).
+#   fs    opens a file (c.File serves one with http.ServeFile).
+#   pure  reads or sets values held in memory: the request headers, the URL
+#         query, path parameters, the header map of the response (sent only at
+#         WriteHeader, which the response methods do), and the context's own
+#         key/value store.
+#
+# Body reads are net. Query, uri, header and cookie reads are pure: they look at
+# the parsed request, not at the body. Calls that pass a value into a validator
+# or a template are not stubbed, so the validators' and templates' own effects
+# are not seen; they are the caller's code (as with fmt.Stringer).
+#
+# c.Next runs the rest of the handler chain through func values. It is not
+# stubbed, so it stays unknown.
+
+## ---- effects rules -------------------------------------------------------
+
+# Response writers. Each one reaches c.Writer, which is written to the client.
+# Some of them also write headers: a header write is sent with the response, so
+# it is part of the same net effect.
+effects (*github.com/gin-gonic/gin.Context).JSON net
+effects (*github.com/gin-gonic/gin.Context).PureJSON net
+effects (*github.com/gin-gonic/gin.Context).JSONP net
+effects (*github.com/gin-gonic/gin.Context).XML net
+effects (*github.com/gin-gonic/gin.Context).YAML net
+effects (*github.com/gin-gonic/gin.Context).ProtoBuf net
+effects (*github.com/gin-gonic/gin.Context).String net
+effects (*github.com/gin-gonic/gin.Context).HTML net
+effects (*github.com/gin-gonic/gin.Context).Data net
+effects (*github.com/gin-gonic/gin.Context).Redirect net
+effects (*github.com/gin-gonic/gin.Context).Render net
+effects (*github.com/gin-gonic/gin.Context).AbortWithStatus net
+effects (*github.com/gin-gonic/gin.Context).AbortWithStatusJSON net
+effects (*github.com/gin-gonic/gin.Context).AbortWithStatusPureJSON net
+effects (*github.com/gin-gonic/gin.Context).AbortWithError net
+# c.File hands the path to http.ServeFile, which opens it (context.go:1280-1282).
+effects (*github.com/gin-gonic/gin.Context).File net,fs
+effects (*github.com/gin-gonic/gin.Context).FileAttachment net,fs
+
+# Request body readers. Bind and ShouldBind pick a binding by content type and
+# decode the body (context.go:757-770, 838-870). PostForm and the form and
+# multipart helpers parse the body (context.go:601-604, 698-716). GetRawData
+# reads it all (context.go:1094-1098).
+effects (*github.com/gin-gonic/gin.Context).Bind net
+effects (*github.com/gin-gonic/gin.Context).BindJSON net
+effects (*github.com/gin-gonic/gin.Context).ShouldBind net
+effects (*github.com/gin-gonic/gin.Context).ShouldBindJSON net
+effects (*github.com/gin-gonic/gin.Context).ShouldBindXML net
+effects (*github.com/gin-gonic/gin.Context).ShouldBindBodyWith net
+effects (*github.com/gin-gonic/gin.Context).GetRawData net
+effects (*github.com/gin-gonic/gin.Context).PostForm net
+effects (*github.com/gin-gonic/gin.Context).PostFormArray net
+effects (*github.com/gin-gonic/gin.Context).FormFile net
+effects (*github.com/gin-gonic/gin.Context).MultipartForm net
+# SaveUploadedFile opens the uploaded file and writes a destination on disk.
+effects (*github.com/gin-gonic/gin.Context).SaveUploadedFile fs,net
+
+# Request readers that do not read the body. Query and path parameters come
+# from the parsed URL (context.go:503-545), headers and cookies from the header
+# map (context.go:1089-1092, 1142-1146), and BindQuery/BindUri/BindHeader
+# decode those same values (context.go:773-800, 879-912).
+effects (*github.com/gin-gonic/gin.Context).Param pure
+effects (*github.com/gin-gonic/gin.Context).Query pure
+effects (*github.com/gin-gonic/gin.Context).DefaultQuery pure
+effects (*github.com/gin-gonic/gin.Context).GetHeader pure
+effects (*github.com/gin-gonic/gin.Context).Cookie pure
+effects (*github.com/gin-gonic/gin.Context).ClientIP pure
+effects (*github.com/gin-gonic/gin.Context).FullPath pure
+effects (*github.com/gin-gonic/gin.Context).BindQuery pure
+effects (*github.com/gin-gonic/gin.Context).BindUri pure
+effects (*github.com/gin-gonic/gin.Context).BindHeader pure
+effects (*github.com/gin-gonic/gin.Context).ShouldBindQuery pure
+effects (*github.com/gin-gonic/gin.Context).ShouldBindUri pure
+effects (*github.com/gin-gonic/gin.Context).ShouldBindHeader pure
+
+# Response state held in memory until a write. Status sets the code (context.go:
+# 1073-1077), Header sets a response header (1080-1083), SetCookie sets one
+# (1109-1119: http.SetCookie writes to the header map of c.Writer).
+effects (*github.com/gin-gonic/gin.Context).Status pure
+effects (*github.com/gin-gonic/gin.Context).Header pure
+effects (*github.com/gin-gonic/gin.Context).SetCookie pure
+effects (*github.com/gin-gonic/gin.Context).Abort pure
+effects (*github.com/gin-gonic/gin.Context).IsAborted pure
+
+# The context's own key/value store (context.go:276-311).
+effects (*github.com/gin-gonic/gin.Context).Set pure
+effects (*github.com/gin-gonic/gin.Context).Get pure
+effects (*github.com/gin-gonic/gin.Context).GetString pure
+
+# Error appends to c.Errors (context.go:252-273). It panics on a nil error
+# (context.go:252-255, "err is nil"), which is a caller error and not an effect
+# of the handler's own behaviour; the panic is not charged here.
+effects (*github.com/gin-gonic/gin.Context).Error pure
+
+# The context.Context methods delegate to the request's context
+# (context.go:1441-1470), which is in memory.
+effects (*github.com/gin-gonic/gin.Context).Deadline pure
+effects (*github.com/gin-gonic/gin.Context).Done pure
+effects (*github.com/gin-gonic/gin.Context).Err pure
+effects (*github.com/gin-gonic/gin.Context).Value pure

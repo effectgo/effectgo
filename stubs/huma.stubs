@@ -1,0 +1,19 @@
+# Stub rules for github.com/danielgtaylor/huma/v2 (v2.37.2 was checked, under
+# the module cache).
+#
+# huma.NewError is a package-level VARIABLE of func type, not a function
+# (error.go:231: "var NewError = func(status int, msg string, errs ...error)
+# StatusError"). A call to it is a dynamic call, so without a rule every call
+# to huma.NewError is "unknown". The default implementation only reads its
+# arguments and builds an *ErrorModel (error.go:231-250); it calls Error() on
+# each error, which is pure by the error.Error rule in stdlib.stubs. So the
+# default is pure.
+#
+# Caveat: an application may replace the variable at start-up
+# (error.go:224 documents "huma.NewError = func(...)"). The rule describes the
+# default, not an override. An override that does I/O is not seen.
+#
+# Route registration (huma.Get, huma.Register, ...) and status/route facts are
+# not stubbed here.
+
+effects github.com/danielgtaylor/huma/v2.NewError pure

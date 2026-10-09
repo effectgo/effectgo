@@ -107,3 +107,10 @@ func TestStatusInference(t *testing.T) {
 	setFlag(t, "statuses", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "status")
 }
+
+// TestFuncValueStubs covers error stubs for a package-level func variable and a
+// named func type, and a func literal called in place.
+func TestFuncValueStubs(t *testing.T) {
+	setStubs(t, filepath.Join(testdata(t), "stubs", "funcvals.stubs"))
+	analysistest.Run(t, testdata(t), errset.Analyzer, "funcvals")
+}

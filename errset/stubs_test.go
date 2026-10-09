@@ -27,7 +27,8 @@ func TestMalformedStubIsError(t *testing.T) {
 		{"param in stub", "errors a.F param:0\n", "x.stubs:1: param:0: param: variants are not allowed"},
 		{"none in list", "errors a.F none,?\n", "x.stubs:1: none must be the whole variant list"},
 		{"unqualified target", "errors F ?\n", "x.stubs:1: target"},
-		{"bad method target", "errors (a.T) ?\n", "x.stubs:1: target"},
+		{"pointer func type target", "errors (*a.T) ?\n", "x.stubs:1: target"},
+		{"bare predeclared type target", "errors (error) ?\n", "x.stubs:1: target"},
 		{"empty variant", "errors a.F ?,\n", "x.stubs:1: variant"},
 		{"effects shape", "effects a.F\n", "x.stubs:1: effects wants"},
 	}

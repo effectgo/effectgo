@@ -19,6 +19,7 @@ package errset
 
 import (
 	"fmt"
+	"go/ast"
 	"go/types"
 	"strconv"
 	"strings"
@@ -138,6 +139,9 @@ func (p *pkgState) loadStubs() error {
 // targetKey of the function it names; pointer receivers share the key of the
 // value receiver, as targetKey does.
 func (p *pkgState) targetKeyOf(t stubs.Target) string {
+	if t.TypeOnly {
+		return t.Pkg + "." + t.Type // a named func type: the key of its type name
+	}
 	if !t.Method {
 		return t.Pkg + "." + t.Name
 	}
@@ -283,4 +287,38 @@ func stubLabel(f *types.Func) string {
 		return "(" + recvTypeName(f) + ")." + f.Name() + " [stub]"
 	}
 	return objDisplay(f) + " [stub]"
+}
+
+// dynamicStubSet is the stub error set of a call through a value that a stub
+// names: a package-level variable of func type ("pkgpath.Var"), or a value of
+// a named func type ("(pkgpath.Type)"). The variable takes precedence.
+func (p *pkgState) dynamicStubSet(info *types.Info, call *ast.CallExpr) (errSet, string, bool) {
+	if len(p.stubs) == 0 {
+		return nil, "", false
+	}
+	var id *ast.Ident
+	switch f := unparen(call.Fun).(type) {
+	case *ast.Ident:
+		id = f
+	case *ast.SelectorExpr:
+		if info.Selections[f] == nil { // qualified identifier pkg.Var
+			id = f.Sel
+		}
+	}
+	if id != nil {
+		if v, ok := info.Uses[id].(*types.Var); ok && v.Pkg() != nil && v.Parent() == v.Pkg().Scope() {
+			if s, ok := p.stubs[v.Pkg().Path()+"."+v.Name()]; ok {
+				return s, v.Name() + " [stub]", true
+			}
+		}
+	}
+	if n, ok := types.Unalias(info.TypeOf(call.Fun)).(*types.Named); ok {
+		o := n.Origin().Obj()
+		if o.Pkg() != nil {
+			if s, ok := p.stubs[o.Pkg().Path()+"."+o.Name()]; ok {
+				return s, "(" + o.Name() + ") call [stub]", true
+			}
+		}
+	}
+	return nil, "", false
 }
