@@ -129,6 +129,8 @@ Short answers, each with the page that has the details and the evidence:
 - **How do I use the errmap and handler checks with `net/http`?** Put the directive on a method that returns an error, and write the response in an adapter. See [HTTP checks](http-checks.md#nethttp-handlers).
 - **Why is a status `default` or `500`?** The errmap did not give a constant status for that variant. See [Directives](../reference/directives.md#how-an-errmap-gives-a-status) and [Error sets](../reference/errors.md#http-status).
 - **How do I install from the private repository?** Build from a clone with `go install ./cmd/effectgo`. See [Getting started](getting-started.md#install).
+- **Why is a function that writes to an `io.Writer` parameter not pure?** `fmt.Fprintf(w, …)` writes through `w`, so the write is the write of `w.Write`: `unknown` without a contract, or the interface's contract. Put a contract on the interface, or pass a concrete writer such as a `*bytes.Buffer`. See [Stub files](../reference/stubs.md#effects) for the via items that describe these calls.
+- **What does effectgo not check?** Data races, goroutine leaks, deadlocks, cancellation and timing. See [What effectgo does not check](what-it-does-not-check.md).
 - **Why does a clean standalone run show no test finding?** It analyses `_test.go` files by default, so a clean run covers them; pass `-test=false` to skip them. See [Getting started](getting-started.md#a-clean-run-is-not-a-full-run).
 
 ## The zero-false-positives promise
@@ -151,3 +153,4 @@ Disciplined code is code that follows the conventions above in every package the
 - [Directives](../reference/directives.md): the syntax and the errors of each directive.
 - [Analyzers](../reference/analyzers.md): the exact message of each diagnostic.
 - [HTTP checks](http-checks.md): the same error-set inference applied to HTTP handlers, as a showcase.
+- [What effectgo does not check](what-it-does-not-check.md): the properties outside the analysis, and the tool to use for each.

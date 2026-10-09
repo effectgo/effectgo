@@ -28,14 +28,35 @@ effects (fmt.Stringer).String pure
 # unknown, which is the honest answer, and a caller can use a contract with
 # allow unknown or name a concrete type.
 #
-# Functions in io that call those interface methods are unknown for the same
-# reason. Declaring them unknown explicitly documents the fact and is what the
-# analyzer would say anyway, so these lines mainly make the boundary visible.
-effects io.Copy unknown
-effects io.CopyN unknown
-effects io.ReadAll unknown
-effects io.ReadFull unknown
-effects io.WriteString unknown
+# The io functions below call methods of their arguments. The stdlib body is not
+# analyzed, so each rule names the methods that the body may call, as via items
+# (docs/reference/stubs.md#effects). The effects of each method are evaluated at
+# the call site from the static type of the argument: an io.Writer argument is
+# unknown (or its interface contract), a *bytes.Buffer is pure, an *os.File is fs,
+# and so on. Each rule lists every method the body may call, since the body
+# chooses at run time between an optional interface and the basic method.
+
+# io.WriteString calls w.WriteString when w is a StringWriter, else w.Write
+# (io/io.go:314-318).
+effects io.WriteString via:0.Write,via:0.WriteString
+
+# io.Copy, CopyN and CopyBuffer call src.WriteTo(dst) when src is a WriterTo and
+# dst.ReadFrom(src) when dst is a ReaderFrom; otherwise they read src.Read and
+# write dst.Write (io/io.go:387, 363, 398; the assertions and the loop are in
+# copyBuffer, io/io.go:407-431).
+effects io.Copy via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo
+effects io.CopyN via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo
+effects io.CopyBuffer via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo
+
+# io.ReadAll, ReadFull and ReadAtLeast call r.Read (io/io.go:709 for ReadAll,
+# 353 for ReadFull, 329 for ReadAtLeast; the reads are in their loops).
+effects io.ReadAll via:0.Read
+effects io.ReadFull via:0.Read
+effects io.ReadAtLeast via:0.Read
+
+# io.Discard is a Writer whose writes do nothing. An item whose argument is
+# io.Discard contributes nothing; that case is handled at the call site
+# (effects/via.go), since io.Discard is a variable of interface type.
 
 # io constructors only build a value that wraps their arguments. They do no
 # I/O until the wrapper is used, so they are pure.
@@ -45,6 +66,125 @@ effects io.MultiWriter pure
 effects io.TeeReader pure
 effects io.NopCloser pure
 effects io.Pipe pure
+
+# fmt.Fprint, Fprintf and Fprintln write their operands to w through w.Write
+# (fmt/print.go:260, 222, 303). Only the Print forms are in the taxonomy, so the
+# writer is the only source of their effects here.
+effects fmt.Fprint via:0.Write
+effects fmt.Fprintf via:0.Write
+effects fmt.Fprintln via:0.Write
+
+# fmt.Fscan, Fscanln and Fscanf read from r (fmt/scan.go:121, 130, 141). The
+# reader is wrapped in readRune, which calls r.Read (fmt/scan.go:314, 388).
+effects fmt.Fscan via:0.Read
+effects fmt.Fscanln via:0.Read
+effects fmt.Fscanf via:0.Read
+
+# bufio: the constructors store their reader or writer (bufio/bufio.go:62, 50,
+# 607, 589; bufio/scan.go:89 for NewScanner). The methods act through the stored
+# value: stored.Read for a reader, stored.Write for a writer, with the via:0 or
+# via:stored items of their own argument where they take one. The stored value is
+# evaluated at the call site, from its static type, when the receiver comes from
+# its constructor in the same function (effects/via.go). Reader.Reset and
+# Writer.Reset re-point the stored value; a variable that they are called on is
+# not trusted, so its methods are unknown.
+effects bufio.NewReader stores:0
+effects bufio.NewReaderSize stores:0
+effects bufio.NewWriter stores:0
+effects bufio.NewWriterSize stores:0
+effects bufio.NewScanner stores:0
+effects (*bufio.Reader).Read via:stored.Read              # bufio/bufio.go:216
+effects (*bufio.Reader).ReadByte via:stored.Read          # bufio/bufio.go:267
+effects (*bufio.Reader).ReadRune via:stored.Read          # bufio/bufio.go:306
+effects (*bufio.Reader).ReadSlice via:stored.Read         # bufio/bufio.go:348
+effects (*bufio.Reader).ReadLine via:stored.Read          # bufio/bufio.go:405
+effects (*bufio.Reader).ReadBytes via:stored.Read         # bufio/bufio.go:478
+effects (*bufio.Reader).ReadString via:stored.Read        # bufio/bufio.go:498
+effects (*bufio.Reader).Peek via:stored.Read              # bufio/bufio.go:143
+effects (*bufio.Reader).Discard via:stored.Read           # bufio/bufio.go:177
+effects (*bufio.Reader).WriteTo via:0.Write,via:stored.Read # bufio/bufio.go:515 writes to its argument
+effects (*bufio.Writer).Write via:stored.Write            # bufio/bufio.go:676
+effects (*bufio.Writer).WriteString via:stored.Write      # bufio/bufio.go:747
+effects (*bufio.Writer).WriteByte via:stored.Write        # bufio/bufio.go:701
+effects (*bufio.Writer).WriteRune via:stored.Write        # bufio/bufio.go:715
+effects (*bufio.Writer).Flush via:stored.Write            # bufio/bufio.go:635
+effects (*bufio.Writer).ReadFrom via:0.Read,via:stored.Write # bufio/bufio.go:784 reads its argument
+# bufio.Scanner reads its reader in Scan (bufio/scan.go:139, the read at 219).
+effects (*bufio.Scanner).Scan via:stored.Read
+
+# encoding/json: NewEncoder(w) and NewDecoder(r) (encoding/json/stream.go:194, 33)
+# store the writer or reader. Encode writes to the stored writer (stream.go:204);
+# Decode, Token and More read the stored reader (stream.go:51, 370, 485; the refill
+# at 167). json has no method that re-points the stored value.
+effects encoding/json.NewEncoder stores:0
+effects encoding/json.NewDecoder stores:0
+effects (*encoding/json.Encoder).Encode via:stored.Write
+effects (*encoding/json.Decoder).Decode via:stored.Read
+effects (*encoding/json.Decoder).Token via:stored.Read
+effects (*encoding/json.Decoder).More via:stored.Read
+
+# encoding/csv: NewReader and NewWriter store their reader or writer
+# (encoding/csv/reader.go:181, writer.go:39). Writer.Write, WriteAll and Flush write
+# it (writer.go:50, 138, 125-126); Reader.Read and ReadAll read it (reader.go:197,
+# 238). csv has no method that re-points the stored value.
+effects encoding/csv.NewReader stores:0
+effects encoding/csv.NewWriter stores:0
+effects (*encoding/csv.Writer).Write via:stored.Write
+effects (*encoding/csv.Writer).WriteAll via:stored.Write
+effects (*encoding/csv.Writer).Flush via:stored.Write
+effects (*encoding/csv.Reader).Read via:stored.Read
+effects (*encoding/csv.Reader).ReadAll via:stored.Read
+
+# encoding/gob and encoding/xml store their writer or reader as encoding/json
+# does (gob/encoder.go:34, gob/decoder.go:45, xml/marshal.go:151, xml/xml.go:222).
+# The encoders write the stored writer (gob/encoder.go:175 and 218; xml/marshal.go:
+# 171, 186, 212, 309 and 316) and the decoders read the stored reader (gob/decoder.go:
+# 195 and 215; xml/read.go:139, 147 and 773; xml/xml.go:275).
+effects encoding/gob.NewEncoder stores:0
+effects encoding/gob.NewDecoder stores:0
+effects (*encoding/gob.Encoder).Encode via:stored.Write
+effects (*encoding/gob.Encoder).EncodeValue via:stored.Write
+effects (*encoding/gob.Decoder).Decode via:stored.Read
+effects (*encoding/gob.Decoder).DecodeValue via:stored.Read
+effects encoding/xml.NewEncoder stores:0
+effects encoding/xml.NewDecoder stores:0
+effects (*encoding/xml.Encoder).Encode via:stored.Write
+effects (*encoding/xml.Encoder).EncodeElement via:stored.Write
+effects (*encoding/xml.Encoder).EncodeToken via:stored.Write
+effects (*encoding/xml.Encoder).Flush via:stored.Write
+effects (*encoding/xml.Encoder).Close via:stored.Write
+effects (*encoding/xml.Decoder).Decode via:stored.Read
+effects (*encoding/xml.Decoder).DecodeElement via:stored.Read
+effects (*encoding/xml.Decoder).Token via:stored.Read
+effects (*encoding/xml.Decoder).Skip via:stored.Read
+
+# text/tabwriter: Writer.Init stores a new writer, and a value can be re-pointed
+# by it without a constructor in sight, so the writer is not tracked. Write and
+# Flush write the writer the value holds (tabwriter.go:523 and 488): unknown.
+effects (*text/tabwriter.Writer).Write unknown
+effects (*text/tabwriter.Writer).Flush unknown
+
+# text/template and html/template: Execute and ExecuteTemplate write the result to
+# wr (text/template/exec.go:206 and 188; html/template/template.go:120 and 134).
+# Functions that a template calls are not followed (see effects.md).
+effects (*text/template.Template).Execute via:0.Write
+effects (*text/template.Template).ExecuteTemplate via:0.Write
+effects (*html/template.Template).Execute via:0.Write
+effects (*html/template.Template).ExecuteTemplate via:0.Write
+
+# encoding/binary: Write writes to w (binary.go:410) and Read reads from r
+# (binary.go:258).
+effects encoding/binary.Write via:0.Write
+effects encoding/binary.Read via:0.Read
+
+# log: every function and method of log is stdio in the taxonomy, which covers
+# the writes of a Logger whatever its writer. The rules below charge the writer
+# that a function binds, so that a connection or a file is not hidden behind the
+# stdio label. log.New (log/log.go:71), log.SetOutput (log/log.go:364) and
+# (*Logger).SetOutput (log/log.go:80) store the writer and do not write.
+effects log.New via:0.Write
+effects log.SetOutput via:0.Write
+effects (*log.Logger).SetOutput via:0.Write
 
 # io.Closer.Close and io.Reader/Writer stay unknown, as above. Close is the
 # clearest case: an *os.File closes a descriptor (fs), a net.Conn closes a
@@ -161,6 +301,12 @@ errors net/url.Parse type:net/url.Error
 # context.Context.Err: the two sentinels named in the interface contract
 # (context/context.go:110-115). Its errors are one of the two, by contract.
 errors (context.Context).Err context.Canceled,context.DeadlineExceeded
+# context.Cause (context/context.go:288-306): it returns c.Err() when c is not
+# done (the two sentinels, by the Err contract), and otherwise the cause that
+# WithCancelCause or a deadline or timeout variant recorded. A cause given to
+# WithCancelCause is an arbitrary error, so the set is the two sentinels plus
+# opaque. Cause returns nil before c is done; nil is not an error variant.
+errors context.Cause context.Canceled,context.DeadlineExceeded,?
 
 # database/sql (sql.go). Row.Scan returns ErrNoRows when there is no row
 # (sql.go:3513, the "return ErrNoRows" of Row.Scan), r.err or rows.Err (driver

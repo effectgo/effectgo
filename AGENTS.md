@@ -37,6 +37,7 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 - `F may return X (via …), not in its //effectgo:errors contract`: an error variant the contract does not allow.
 - A function whose violation is only the consequence of a callee's violation is not reported: the callee is, and fixing it fixes the caller. The summary line counts the hidden ones; `-effects.all` and `-errset.all` print them. See [the root rule](docs/reference/analyzers.md#root-rule).
 - `handler H may return X (via …), which errmap M does not map → HTTP 500`: the errmap has no case for `X`, so the response is 500.
+- effectgo does not check data races, goroutine leaks, deadlocks, cancellation or timing; use `go test -race` and tests for those. See [What effectgo does not check](docs/guide/what-it-does-not-check.md).
 - In error sets: `?` is an error of unknown origin; `new@pkg.F` is a fresh error created in `F` (not matchable by `errors.Is`); `param:i` is the error of the function's parameter `i`; `unknown` in effects is a call the analysis cannot resolve.
 - `(none)` in an error set means no error can be returned.
 

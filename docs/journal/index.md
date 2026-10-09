@@ -26,6 +26,7 @@ The text is moved from the former `NOTES.md`, lightly edited for readability. No
 | [13-p4-integration.md](13-p4-integration.md) | P4 | the integration of P4a and P4b: conflicts, wiring, corpus and sanity results |
 | [14-p5-dogfood-fixes.md](14-p5-dogfood-fixes.md) | P5 | the fixes from the reservations dogfood run: named results and defers, test files and package defaults, net/http stubs, stub duplicates |
 | [15-p6-output-contract.md](15-p6-output-contract.md) | P6 | the output contract: root-only reporting of contract violations, test files in the standalone run, the summary line |
+| [16-p7-writer-effects.md](16-p7-writer-effects.md) | P7 | writer and reader effects: stub via items, stored values resolved from their constructor, the page on what effectgo does not check |
 
 ## Where the former NOTES.md sections went
 

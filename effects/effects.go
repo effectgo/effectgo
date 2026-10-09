@@ -472,6 +472,7 @@ type checker struct {
 	byObj     map[*types.Func]*fnState
 	contracts map[*types.Func]*ContractFact // contracts of interface methods declared in this package
 	lits      map[*ast.FuncLit]*fnState     // states of func literals that are not run by their function
+	lf        *localFacts                   // local variables, for stored-value items (see via.go)
 	litStates []*fnState
 	// viol holds, for each declared function of this package, the effects that
 	// its contract does not allow; suppressed reads it.
@@ -874,8 +875,9 @@ func (c *checker) collectCall(st *fnState, call *ast.CallExpr, plan *litPlan) {
 			for _, e := range sortedKeys(effs) {
 				st.offer(e, prepend(st.self, effs[e]))
 			}
-			// A taxonomy or interface callee may still run a literal argument.
-			if fn.Pkg() != nil && hasFuncLitArg(call) {
+			// A taxonomy or interface callee may still run a literal argument,
+			// and a stub with via items performs the effects of its arguments.
+			if fn.Pkg() != nil && (hasFuncLitArg(call) || c.hasVia(fn)) {
 				st.sites = append(st.sites, callSite{callee: fn, call: call, offset: methodExprOffset(info, call)})
 			}
 			return
@@ -977,7 +979,7 @@ func (c *checker) dynamicStub(info *types.Info, call *ast.CallExpr) (map[string]
 	if id != nil {
 		if v := pkgVar(info.Uses[id]); v != nil {
 			key := v.Pkg().Path() + "." + v.Name()
-			if effs, ok := c.stubs.lookup(key); ok {
+			if effs, ok := c.stubs.lookup(key); ok && len(c.stubs.viaOf(key)) == 0 {
 				return witnessMap(effs, Step{Name: v.Name() + " [stub]", Pkg: v.Pkg().Path(), Qual: v.Pkg().Name()}), true
 			}
 		}
@@ -1043,6 +1045,11 @@ func (c *checker) suppressed(st *fnState, e string) bool {
 		}
 		if hasFuncLitArg(site.call) && !c.bodyKnown(site.callee) {
 			return false // the literal's effects are charged to st
+		}
+		for _, h := range c.viaHits(site) {
+			if h.eff == e {
+				return false // a stub's argument performs e: a root, not a violating callee
+			}
 		}
 		effs := c.calleeEffects(site.callee)
 		for k := range effs {
@@ -1116,6 +1123,11 @@ func (c *checker) applySite(st *fnState, site callSite) bool {
 			continue
 		}
 		if st.offer(e, prepend(st.self, w)) {
+			changed = true
+		}
+	}
+	for _, h := range c.viaHits(site) {
+		if st.offer(h.eff, prepend(st.self, h.w)) {
 			changed = true
 		}
 	}
@@ -1212,6 +1224,10 @@ func (c *checker) argHits(st *fnState, site callSite, i int) []argHit {
 		return []argHit{{EffUnkn, Witness{{Name: "unknown argument " + types.ExprString(arg)}}}}
 	}
 	var out []argHit
+	if c.hasVia(fn) {
+		// Used as a value, the callee's writers and readers are not known.
+		out = append(out, argHit{EffUnkn, Witness{stepOf(fn)}})
+	}
 	effs := c.calleeEffects(fn)
 	for _, e := range sortedKeys(effs) {
 		if _, ok := paramIndexOf(e); ok {

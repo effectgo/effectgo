@@ -26,7 +26,7 @@ func TestLoadStubsLayers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("project over shipped: %v", err)
 	}
-	if got := tab.effects["(context.Context).Done"]; len(got) != 1 || got[0] != "net" {
+	if got, _ := tab.lookup("(context.Context).Done"); len(got) != 1 || got[0] != "net" {
 		t.Errorf("project rule does not replace the shipped one: %v", got)
 	}
 

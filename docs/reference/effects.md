@@ -35,6 +35,8 @@ Root effects are matched by package path and function name. This table is the wh
 
 Builtin `print` and `println` are pure in the table.
 
+Stdlib functions that write to or read from an argument (`fmt.Fprintf`, `io.Copy`, `bufio.Writer.Flush`) are not in the table. Their stub rules name the methods they call, with via items (see [Stub files](stubs.md#effects)), and the effects of those methods are evaluated at each call site from the argument's static type. An interface argument such as `io.Writer` is charged exactly as a direct call of its method would be: its contract, or `unknown`. A stored writer or reader, such as the one of `json.NewEncoder(w)`, is evaluated where its method is called on the constructor's result or on a trusted local variable that holds it (see [Stub files](stubs.md#effects)); any other stored value makes the method `unknown`.
+
 ## Inference
 
 For each declared function, the body is walked. A func literal that the function runs is walked as part of it (see [closure attribution](#closure-attribution)); any other literal is analyzed on its own. Direct effects carry a witness, the chain from the function to the root.
@@ -49,7 +51,7 @@ Stdlib packages export no facts. Every other package exports one `EffectFact` pe
 
 For a call, the first match wins:
 
-1. a stub `effects` rule for the callee (a named func type or a func variable is looked up before the parameter placeholder);
+1. a stub `effects` rule for the callee (a named func type or a func variable is looked up before the parameter placeholder); a via item of the rule is evaluated at the call site, after the rule's fixed effects;
 2. for an interface method, the interface contract if there is one, else `unknown`;
 3. the root taxonomy;
 4. otherwise, the callee's effect set from its body or its imported fact. A call through a parameter of the function gives `param:i`; a call through any other func value gives `unknown`.
@@ -116,4 +118,4 @@ Both are informational and do not change the contract diagnostics. See [CLI](cli
 
 ## Limitations
 
-The main limits are in [Limitations](../design/limitations.md#effects). The short version: interface calls and calls through func values are `unknown` or `param:i` unless a contract or stub covers them; stdlib effects outside the table are invisible; reflection, cgo and writes through pointers are not followed.
+The main limits are in [Limitations](../design/limitations.md#effects). The short version: interface calls and calls through func values are `unknown` or `param:i` unless a contract or stub covers them; stdlib effects outside the table and the stub files are invisible; a writer that a value stores is not tracked (its methods are `unknown`); reflection, cgo and writes through pointers are not followed.

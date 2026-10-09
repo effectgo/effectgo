@@ -184,3 +184,11 @@ func TestRootSuppressedAll(t *testing.T) {
 	setFlag(t, "all", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "rootall")
 }
+
+// TestShippedCause checks the rule for context.Cause in stubs/stdlib.stubs
+// (testdata/src/cause): the sentinels, and an opaque cause.
+func TestShippedCause(t *testing.T) {
+	setFlag(t, "report", "true")
+	setStubs(t, filepath.Join("..", "stubs", "stdlib.stubs"))
+	analysistest.Run(t, testdata(t), errset.Analyzer, "cause")
+}

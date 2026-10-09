@@ -247,108 +247,216 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 ## `stdlib.stubs`
 
-65 rules, grouped under 12 package heading(s).
+137 rules, grouped under 22 package heading(s).
+
+### `bufio`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `bufio.NewReader` | `effects` | `stores:0` | 91 |
+| `bufio.NewReaderSize` | `effects` | `stores:0` | 92 |
+| `bufio.NewWriter` | `effects` | `stores:0` | 93 |
+| `bufio.NewWriterSize` | `effects` | `stores:0` | 94 |
+| `bufio.NewScanner` | `effects` | `stores:0` | 95 |
+| `(*bufio.Reader).Read` | `effects` | `via:stored.Read` | 96 |
+| `(*bufio.Reader).ReadByte` | `effects` | `via:stored.Read` | 97 |
+| `(*bufio.Reader).ReadRune` | `effects` | `via:stored.Read` | 98 |
+| `(*bufio.Reader).ReadSlice` | `effects` | `via:stored.Read` | 99 |
+| `(*bufio.Reader).ReadLine` | `effects` | `via:stored.Read` | 100 |
+| `(*bufio.Reader).ReadBytes` | `effects` | `via:stored.Read` | 101 |
+| `(*bufio.Reader).ReadString` | `effects` | `via:stored.Read` | 102 |
+| `(*bufio.Reader).Peek` | `effects` | `via:stored.Read` | 103 |
+| `(*bufio.Reader).Discard` | `effects` | `via:stored.Read` | 104 |
+| `(*bufio.Reader).WriteTo` | `effects` | `via:0.Write,via:stored.Read` | 105 |
+| `(*bufio.Writer).Write` | `effects` | `via:stored.Write` | 106 |
+| `(*bufio.Writer).WriteString` | `effects` | `via:stored.Write` | 107 |
+| `(*bufio.Writer).WriteByte` | `effects` | `via:stored.Write` | 108 |
+| `(*bufio.Writer).WriteRune` | `effects` | `via:stored.Write` | 109 |
+| `(*bufio.Writer).Flush` | `effects` | `via:stored.Write` | 110 |
+| `(*bufio.Writer).ReadFrom` | `effects` | `via:0.Read,via:stored.Write` | 111 |
+| `(*bufio.Scanner).Scan` | `effects` | `via:stored.Read` | 113 |
 
 ### `bytes`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(*bytes.Buffer).Write` | `errors` | `none` | 190 |
-| `(*bytes.Buffer).WriteString` | `errors` | `none` | 191 |
-| `(*bytes.Buffer).WriteByte` | `errors` | `none` | 192 |
-| `(*bytes.Buffer).WriteRune` | `errors` | `none` | 193 |
+| `(*bytes.Buffer).Write` | `errors` | `none` | 336 |
+| `(*bytes.Buffer).WriteString` | `errors` | `none` | 337 |
+| `(*bytes.Buffer).WriteByte` | `errors` | `none` | 338 |
+| `(*bytes.Buffer).WriteRune` | `errors` | `none` | 339 |
 
 ### `context`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(context.Context).Deadline` | `effects` | `pure` | 60 |
-| `(context.Context).Done` | `effects` | `pure` | 61 |
-| `(context.Context).Err` | `effects` | `pure` | 62 |
-| `(context.Context).Value` | `effects` | `pure` | 63 |
-| `(context.CancelFunc)` | `effects` | `pure` | 69 |
-| `(context.Context).Err` | `errors` | `context.Canceled,context.DeadlineExceeded` | 163 |
+| `(context.Context).Deadline` | `effects` | `pure` | 200 |
+| `(context.Context).Done` | `effects` | `pure` | 201 |
+| `(context.Context).Err` | `effects` | `pure` | 202 |
+| `(context.Context).Value` | `effects` | `pure` | 203 |
+| `(context.CancelFunc)` | `effects` | `pure` | 209 |
+| `(context.Context).Err` | `errors` | `context.Canceled,context.DeadlineExceeded` | 303 |
+| `context.Cause` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 309 |
 
 ### `database/sql`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(database/sql.Result).LastInsertId` | `effects` | `pure` | 76 |
-| `(database/sql.Result).RowsAffected` | `effects` | `pure` | 77 |
-| `(*database/sql.Row).Scan` | `effects` | `db` | 85 |
-| `(*database/sql.Row).Err` | `effects` | `pure` | 86 |
-| `(*database/sql.Rows).Next` | `effects` | `db` | 87 |
-| `(*database/sql.Rows).Scan` | `effects` | `db` | 88 |
-| `(*database/sql.Rows).Close` | `effects` | `db` | 89 |
-| `(*database/sql.Rows).Err` | `effects` | `pure` | 90 |
-| `(*database/sql.Row).Scan` | `errors` | `database/sql.ErrNoRows,?` | 168 |
-| `(*database/sql.Rows).Err` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 175 |
-| `(*database/sql.Tx).Commit` | `errors` | `database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?` | 179 |
-| `(*database/sql.Tx).Rollback` | `errors` | `database/sql.ErrTxDone,?` | 180 |
+| `(database/sql.Result).LastInsertId` | `effects` | `pure` | 216 |
+| `(database/sql.Result).RowsAffected` | `effects` | `pure` | 217 |
+| `(*database/sql.Row).Scan` | `effects` | `db` | 225 |
+| `(*database/sql.Row).Err` | `effects` | `pure` | 226 |
+| `(*database/sql.Rows).Next` | `effects` | `db` | 227 |
+| `(*database/sql.Rows).Scan` | `effects` | `db` | 228 |
+| `(*database/sql.Rows).Close` | `effects` | `db` | 229 |
+| `(*database/sql.Rows).Err` | `effects` | `pure` | 230 |
+| `(*database/sql.Row).Scan` | `errors` | `database/sql.ErrNoRows,?` | 314 |
+| `(*database/sql.Rows).Err` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 321 |
+| `(*database/sql.Tx).Commit` | `errors` | `database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?` | 325 |
+| `(*database/sql.Tx).Rollback` | `errors` | `database/sql.ErrTxDone,?` | 326 |
+
+### `encoding/binary`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `encoding/binary.Write` | `effects` | `via:0.Write` | 177 |
+| `encoding/binary.Read` | `effects` | `via:0.Read` | 178 |
+
+### `encoding/csv`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `encoding/csv.NewReader` | `effects` | `stores:0` | 130 |
+| `encoding/csv.NewWriter` | `effects` | `stores:0` | 131 |
+| `(*encoding/csv.Writer).Write` | `effects` | `via:stored.Write` | 132 |
+| `(*encoding/csv.Writer).WriteAll` | `effects` | `via:stored.Write` | 133 |
+| `(*encoding/csv.Writer).Flush` | `effects` | `via:stored.Write` | 134 |
+| `(*encoding/csv.Reader).Read` | `effects` | `via:stored.Read` | 135 |
+| `(*encoding/csv.Reader).ReadAll` | `effects` | `via:stored.Read` | 136 |
+
+### `encoding/gob`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `encoding/gob.NewEncoder` | `effects` | `stores:0` | 143 |
+| `encoding/gob.NewDecoder` | `effects` | `stores:0` | 144 |
+| `(*encoding/gob.Encoder).Encode` | `effects` | `via:stored.Write` | 145 |
+| `(*encoding/gob.Encoder).EncodeValue` | `effects` | `via:stored.Write` | 146 |
+| `(*encoding/gob.Decoder).Decode` | `effects` | `via:stored.Read` | 147 |
+| `(*encoding/gob.Decoder).DecodeValue` | `effects` | `via:stored.Read` | 148 |
+
+### `encoding/json`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `encoding/json.NewEncoder` | `effects` | `stores:0` | 119 |
+| `encoding/json.NewDecoder` | `effects` | `stores:0` | 120 |
+| `(*encoding/json.Encoder).Encode` | `effects` | `via:stored.Write` | 121 |
+| `(*encoding/json.Decoder).Decode` | `effects` | `via:stored.Read` | 122 |
+| `(*encoding/json.Decoder).Token` | `effects` | `via:stored.Read` | 123 |
+| `(*encoding/json.Decoder).More` | `effects` | `via:stored.Read` | 124 |
+
+### `encoding/xml`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `encoding/xml.NewEncoder` | `effects` | `stores:0` | 149 |
+| `encoding/xml.NewDecoder` | `effects` | `stores:0` | 150 |
+| `(*encoding/xml.Encoder).Encode` | `effects` | `via:stored.Write` | 151 |
+| `(*encoding/xml.Encoder).EncodeElement` | `effects` | `via:stored.Write` | 152 |
+| `(*encoding/xml.Encoder).EncodeToken` | `effects` | `via:stored.Write` | 153 |
+| `(*encoding/xml.Encoder).Flush` | `effects` | `via:stored.Write` | 154 |
+| `(*encoding/xml.Encoder).Close` | `effects` | `via:stored.Write` | 155 |
+| `(*encoding/xml.Decoder).Decode` | `effects` | `via:stored.Read` | 156 |
+| `(*encoding/xml.Decoder).DecodeElement` | `effects` | `via:stored.Read` | 157 |
+| `(*encoding/xml.Decoder).Token` | `effects` | `via:stored.Read` | 158 |
+| `(*encoding/xml.Decoder).Skip` | `effects` | `via:stored.Read` | 159 |
 
 ### `fmt`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
 | `(fmt.Stringer).String` | `effects` | `pure` | 23 |
+| `fmt.Fprint` | `effects` | `via:0.Write` | 73 |
+| `fmt.Fprintf` | `effects` | `via:0.Write` | 74 |
+| `fmt.Fprintln` | `effects` | `via:0.Write` | 75 |
+| `fmt.Fscan` | `effects` | `via:0.Read` | 79 |
+| `fmt.Fscanln` | `effects` | `via:0.Read` | 80 |
+| `fmt.Fscanf` | `effects` | `via:0.Read` | 81 |
 
 ### `hash`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(hash.Hash).Write` | `errors` | `none` | 207 |
+| `(hash.Hash).Write` | `errors` | `none` | 353 |
+
+### `html/template`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `(*html/template.Template).Execute` | `effects` | `via:0.Write` | 172 |
+| `(*html/template.Template).ExecuteTemplate` | `effects` | `via:0.Write` | 173 |
 
 ### `io`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `io.Copy` | `effects` | `unknown` | 34 |
-| `io.CopyN` | `effects` | `unknown` | 35 |
-| `io.ReadAll` | `effects` | `unknown` | 36 |
-| `io.ReadFull` | `effects` | `unknown` | 37 |
-| `io.WriteString` | `effects` | `unknown` | 38 |
-| `io.LimitReader` | `effects` | `pure` | 42 |
-| `io.MultiReader` | `effects` | `pure` | 43 |
-| `io.MultiWriter` | `effects` | `pure` | 44 |
-| `io.TeeReader` | `effects` | `pure` | 45 |
-| `io.NopCloser` | `effects` | `pure` | 46 |
-| `io.Pipe` | `effects` | `pure` | 47 |
+| `io.WriteString` | `effects` | `via:0.Write,via:0.WriteString` | 41 |
+| `io.Copy` | `effects` | `via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo` | 47 |
+| `io.CopyN` | `effects` | `via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo` | 48 |
+| `io.CopyBuffer` | `effects` | `via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo` | 49 |
+| `io.ReadAll` | `effects` | `via:0.Read` | 53 |
+| `io.ReadFull` | `effects` | `via:0.Read` | 54 |
+| `io.ReadAtLeast` | `effects` | `via:0.Read` | 55 |
+| `io.LimitReader` | `effects` | `pure` | 63 |
+| `io.MultiReader` | `effects` | `pure` | 64 |
+| `io.MultiWriter` | `effects` | `pure` | 65 |
+| `io.TeeReader` | `effects` | `pure` | 66 |
+| `io.NopCloser` | `effects` | `pure` | 67 |
+| `io.Pipe` | `effects` | `pure` | 68 |
 
 ### `io/fs`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(io/fs.FileInfo).Name` | `effects` | `pure` | 96 |
-| `(io/fs.FileInfo).Size` | `effects` | `pure` | 97 |
-| `(io/fs.FileInfo).Mode` | `effects` | `pure` | 98 |
-| `(io/fs.FileInfo).ModTime` | `effects` | `pure` | 99 |
-| `(io/fs.FileInfo).IsDir` | `effects` | `pure` | 100 |
-| `(io/fs.FileInfo).Sys` | `effects` | `pure` | 101 |
-| `(io/fs.DirEntry).Name` | `effects` | `pure` | 102 |
-| `(io/fs.DirEntry).IsDir` | `effects` | `pure` | 103 |
-| `(io/fs.DirEntry).Type` | `effects` | `pure` | 104 |
+| `(io/fs.FileInfo).Name` | `effects` | `pure` | 236 |
+| `(io/fs.FileInfo).Size` | `effects` | `pure` | 237 |
+| `(io/fs.FileInfo).Mode` | `effects` | `pure` | 238 |
+| `(io/fs.FileInfo).ModTime` | `effects` | `pure` | 239 |
+| `(io/fs.FileInfo).IsDir` | `effects` | `pure` | 240 |
+| `(io/fs.FileInfo).Sys` | `effects` | `pure` | 241 |
+| `(io/fs.DirEntry).Name` | `effects` | `pure` | 242 |
+| `(io/fs.DirEntry).IsDir` | `effects` | `pure` | 243 |
+| `(io/fs.DirEntry).Type` | `effects` | `pure` | 244 |
+
+### `log`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `log.New` | `effects` | `via:0.Write` | 185 |
+| `log.SetOutput` | `effects` | `via:0.Write` | 186 |
+| `(*log.Logger).SetOutput` | `effects` | `via:0.Write` | 187 |
 
 ### `net/http`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(net/http.ResponseWriter).Header` | `effects` | `pure` | 109 |
-| `(net/http.ResponseWriter).Write` | `effects` | `net` | 115 |
-| `(net/http.ResponseWriter).WriteHeader` | `effects` | `net` | 116 |
-| `(net/http.Flusher).Flush` | `effects` | `net` | 120 |
-| `(net/http.Hijacker).Hijack` | `effects` | `net` | 121 |
-| `net/http.Error` | `effects` | `net` | 127 |
-| `net/http.NotFound` | `effects` | `net` | 128 |
-| `net/http.Redirect` | `effects` | `net` | 129 |
-| `net/http.ServeFile` | `effects` | `fs,net` | 134 |
-| `net/http.ServeContent` | `effects` | `net,unknown` | 140 |
-| `net/http.ServeFileFS` | `effects` | `net,unknown` | 141 |
+| `(net/http.ResponseWriter).Header` | `effects` | `pure` | 249 |
+| `(net/http.ResponseWriter).Write` | `effects` | `net` | 255 |
+| `(net/http.ResponseWriter).WriteHeader` | `effects` | `net` | 256 |
+| `(net/http.Flusher).Flush` | `effects` | `net` | 260 |
+| `(net/http.Hijacker).Hijack` | `effects` | `net` | 261 |
+| `net/http.Error` | `effects` | `net` | 267 |
+| `net/http.NotFound` | `effects` | `net` | 268 |
+| `net/http.Redirect` | `effects` | `net` | 269 |
+| `net/http.ServeFile` | `effects` | `fs,net` | 274 |
+| `net/http.ServeContent` | `effects` | `net,unknown` | 280 |
+| `net/http.ServeFileFS` | `effects` | `net,unknown` | 281 |
 
 ### `net/url`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `net/url.Parse` | `errors` | `type:net/url.Error` | 159 |
+| `net/url.Parse` | `errors` | `type:net/url.Error` | 299 |
 
 ### `predeclared (error)`
 
@@ -360,16 +468,30 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `strconv.Atoi` | `errors` | `type:strconv.NumError` | 154 |
-| `strconv.ParseInt` | `errors` | `type:strconv.NumError` | 155 |
-| `strconv.ParseUint` | `errors` | `type:strconv.NumError` | 156 |
-| `strconv.ParseBool` | `errors` | `type:strconv.NumError` | 157 |
+| `strconv.Atoi` | `errors` | `type:strconv.NumError` | 294 |
+| `strconv.ParseInt` | `errors` | `type:strconv.NumError` | 295 |
+| `strconv.ParseUint` | `errors` | `type:strconv.NumError` | 296 |
+| `strconv.ParseBool` | `errors` | `type:strconv.NumError` | 297 |
 
 ### `strings`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(*strings.Builder).Write` | `errors` | `none` | 199 |
-| `(*strings.Builder).WriteString` | `errors` | `none` | 200 |
-| `(*strings.Builder).WriteByte` | `errors` | `none` | 201 |
-| `(*strings.Builder).WriteRune` | `errors` | `none` | 202 |
+| `(*strings.Builder).Write` | `errors` | `none` | 345 |
+| `(*strings.Builder).WriteString` | `errors` | `none` | 346 |
+| `(*strings.Builder).WriteByte` | `errors` | `none` | 347 |
+| `(*strings.Builder).WriteRune` | `errors` | `none` | 348 |
+
+### `text/tabwriter`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `(*text/tabwriter.Writer).Write` | `effects` | `unknown` | 164 |
+| `(*text/tabwriter.Writer).Flush` | `effects` | `unknown` | 165 |
+
+### `text/template`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `(*text/template.Template).Execute` | `effects` | `via:0.Write` | 170 |
+| `(*text/template.Template).ExecuteTemplate` | `effects` | `via:0.Write` | 171 |

@@ -3,7 +3,7 @@
 // the analyzers do not analyze, the way a TypeScript .d.ts file describes code
 // without its body:
 //
-//	effects <target> <effect,effect,...>   # or the word: pure
+//	effects <target> <effect,effect,...>   # or the word: pure; an item may be via:<argIndex>.<Method>
 //	errors  <target> <variant,variant,...> # or the word: none
 //	status  (pkgpath.Type) <code>           // or: pkgpath.Func / pkgpath.Var <code | arg:N>
 //	route   pkgpath.Func <METHOD|@N.Field> <pathArgIndex|@N.Field> <handlerArgIndex>
@@ -279,6 +279,22 @@ func Parse(name string, data []byte) ([]Rule, error) {
 			return nil, fail("%v", err)
 		}
 		switch verb {
+		case VerbEffects:
+			_, vias, stores, err := ParseEffectsValue(f[2])
+			if err != nil {
+				return nil, fail("%v", err)
+			}
+			if len(vias) > 0 && r.Target.TypeOnly {
+				return nil, fail("via items need a function or a method target, not %q", f[1])
+			}
+			for _, v := range vias {
+				if v.Stored && !r.Target.Method {
+					return nil, fail("via:stored items need a method target, not %q", f[1])
+				}
+			}
+			if len(stores) > 0 && (r.Target.Method || r.Target.TypeOnly) {
+				return nil, fail("stores items need a function target, not %q", f[1])
+			}
 		case VerbStatus:
 			if _, err := ParseStatusValue(f[2]); err != nil {
 				return nil, fail("%v", err)

@@ -15,7 +15,7 @@ A stub file describes code that effectgo does not analyze, the way a `.d.ts` fil
 
 | Verb | Fields | Read by | Meaning |
 |---|---|---|---|
-| `effects <target> <effects>` | 3 | effects | the effects of a call; `pure` means none. Effect names: see [Effects](effects.md#effect-names) |
+| `effects <target> <effects>` | 3 | effects | the effects of a call; `pure` means none; an item may be `via:<argIndex>.<Method>`, the effects of a method call on an argument. Effect names: see [Effects](effects.md#effect-names) |
 | `errors <target> <variants>` | 3 | errset | the error set of a call; `none` means no error can occur |
 | `status <target> <code \| arg:N>` | 3 | errset, huma adapter | the HTTP status that an error carries (see below) |
 | `route <pkg.Func> <METHOD \| @N.Field> <pathArg \| @N.Field> <handlerArg>` | 5 | openapi, huma adapter | a route registration call |
@@ -34,6 +34,37 @@ effects github.com/danielgtaylor/huma/v2.NewError pure   # calls through this pa
 ```
 
 Effect names are checked: `unknown effect name "x" for <target>`.
+
+The value is `pure`, or a comma-separated list of effect names and via items. A via item says that the call performs a method on one of its arguments, so the stub does not have to list the effects of the method itself:
+
+```text
+effects fmt.Fprintf via:0.Write            # calling Write on argument 0
+effects io.Copy via:0.Write,via:1.Read     # every method the body may call
+effects fmt.Fscan via:0.Read net           # via items combine with fixed effects
+```
+
+The effects of a via item are evaluated at each call site, from the static type of the argument, by `effects/via.go` in the analyzer source:
+
+| Argument | The via item contributes |
+|---|---|
+| an interface, such as `io.Writer` | what calling the method on that interface contributes: its interface contract, else `unknown`. A method that the interface does not have is `unknown` too, since its dynamic type may have it |
+| a concrete type, such as `*bytes.Buffer` or `*os.File` | the effects of that type's method: its stub, taxonomy, body or fact. A method the type does not have is never called, so it contributes nothing |
+| `os.Stdin`, `os.Stdout`, `os.Stderr` | `stdio`, whatever the method |
+| `io.Discard` | nothing |
+| a literal `nil` | `unknown` |
+
+The witness of such an effect starts with the stub's function: `ToWriter → fmt.Fprintf → io.Writer.Write`. A via item needs a function or a method target. On a variable target it is not evaluated: the call is `unknown`. A method of a concrete argument that calls one of its own parameters is `unknown` too.
+
+A stored value is a writer or reader that a constructor keeps in the value it returns. A `stores:<argIndex>` item on a function says that the function keeps that argument; a `via:stored.<Method>` item on a method says that the method calls Method on the value its receiver stores:
+
+```text
+effects encoding/json.NewEncoder stores:0          # the encoder keeps its writer
+effects (*encoding/json.Encoder).Encode via:stored.Write
+```
+
+The stored value is found in two cases only: the receiver is the constructor call itself, `json.NewEncoder(w).Encode(v)`, or the receiver is a local variable with exactly one assignment, from such a call, and every use of the variable is a selector on it (a method call or a field), except `Reset` and `Init`, which re-point the stored value. Any other receiver (a field, a parameter, a variable that is passed on, returned, reassigned or whose address is taken) gives `unknown`. The stored value is then evaluated like a `via:<argIndex>` argument, from its static type. A `stores` item needs a function target; a `via:stored` item needs a method target.
+
+Malformed items are errors that name the file and line: `via:x.Write` (no index), `via:-1.Write` (negative index), `via:0.Write-now` (not a method name), `pure,via:0.Write`, a via item on a type target, `stores:x`, and `via:stored` on a function.
 
 Rules are in layers: the shipped files, then the project file or the `-stubs` files. Within a layer, a second `effects` rule for the same target is an error, and it names the first one:
 
