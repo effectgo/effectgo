@@ -101,6 +101,29 @@ Errors reported by the parser:
 - `//effectgo:package needs "pure" or "allow <effects>"`
 - `//effectgo:<kw> is not valid in a package doc comment; use //effectgo:package` (any other directive in a package doc comment)
 
+### `unknown` and the contracts
+
+`unknown` is an effect like any other. It comes from a call through an interface method that has no contract and no stub, and from a call through a func value that is not resolved. The contracts treat it as follows:
+
+- `//effectgo:pure` requires an empty set, so `unknown` violates it.
+- `//effectgo:allow <list>` and `//effectgo:package allow <list>` allow `unknown` only when `unknown` is in the list. A package that says `allow db` does not allow an uncontracted interface call.
+
+Verified with a package that says `//effectgo:package allow db`:
+
+```text
+LocalIface is declared //effectgo:package allow db but has effect unknown via LocalIface → Reader.Get
+PureLocal is declared //effectgo:pure but has effect unknown via PureLocal → Reader.Get
+```
+
+Two ways out, and the first is the usual one. Put the contract on the interface, where the port is declared (`//effectgo:allow db` above `type Reader interface`). Each call through that interface then contributes `db` with the witness `[contract]`, and `unknown` disappears. Or list `unknown` in the allowed effects, which states that the package accepts calls it cannot see.
+
+Two limits on where a contract on an interface is read:
+
+- An interface declared at package level has its contract read whether it is exported or not (verified with an unexported `repo` interface).
+- An interface declared inside a function body does not have its contract read. A comment on it is ignored and its calls stay `unknown` (verified). Move the interface to package level.
+
+For which stdlib interface methods are modelled, see [Stub coverage](stub-coverage.md). `io.Writer.Write` is not modelled, so `w.Write` in a pure function is `unknown`; `context.Context.Done` is modelled as pure.
+
 ### Interface contracts
 
 A directive on an interface method (or on the interface type) is a contract for every call through that interface. Importers see it, so contracts work across packages. Conformance is checked: each named type that implements the interface must satisfy the contract of each method it implements. The message is:
@@ -169,6 +192,27 @@ Diagnostic when the signature is wrong:
 effectgo:errmap: <Func> must have signature func(error) error
 ```
 
+#### How an errmap gives a status
+
+A returned value is read for its HTTP status in one of three ways. Each was checked with `-errset.statuses`:
+
+```go
+//effectgo:errmap
+func ToHTTPError(err error) error {
+	if errors.Is(err, domain.ErrNotFound) {
+		return httpError{Status: http.StatusNotFound, Err: err} // read as 404
+	}
+	if errors.Is(err, domain.ErrPending) {
+		return pendingError{Err: err} // read as 418 from its StatusCode method
+	}
+	return err // a passthrough: keeps the status the variant already has
+}
+```
+
+- A composite literal of a type with a `Status` field is read from that field, when the field holds a constant (`http.StatusNotFound`, or `404`). The type needs no `StatusCode` method. Verified: a plain struct `httpError{Status: http.StatusNotFound, Err: err}` gives `404` in `-errset.statuses`.
+- A type with a `StatusCode() int` method that returns a constant is read through the method. Verified: `418`.
+- A value that is not a constant is not read. A variable (`code := 422` followed by `httpError{Status: code, ...}`) gives `default` in `-errset.statuses`, and no code is guessed. Write the constant in the literal, or use a `StatusCode` method.
+
 ### `//effectgo:handler <errmap>`
 
 Placed on an HTTP handler, or on a function that returns a handler literal (a handler constructor). The argument names an errmap function, which may be qualified (`httpres.ToHTTPError`):
@@ -196,6 +240,8 @@ handler <F> may return an unresolved param:0 error (…), which errmap <M> does 
 - `effectgo:handler: <name> is not a //effectgo:errmap function`
 
 Status of each variant under the errmap: `-errset.statuses` prints it (see [CLI](cli.md#analyzer-flags)); the HTTP status rules are in [Errors](errors.md#http-status).
+
+A `func(http.ResponseWriter, *http.Request)` handler has no error result, so there is no error set to check. A directive on it is accepted and checks nothing. Put the directive on the function that returns the error, and write the response in an adapter. The pattern is in [HTTP checks](../guide/http-checks.md#nethttp-handlers).
 
 ## Must-use and exhaustive directives
 
@@ -234,6 +280,14 @@ Diagnostics:
 
 Without the directive, a named integer type is not an enum: the exhaustive analyzer does not infer enums (see [Analyzers](analyzers.md#exhaustive)).
 
+### When an interface needs `//effectgo:sealed`
+
+- **An interface with an unexported method of its own package is sealed without the directive.** This is the usual way to seal an interface, and the analyzer checks its type switches as they are. Writing the directive on it too only states intent. Verified: `type Shape interface{ isShape() }` with a type switch that misses `Circle` is reported as `missing cases in type switch on Shape: Square`, with no directive.
+- **An interface with only exported methods cannot be sealed by the directive.** The directive on it is a diagnostic, `sealed interface <Name> must have an unexported method`, and the interface is not checked. Add a marker method, `isShape()`, and the directive is not needed.
+- **The directive is needed for enums.** A named integer or string type has no marker method, so `//effectgo:sealed` is the only way to make a switch over it checked.
+
+The interface rule is the one to remember: the directive does not make an interface sealed by itself.
+
 ## Unknown keywords
 
 ```text
@@ -248,3 +302,17 @@ Each analyzer reports the keyword once, so the combined binary can print two lin
 - `//effectgo:package` only in a package doc comment; the other directives are not valid there.
 - Directives are read on function declarations and interface declarations. A directive on a function literal is not read.
 - A directive that names a package (`httpres.ToHTTPError`, `iface:…`) needs that package to be imported by the file. Otherwise the name cannot be resolved (`effectgo:errors: cannot resolve …`).
+
+### Name resolution is per file
+
+A name in a directive is resolved through the imports of the file that holds the declaration, and only that file. The package does not need to be imported by any other file of the same package. Verified with two files of one package: a function in the file that imports `pa` resolves `pa.ErrNotFound`; a function in a file that does not import `pa`, in the same package, reports:
+
+```text
+effectgo:errors: cannot resolve "pa.ErrNotFound" in Other
+```
+
+Three things follow from this:
+
+- **Import the package in the file that carries the directive.** It is not enough that another file of the package does.
+- **A package used only by a directive is an unused import to the compiler.** A directive is not a use, so `go vet` and `go build` report `imported and not used`. The code must use the package somewhere, for example in a `var _ = httpres.ToHTTPError` line, or in real code.
+- **When every name of an `errors` directive fails to resolve, the contract is not checked.** Only the `cannot resolve` lines are printed. Without this, every real variant of the function would also read as `not in its //effectgo:errors contract`. If some names resolve, the contract is still checked against those names.

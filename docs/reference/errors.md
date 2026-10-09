@@ -165,6 +165,8 @@ The status of a variant comes from, in order:
 
 Rules of an errmap give statuses: the constant of a returned composite literal (`T{…}` or `&T{…}`) when its type has a constant `StatusCode`; otherwise the constant `Status` field of a literal; `return err` is a passthrough that keeps the variant's own status; a return that cannot be read, or a mix of statuses in one rule, is unknown.
 
+How to audit an errmap: run `effectgo -errset.statuses ./...`. Each handler prints the status of every variant, so a `default` or a `500` that you did not intend is visible at once. The rules that produce a status, including the constant `Status` field and the `StatusCode` method, are in [Directives](directives.md#how-an-errmap-gives-a-status).
+
 Then the sending rule:
 
 - a plain error (no status) and an opaque `?` are **500**: Fuego's error sender starts at 500 and only an error that carries a status overrides it;

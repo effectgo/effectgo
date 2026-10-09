@@ -24,7 +24,7 @@ Items that were true in an earlier round and have since been fixed are not liste
 - **[by reading]** `os.Args` writes count as both `env` and `global`. Stdlib detection depends on the source layout of the installation (see [architecture](architecture.md#standard-library-detection)).
 - **[by reading]** Two package directives in different files: the first valid one wins and the other is reported, but this is not pinned by a test. Several directives on one function are intersected, also untested.
 - **[by reading]** `init` functions are analyzed but never called by name, so their effects do not propagate to other functions.
-- **[by reading]** Local interfaces (declared inside a function body) are not read for contracts. Generic named types are skipped by conformance, although their methods are inferred.
+- **[verified]** Local interfaces (declared inside a function body) are not read for contracts: a comment on one is ignored and its calls are `unknown`. Declare the interface at package level ([Directives](../reference/directives.md#unknown-and-the-contracts)). Generic named types are skipped by conformance, although their methods are inferred.
 - **[by reading]** Conformance walks the contracted interfaces of every transitively imported package, which costs time on large import graphs.
 
 ## Error sets
@@ -35,7 +35,8 @@ Items that were true in an earlier round and have since been fixed are not liste
 - **[verified]** Generics: a concrete sentinel returned by a generic function is tracked (`limits.genErr`); a type-parameter error gives `?` (`limits.wrapT`). Generic function bodies are not lowered by SSA, so they use the AST result.
 - **[verified]** Stdlib errors are opaque except `fmt.Errorf` with `%w`, `errors.Join`, and the fresh cases `errors.New` and constant-format `fmt.Errorf` without `%w`. `%v` gives `?` (`basic`, `opaque`, `basic.wrapV`). Stubs can name stdlib types (`strconv.NumError`).
 - **[verified]** Interface matching compares method-signature strings: `*ValidationError` matches the `StatusError` target. In general the matching is an approximation of `types.Implements`, **[by reading]**.
-- **[verified]** Qualified names in directives need the package to be imported by the file (`api.v3Missing` is reported).
+- **[verified]** Qualified names in directives need the package to be imported by the file (`api.v3Missing` is reported). The import of another file of the same package does not count ([Directives](../reference/directives.md#name-resolution-is-per-file)).
+- **[verified]** A `//effectgo:handler` on a `func(http.ResponseWriter, *http.Request)` handler has no error set and is not checked, with no diagnostic. The pattern that is checked is in [HTTP checks](../guide/http-checks.md#nethttp-handlers). Recorded in the [backlog](backlog.md).
 - **[verified]** errmap semantics are approximate: any `==` or `switch` case against a sentinel counts as mapped, whether or not its branch makes sense (`httpres`).
 - **[verified]** Imported package scopes are partial (export data holds only what is referenced). A stub name missing from an imported package falls back to identity; a missing name in the analyzed package is a hard error.
 - **[by reading]** Sentinel aliases (`var ErrAlias = ErrNotFound`) are separate variants.
@@ -103,7 +104,7 @@ These are findings of the example modules, kept on purpose so that the examples 
 ## Must-use and exhaustive
 
 - **[verified]** `exhaustive` cannot see variants declared in another package's test files.
-- **[by reading]** `exhaustive` does not know a sealed interface that has no unexported method (it is not sealed unless it carries the directive).
+- **[verified]** An interface with only exported methods cannot be sealed: `//effectgo:sealed` on it is reported and the interface is not checked. A marker method is the way to seal it ([Directives](../reference/directives.md#when-an-interface-needs-effectgosealed)).
 - **[by reading]** A deferred error check, a sticky error that is read later (as in `csv.Writer`, checked by `Flush` and `Error`), is not seen: such a discard is reported.
 - **[verified]** `mustuse` needs the writer rules of the stub configuration to be silent on the always-nil writers. The zero configuration and the shipped `stdlib.stubs` have them; an explicit file without them reports `buf.WriteString`.
 
@@ -119,6 +120,8 @@ These are findings of the example modules, kept on purpose so that the examples 
 - **[by reading]** Editors were not run. The VS Code settings, the problem matcher, Neovim's working directory and Windows paths were not observed.
 
 ## Not implemented
+
+The items that are deliberately left for later, with the reason and the evidence, are in the [backlog](backlog.md).
 
 - No CI configuration, no fix suggestions, no `-fix`.
 - No per-instantiation effect facts for generics.

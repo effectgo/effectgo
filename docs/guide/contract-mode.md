@@ -118,6 +118,19 @@ The analyzers report a risk only when they can prove it. Code gets clean output 
 - **Closed sets are closed by the type.** An interface with an unexported marker method is sealed; an enum that matters for switches is marked `//effectgo:sealed`.
 - **External code is stubbed or contracted.** Anything the analyzer cannot see into is either declared in `effectgo.stubs` or listed in a contract.
 
+## Common questions
+
+Short answers, each with the page that has the details and the evidence:
+
+- **When does an interface need `//effectgo:sealed`?** Not when it has an unexported marker method: that seals it. The directive is for enums and for intent. See [Directives](../reference/directives.md#when-an-interface-needs-effectgosealed).
+- **How do `unknown`, `//effectgo:pure` and `//effectgo:package allow` interact?** An uncontracted interface call is `unknown`. It violates `pure`, and it violates `allow` unless `unknown` is listed. Put the contract on the interface. See [Directives](../reference/directives.md#unknown-and-the-contracts).
+- **Which file's imports resolve a directive name?** The file that holds the declaration. Another file of the package does not help. See [Directives](../reference/directives.md#name-resolution-is-per-file).
+- **Which stdlib interface methods are modelled?** The generated list in [Stub coverage](../reference/stub-coverage.md). Anything else called through an interface is `unknown`.
+- **How do I use the errmap and handler checks with `net/http`?** Put the directive on a method that returns an error, and write the response in an adapter. See [HTTP checks](http-checks.md#nethttp-handlers).
+- **Why is a status `default` or `500`?** The errmap did not give a constant status for that variant. See [Directives](../reference/directives.md#how-an-errmap-gives-a-status) and [Error sets](../reference/errors.md#http-status).
+- **How do I install from the private repository?** Build from a clone with `go install ./cmd/effectgo`. See [Getting started](getting-started.md#install).
+- **Why does a clean standalone run miss a test finding?** Standalone runs skip `_test.go` files. Run `go vet` too. See [Getting started](getting-started.md#a-clean-run-is-not-a-full-run).
+
 ## The zero-false-positives promise
 
 On the disciplined corpus, the analyzers report exactly the findings that the corpus marks as intended:

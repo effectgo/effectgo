@@ -74,7 +74,8 @@ domain/service.go:42:19: witness of Service.Update: domain.ErrNotFound via Store
 
 | Message | When |
 |---|---|
-| `result of <callee> is discarded; handle it or assign to _` | a call statement discards an error result, or a value of a `//effectgo:mustuse` type |
+| `result of <callee> is discarded; handle it or assign to _` | a call statement discards an error result |
+| `result of <callee> is discarded: <T> is //effectgo:mustuse; handle it or assign to _` | a call statement discards a value of a `//effectgo:mustuse` type; `<T>` is the type, for example `*a.Charge` |
 | `<Name>: //effectgo:mustuse applies to a defined type, not an alias; put it on the type the alias names` | the directive is on an alias |
 
 Rules:
@@ -89,8 +90,10 @@ Message examples:
 
 ```text
 result of os.Remove is discarded; handle it or assign to _
-result of domain.Charge is discarded; handle it or assign to _
+result of a.Mark is discarded: *a.Charge is //effectgo:mustuse; handle it or assign to _
 ```
+
+The two forms tell apart the error case (the callee returns an error that is not checked) and the marker case (the value's type is marked). A call that returns both a marked value and an error reports the marker form.
 
 ## exhaustive
 

@@ -21,7 +21,7 @@ Build the binary from a clone with `go build -o bin/effectgo ./cmd/effectgo` (Go
 | Command | Purpose | Output |
 |---|---|---|
 | `effectgo ./...` | diagnostics of the four analyzers | the driver's diagnostics |
-| `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any |
+| `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any (exit 3 is success here, see [Exit codes](#exit-codes)) |
 | `effectgo openapi [-merge spec.json \| -check spec.json] ./...` | error responses of each route | a fragment (JSON), a merged document (JSON), or a drift report (text) |
 | `effectgo http-gin [-json] [-all] [-mappers] ./...` | Gin responses against their error sets | text, or one JSON object per finding |
 | `effectgo http-huma [-json] [-all] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding |
@@ -98,7 +98,7 @@ With neither `-merge` nor `-check`, the output is the fragment: `paths.<path>.<m
 |---|---|---|---|---|
 | standalone `effectgo ./...` | no diagnostics | a run error (the packages do not load, a malformed stub file) | — | diagnostics were reported |
 | `go vet -vettool=…` | no diagnostics | diagnostics were reported (go vet's convention) | — | — |
-| `effectgo sig` | — | a run error | — | a signature was printed |
+| `effectgo sig` | — | a run error | — | a signature was printed. This is a success, not a diagnostic: a script that tests for a non-zero exit must accept 3 |
 | `effectgo openapi` | success | `-check` found a missing code, or the run failed | usage error | — |
 | `http`, `http-gin`, `http-huma` | the run completed (findings do not change the status) | a load or analysis error | usage error | — |
 
@@ -107,7 +107,7 @@ The HTTP checks report their findings and exit 0; they are for reading and for J
 ## Test files
 
 - Standalone runs and `sig` skip `_test.go` files, and the generated `_testmain.go` packages of the build cache. Pass `-test=true` to analyze them.
-- `go vet` decides for itself which packages and test variants it passes to the tool, so `-test` has no effect under `go vet`.
+- `go vet` decides for itself which packages and test variants it passes to the tool, so `-test` has no effect under `go vet`. Under `go vet`, a test function with its own directive is checked; the same run standalone is clean only because the file is skipped. Run both to cover tests (see [Getting started](../guide/getting-started.md#a-clean-run-is-not-a-full-run)).
 - `openapi` loads without tests.
 
 ## Standalone, go vet and the plugin

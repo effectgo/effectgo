@@ -47,7 +47,8 @@ Each diagnostic is reported only when the code is provably at risk. A rule that 
 | check HTTP handlers and OpenAPI | [HTTP checks](guide/http-checks.md) |
 | look up a directive, a flag or a stub verb | [Reference](reference/directives.md) |
 | understand the design | [Architecture](design/architecture.md), [Decisions](design/decisions.md) |
-| see what it does not do | [Limitations](design/limitations.md) |
+| see what it does not do | [Limitations](design/limitations.md), and the [backlog](design/backlog.md) of known gaps |
+| see what a stub file covers | [Stub coverage](reference/stub-coverage.md) |
 | read the development history | [Journal](journal/index.md) |
 
 The reference is in six pages: [directives](reference/directives.md), [stub files](reference/stubs.md), [effects](reference/effects.md), [error sets](reference/errors.md), [analyzers](reference/analyzers.md), and the [command line](reference/cli.md).

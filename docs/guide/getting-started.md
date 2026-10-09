@@ -7,21 +7,29 @@ This page takes you from nothing installed to a first diagnostic. It assumes a G
 
 ## Install
 
-From a clone of the repository:
+The repository is private, so the module proxy cannot serve it. Build from a clone, the verified route:
+
+```text
+git clone <the repository URL> effectgo
+cd effectgo
+go install ./cmd/effectgo
+```
+
+`go install` puts the binary in `$GOBIN`, or in `$GOPATH/bin` when `GOBIN` is not set (verified with `GOBIN` pointed at a scratch directory). Make sure that directory is on your `PATH`. If you do not want it installed, build a local copy instead:
 
 ```text
 go build -o bin/effectgo ./cmd/effectgo
 ```
 
-Put `bin/effectgo` on your `PATH`, or use the absolute path in the commands below.
-
-The repository is private, so the module proxy cannot serve it; the install route through the proxy needs `GOPRIVATE`:
+To install from the module path without a clone, the module proxy must be bypassed for the private path. Set `GOPRIVATE` and let the go command fetch the module directly, with git credentials that can read the repository:
 
 ```text
 GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/effectgo@latest
 ```
 
-That route was not run from the build environment. The clone route is the verified one.
+That route was not run from the build environment, because the repository is not reachable from there. The clone route is the verified one.
+
+If `go build` fails with an error about version control information (the module sits below a directory that git cannot read), add `-buildvcs=false`: `go build -buildvcs=false ./...`. `go vet` and `go test` are not affected. This was seen while evaluating effectgo on a service in a nested directory.
 
 ## First run: no configuration
 
@@ -38,9 +46,24 @@ Two ways to run it, with the same four analyzers:
 | `effectgo ./...` | 3 |
 | `go vet -vettool=$(which effectgo) ./...` | 1 |
 
-Standalone runs skip `_test.go` files by default. `-test=true` includes them. Under `go vet`, go vet decides which test variants it passes to the tool.
-
 Diagnostics are written to stderr. Paths are absolute in the standalone run and relative to the package under `go vet`.
+
+## A clean run is not a full run
+
+A run with no output proves two things and no more: the analyzers ran without an error, and they found nothing they could prove. It does not show which packages were analysed. To confirm that a package was analysed, print its signatures:
+
+```text
+effectgo sig ./domain     # one Effect<A, E, R> line per function; exit status 3 when it printed
+```
+
+Standalone runs also skip `_test.go` files, so a clean standalone run can hide a finding in a test. `go vet` analyses the test files. Run both commands on each package (verified: a test function with `//effectgo:pure` that calls `time.Now` is reported by `go vet` and not by the standalone run):
+
+```text
+effectgo ./...
+go vet -vettool=$(which effectgo) ./...
+```
+
+Note that `effectgo sig` exits with 3 when it succeeds, because each signature is printed as a diagnostic. A script must read that as success.
 
 ## Reading the output
 

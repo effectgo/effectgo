@@ -164,6 +164,38 @@ Measured on three real Gin services (static evidence; from the journal). order-m
 
 `framework` is `gin` or `huma`. The output is the union of `http-gin -json -all` and `http-huma -json -all`, and each subcommand still works on its own.
 
+## net/http handlers
+
+The checks above read a handler's error set. A `net/http` handler, `func(http.ResponseWriter, *http.Request)`, has no error result, so it has no error set: a `//effectgo:handler` directive on it is accepted and checks nothing. The check needs an inner function that returns an error, and the handler is a thin adapter around it. The dogfood reservation service uses this shape, and it is the recommended pattern:
+
+```go
+// ToHTTPError maps the domain errors that the handlers can return.
+//
+//effectgo:errmap
+func ToHTTPError(err error) error { ... }
+
+// doGet returns the reservation, or the domain error. The directive checks
+// that every error it can return is mapped by ToHTTPError.
+//
+//effectgo:handler ToHTTPError
+func (a API) doGet(r *http.Request) (reservationJSON, error) { ... }
+
+// get is the net/http handler. It has no error result, so it carries no
+// directive; the adapter writes the value, or the mapped error.
+func (a API) get(w http.ResponseWriter, r *http.Request) {
+	out, err := a.doGet(r)
+	writeResult(w, http.StatusOK, out, err)
+}
+```
+
+Checked on a small module with this shape: `doGet` with a sentinel the errmap maps reports nothing; a method whose sentinel the errmap does not map is reported as `handler ... may return ht.ErrOther ..., which errmap httpx.ToHTTPError does not map → HTTP 500`. The method form works with a result of `error` alone as well as with `(T, error)`. `effectgo -errset.statuses` prints the status of each variant of `doGet`, so the mapping can be read without running the service.
+
+Three things to remember:
+
+- Write the adapter with the same errmap as the directive. The directive checks one errmap; an adapter that maps with another one is not checked.
+- A directive on a `func(w, r)` handler is silently unchecked. This is recorded in the [backlog](../design/backlog.md).
+- The status of a variant in `-errset.statuses` is what the errmap gives; the status the adapter writes is the adapter's own. Keep them the same.
+
 ## Known false positives
 
 The HTTP checks are static, and their known sources of false positives are these. The numbers are from the evaluation recorded in the journals.

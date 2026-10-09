@@ -152,6 +152,10 @@ A later `-stubs` file does not merge with the zero configuration; to add a proje
 
 ## Shipped stub files
 
+The exact list of covered targets, with the verb, the value and the line of each rule, is generated from the files in [Stub coverage](stub-coverage.md). It cannot go stale: a test fails when the page differs from the files. The table below describes the files.
+
+Which stdlib interface methods are modelled: the list on the generated page is the answer. A method that is not on it, called through its interface, is `unknown` (effects) or `?` (errors) unless a contract or a project stub covers it. Verified: `io.Writer.Write` in a pure function is `unknown`, and `context.Context.Done` is pure. For `net/http`, the `ResponseWriter` methods are covered (`Write` and `WriteHeader` are `net`); other `net/http` interfaces are not.
+
 | File | Load it when | Covers |
 |---|---|---|
 | `stubs/stdlib.stubs` | always (it is part of the zero configuration) | `error.Error` pure; `fmt.Stringer`; `io` copy and read functions; `io` constructors; `context` (`Err` errors, `CancelFunc`); database/sql `Row`, `Rows`, `Result` and their errors; `io/fs` getters; `net/http` `ResponseWriter` (`Header` pure, `Write` and `WriteHeader` net), `Flusher.Flush`, `Hijacker.Hijack`, and the helpers `Error`, `NotFound`, `Redirect` (net), `ServeFile` (fs and net), `ServeContent` and `ServeFileFS` (net and unknown); `strconv` parse errors; `net/url.Parse`; the always-nil writers `bytes.Buffer`, `strings.Builder` and `hash.Hash.Write` (`none`, with source lines in the file) |

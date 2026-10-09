@@ -28,7 +28,7 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 - `effectgo sig ./...`: one `Effect<A, E, R>` line per function (exit 3 when printed; the lines go to stderr).
 - Report flags: `-effects.report`, `-effects.witness`, `-errset.report`, `-errset.witness`, `-errset.statuses`. They print information, not diagnostics.
 - HTTP checks: `effectgo http ./...`, `http-gin`, `http-huma`, and `openapi -check spec.json ./...` (exit 1 on a missing code). See [docs/guide/http-checks.md](docs/guide/http-checks.md).
-- Stub files: the zero configuration reads the shipped stubs and the module's `effectgo.stubs`. `-stubs=…` or `$EFFECTGO_STUBS` replace it entirely. Stub syntax: [docs/reference/stubs.md](docs/reference/stubs.md).
+- Stub files: the zero configuration reads the shipped stubs and the module's `effectgo.stubs`. `-stubs=…` or `$EFFECTGO_STUBS` replace it entirely. Stub syntax: [docs/reference/stubs.md](docs/reference/stubs.md). What the shipped stubs cover, target by target: [docs/reference/stub-coverage.md](docs/reference/stub-coverage.md).
 - Test files are skipped standalone unless `-test=true`.
 
 ### How to read a diagnostic
@@ -49,6 +49,16 @@ Decide which side is wrong, and change that side:
 
 Do not add a directive only to silence output. A contract that is never checked against a real finding is noise.
 
+### Lessons from the dogfood run
+
+Each lesson is a mistake a first-time user made with effectgo, and the page that answers it.
+
+- **Put the contract on the interface you call.** An uncontracted interface call is `unknown`, and `unknown` breaks `pure` and any `allow` list that does not name it. Declare the contract at package level, next to the interface. See [Directives](docs/reference/directives.md#unknown-and-the-contracts).
+- **In net/http, check an inner method that returns an error.** A `func(w, r)` handler has no error result, so a directive on it checks nothing. Put `//effectgo:handler` on the method that returns the error, and let a thin adapter write the response. See [HTTP checks](docs/guide/http-checks.md#nethttp-handlers).
+- **Mark enums and sealed sets explicitly.** A named integer is not an enum unless it has `//effectgo:sealed`, and an interface is sealed by an unexported marker method, not by the directive alone. See [Directives](docs/reference/directives.md#when-an-interface-needs-effectgosealed).
+- **Read the chain, then the origin.** The first words name the function that breaks the contract; the last witness step is the call that introduced the effect. A run of `cannot resolve` lines is one bad name repeated, and a `?` or `new@` in an error set is an error that `errors.Is` cannot match. See [Analyzers](docs/reference/analyzers.md#errset) and [Error sets](docs/reference/errors.md#variants).
+- **Run both entry points, and confirm the package was analysed.** Standalone runs skip `_test.go` files and a clean run prints nothing. Run `go vet -vettool=…` as well, and use `effectgo sig` to see the signatures of a package. See [Getting started](docs/guide/getting-started.md#a-clean-run-is-not-a-full-run).
+
 ### Caching gotchas
 
 - After editing a stub file given with `-stubs`, run `go vet -a`. Stubs named with `$EFFECTGO_STUBS`, shipped stubs and the module's `effectgo.stubs` invalidate the vet cache by themselves.
@@ -60,7 +70,7 @@ Do not add a directive only to silence output. A contract that is never checked 
 
 From the repository root (Go 1.26):
 
-```
+```sh
 go build ./...
 go vet ./...
 go test ./... -count=1
@@ -71,7 +81,7 @@ bash examples/run.sh          # builds bin/effectgo and runs both examples; must
 
 In this workspace, run `go test` and other heavy commands under the shared lock, with the memory cap:
 
-```
+```sh
 flock /root/pp/go-rust/realworld-eval/heavy.lock systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 timeout 2400 \
   bash -c 'cd DIR && env -u GOROOT GOFLAGS=-buildvcs=false <cmd>'
 ```
@@ -85,7 +95,8 @@ flock /root/pp/go-rust/realworld-eval/heavy.lock systemd-run --scope -q -p Memor
 | `signature/` | `effectgo sig` |
 | `openapi/`, `adapters/gin/`, `adapters/huma/` | the OpenAPI and HTTP checks |
 | `internal/stubs/`, `internal/goroot/` | stub parser and discovery; standard-library detection |
-| `stubs/` | shipped stub files, embedded |
+| `internal/cmd/stubdoc/` | generates `docs/reference/stub-coverage.md` from the shipped stubs; its test fails when the page is stale |
+| `stubs/` | shipped stub files, embedded; `go generate ./stubs` regenerates the coverage page |
 | `plugin/` | golangci-lint module plugin |
 | `cmd/effectgo/` | the binary and its subcommands |
 | `examples/` | `layers` (effects), `todo` (errset, OpenAPI, HTTP), `editor` (plugin and project stubs) |
@@ -109,6 +120,7 @@ Architecture: [docs/design/architecture.md](docs/design/architecture.md).
 2. Add a comment with the source path and line, and the module version checked.
 3. If the rule changes an analyzer's output, add or update a test in that analyzer's `testdata/` and run `bash examples/run.sh`.
 4. Check that the file still parses: a malformed line is a hard error that names the file and line.
+5. Regenerate the coverage page with `go generate ./stubs` and commit it with the rule. `go test ./internal/cmd/stubdoc` fails until the page matches the files ([docs/reference/stub-coverage.md](docs/reference/stub-coverage.md)).
 
 ### Adding an analyzer
 

@@ -12,6 +12,11 @@ import (
 	"path"
 )
 
+// The stub coverage page is generated from these files; go generate runs
+// internal/cmd/stubdoc, and its test fails when the page is out of date.
+//
+//go:generate go run ../internal/cmd/stubdoc -o ../docs/reference/stub-coverage.md
+
 //go:embed *.stubs
 var files embed.FS
 
