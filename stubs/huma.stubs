@@ -1,19 +1,89 @@
-# Stub rules for github.com/danielgtaylor/huma/v2 (v2.37.2 was checked, under
-# the module cache).
+# Stub rules for github.com/danielgtaylor/huma/v2 (v2.37.2, checked against the
+# module cache at /root/.local/share/go/pkg/mod/github.com/danielgtaylor/huma/v2@v2.37.2).
 #
-# huma.NewError is a package-level VARIABLE of func type, not a function
-# (error.go:231: "var NewError = func(status int, msg string, errs ...error)
-# StatusError"). A call to it is a dynamic call, so without a rule every call
-# to huma.NewError is "unknown". The default implementation only reads its
-# arguments and builds an *ErrorModel (error.go:231-250); it calls Error() on
-# each error, which is pure by the error.Error rule in stdlib.stubs. So the
-# default is pure.
+# Every rule's file:line is in its comment. Judgment calls are explained below.
 #
-# Caveat: an application may replace the variable at start-up
-# (error.go:224 documents "huma.NewError = func(...)"). The rule describes the
-# default, not an override. An override that does I/O is not seen.
+# 1. huma.NewError is a package-level VARIABLE of func type (error.go:231, "var
+#    NewError = func(status int, msg string, errs ...error) StatusError"). A call
+#    to it is a dynamic call. Its default implementation only reads its arguments
+#    and builds an *ErrorModel (error.go:231-250), so the effects rule is pure.
+#    Caveat: an application may replace the variable at start-up (error.go:224
+#    documents "huma.NewError = func(...)"). The rules describe the default.
 #
-# Route registration (huma.Get, huma.Register, ...) and status/route facts are
-# not stubbed here.
+# 2. Status-carrying constructors. Each Error<NNN><Name> (error.go:281-477) is
+#    "return NewError(http.Status<Name>, msg, errs...)", so the error it returns
+#    carries the status in its name. The rule says so for errset: the call
+#    returns a carried variant with that status (see errset/carried.go). The 40
+#    lines were generated from the source and each code was checked against the
+#    http.Status<Name> constant in the body of the function.
+#
+# 3. NewError and NewErrorWithContext take the status as an argument: "arg:N"
+#    names the argument index (NewError: 0, error.go:231; NewErrorWithContext:
+#    1, after the Context at 0, error.go:251). A non-constant status is unknown.
+#
+# 4. Route registration (huma.go:2281-2383 for Get/Post/Put/Patch/Delete, and
+#    huma.go:708 for Register). Get/Post/Put/Patch/Delete take the path at index 1
+#    and the handler at index 2. Register takes an huma.Operation as argument 1,
+#    so its method and path are the Method and Path fields of that composite
+#    literal (@1.Method, @1.Path).
+#
+# 5. The default errmap: huma sends an error that implements StatusError with
+#    the status it reports (huma.go:1096-1106: errors.As(err, &StatusError) ->
+#    GetStatus()), and every other error as 500 "unexpected error occurred".
+#    errors.As also finds a %w-wrapped StatusError. errset cannot read GetStatus
+#    of an arbitrary type, so a non-carried StatusError has an unknown status.
 
 effects github.com/danielgtaylor/huma/v2.NewError pure
+
+status github.com/danielgtaylor/huma/v2.Error400BadRequest 400   # error.go:281-282
+status github.com/danielgtaylor/huma/v2.Error401Unauthorized 401   # error.go:286-287
+status github.com/danielgtaylor/huma/v2.Error402PaymentRequired 402   # error.go:291-292
+status github.com/danielgtaylor/huma/v2.Error403Forbidden 403   # error.go:296-297
+status github.com/danielgtaylor/huma/v2.Error404NotFound 404   # error.go:301-302
+status github.com/danielgtaylor/huma/v2.Error405MethodNotAllowed 405   # error.go:306-307
+status github.com/danielgtaylor/huma/v2.Error406NotAcceptable 406   # error.go:311-312
+status github.com/danielgtaylor/huma/v2.Error407ProxyAuthRequired 407   # error.go:316-317
+status github.com/danielgtaylor/huma/v2.Error408RequestTimeout 408   # error.go:321-322
+status github.com/danielgtaylor/huma/v2.Error409Conflict 409   # error.go:326-327
+status github.com/danielgtaylor/huma/v2.Error410Gone 410   # error.go:331-332
+status github.com/danielgtaylor/huma/v2.Error411LengthRequired 411   # error.go:336-337
+status github.com/danielgtaylor/huma/v2.Error412PreconditionFailed 412   # error.go:341-342
+status github.com/danielgtaylor/huma/v2.Error413RequestEntityTooLarge 413   # error.go:346-347
+status github.com/danielgtaylor/huma/v2.Error414RequestURITooLong 414   # error.go:351-352
+status github.com/danielgtaylor/huma/v2.Error415UnsupportedMediaType 415   # error.go:356-357
+status github.com/danielgtaylor/huma/v2.Error416RequestedRangeNotSatisfiable 416   # error.go:361-362
+status github.com/danielgtaylor/huma/v2.Error417ExpectationFailed 417   # error.go:366-367
+status github.com/danielgtaylor/huma/v2.Error418Teapot 418   # error.go:371-372
+status github.com/danielgtaylor/huma/v2.Error421MisdirectedRequest 421   # error.go:376-377
+status github.com/danielgtaylor/huma/v2.Error422UnprocessableEntity 422   # error.go:381-382
+status github.com/danielgtaylor/huma/v2.Error423Locked 423   # error.go:386-387
+status github.com/danielgtaylor/huma/v2.Error424FailedDependency 424   # error.go:391-392
+status github.com/danielgtaylor/huma/v2.Error425TooEarly 425   # error.go:396-397
+status github.com/danielgtaylor/huma/v2.Error426UpgradeRequired 426   # error.go:401-402
+status github.com/danielgtaylor/huma/v2.Error428PreconditionRequired 428   # error.go:406-407
+status github.com/danielgtaylor/huma/v2.Error429TooManyRequests 429   # error.go:411-412
+status github.com/danielgtaylor/huma/v2.Error431RequestHeaderFieldsTooLarge 431   # error.go:416-417
+status github.com/danielgtaylor/huma/v2.Error451UnavailableForLegalReasons 451   # error.go:421-422
+status github.com/danielgtaylor/huma/v2.Error500InternalServerError 500   # error.go:426-427
+status github.com/danielgtaylor/huma/v2.Error501NotImplemented 501   # error.go:431-432
+status github.com/danielgtaylor/huma/v2.Error502BadGateway 502   # error.go:436-437
+status github.com/danielgtaylor/huma/v2.Error503ServiceUnavailable 503   # error.go:441-442
+status github.com/danielgtaylor/huma/v2.Error504GatewayTimeout 504   # error.go:446-447
+status github.com/danielgtaylor/huma/v2.Error505HTTPVersionNotSupported 505   # error.go:451-452
+status github.com/danielgtaylor/huma/v2.Error506VariantAlsoNegotiates 506   # error.go:456-457
+status github.com/danielgtaylor/huma/v2.Error507InsufficientStorage 507   # error.go:461-462
+status github.com/danielgtaylor/huma/v2.Error508LoopDetected 508   # error.go:466-467
+status github.com/danielgtaylor/huma/v2.Error510NotExtended 510   # error.go:471-472
+status github.com/danielgtaylor/huma/v2.Error511NetworkAuthenticationRequired 511   # error.go:476-477
+status github.com/danielgtaylor/huma/v2.Status304NotModified 304   # error.go:276-278 (NewError(http.StatusNotModified, ""))
+status github.com/danielgtaylor/huma/v2.NewError arg:0   # error.go:231 (var; the status is the first argument)
+status github.com/danielgtaylor/huma/v2.NewErrorWithContext arg:1   # error.go:251 (var; the status follows the Context)
+
+route github.com/danielgtaylor/huma/v2.Get GET 1 2       # huma.go:2281
+route github.com/danielgtaylor/huma/v2.Post POST 1 2     # huma.go:2302
+route github.com/danielgtaylor/huma/v2.Put PUT 1 2       # huma.go:2343
+route github.com/danielgtaylor/huma/v2.Patch PATCH 1 2   # huma.go:2364
+route github.com/danielgtaylor/huma/v2.Delete DELETE 1 2 # huma.go:2383
+route github.com/danielgtaylor/huma/v2.Register @1.Method @1.Path 2   # huma.go:708
+
+errdefault github.com/danielgtaylor/huma/v2 passthrough=iface:github.com/danielgtaylor/huma/v2.StatusError,fallback=500   # huma.go:1094-1106

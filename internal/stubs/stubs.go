@@ -5,8 +5,9 @@
 //
 //	effects <target> <effect,effect,...>   # or the word: pure
 //	errors  <target> <variant,variant,...> # or the word: none
-//	status  (pkgpath.Type) <code>
-//	route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>
+//	status  (pkgpath.Type) <code>           // or: pkgpath.Func / pkgpath.Var <code | arg:N>
+//	route   pkgpath.Func <METHOD|@N.Field> <pathArgIndex|@N.Field> <handlerArgIndex>
+//	errdefault <pkgpath> passthrough=iface:pkgpath.Iface,fallback=<code>
 //	sink    <target> status=<argIndex> [body=<argIndex>]
 //
 // '#' starts a comment and fields are separated by whitespace. A target is
@@ -49,14 +50,17 @@ const (
 	VerbStatus  = "status"
 	VerbRoute   = "route"
 	VerbSink    = "sink"
+	// VerbErrdefault is the default errmap of the routes of a package.
+	VerbErrdefault = "errdefault"
 )
 
 // verbArity is the number of fields of each verb, the verb included.
 var verbArity = map[string]int{
-	VerbEffects: 3,
-	VerbErrors:  3,
-	VerbStatus:  3,
-	VerbRoute:   5,
+	VerbEffects:    3,
+	VerbErrors:     3,
+	VerbStatus:     3,
+	VerbRoute:      5,
+	VerbErrdefault: 3,
 }
 
 // Methods accepted by a route rule.
@@ -253,16 +257,22 @@ func Parse(name string, data []byte) ([]Rule, error) {
 		}
 		arity, known := verbArity[verb]
 		if !known {
-			return nil, fail("unknown verb %q (want effects, errors, status, route or sink)", verb)
+			return nil, fail("unknown verb %q (want effects, errors, status, route, errdefault or sink)", verb)
 		}
 		if len(f) != arity {
 			return nil, fail("%s", arityMessage(verb, len(f)))
 		}
 		r := Rule{File: name, Line: i + 1, Verb: verb, Value: f[2]}
 		var err error
-		if verb == VerbStatus {
+		switch {
+		case verb == VerbStatus && strings.HasPrefix(f[1], "("):
 			r.Target, err = ParseTypeTarget(f[1])
-		} else {
+		case verb == VerbErrdefault:
+			r.Target, err = Target{Pkg: f[1]}, nil
+			if strings.ContainsAny(f[1], "()") {
+				err = fmt.Errorf("errdefault target %q: want a package path", f[1])
+			}
+		default:
 			r.Target, err = ParseTarget(f[1])
 		}
 		if err != nil {
@@ -270,23 +280,30 @@ func Parse(name string, data []byte) ([]Rule, error) {
 		}
 		switch verb {
 		case VerbStatus:
-			code, err := strconv.Atoi(f[2])
-			if err != nil || code < 100 || code > 599 {
-				return nil, fail("status wants an HTTP status code (100-599), got %q", f[2])
+			if _, err := ParseStatusValue(f[2]); err != nil {
+				return nil, fail("%v", err)
 			}
 		case VerbRoute:
 			if r.Target.Method || r.Target.TypeOnly {
 				return nil, fail("route target %q must be a function, not a method or a type", f[1])
 			}
-			if !routeMethods[f[2]] {
-				return nil, fail("route method %q (want GET, POST, PUT, PATCH or DELETE)", f[2])
+			if _, ok, _ := ParseFieldRef(f[2]); !ok && !routeMethods[f[2]] {
+				return nil, fail("route method %q (want GET, POST, PUT, PATCH, DELETE or @N.Field)", f[2])
+			}
+			if _, ok, err := ParseFieldRef(f[2]); ok && err != nil {
+				return nil, fail("%v", err)
 			}
 			r.Value = f[2]
 			r.Args = []string{f[3], f[4]}
-			for _, a := range r.Args {
-				if n, err := strconv.Atoi(a); err != nil || n < 0 {
-					return nil, fail("route argument index %q must be a non-negative integer", a)
-				}
+			if _, err := ParseRouteArg(f[3]); err != nil {
+				return nil, fail("%v", err)
+			}
+			if n, err := strconv.Atoi(f[4]); err != nil || n < 0 {
+				return nil, fail("route handler index %q must be a non-negative integer", f[4])
+			}
+		case VerbErrdefault:
+			if _, err := ParseErrdefault(f[2]); err != nil {
+				return nil, fail("%v", err)
 			}
 		}
 		rules = append(rules, r)

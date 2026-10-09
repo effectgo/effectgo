@@ -22,6 +22,7 @@ import (
 	"go/types"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
@@ -118,6 +119,11 @@ func routeTable() (map[string]routeRule, error) {
 	out := map[string]routeRule{}
 	for _, r := range rules {
 		if r.Verb != stubs.VerbRoute {
+			continue
+		}
+		// A rule with a field reference (@N.Field, Huma's huma.Register) is read by
+		// the Huma adapter, not here: this analyzer only knows constant indexes.
+		if strings.HasPrefix(r.Value, "@") || strings.HasPrefix(r.Args[0], "@") {
 			continue
 		}
 		// internal/stubs has checked that both indexes are non-negative integers.
