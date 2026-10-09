@@ -142,6 +142,26 @@ type ssaUnit struct {
 	// allocs is the union of the error sets stored into each captured or
 	// address-taken variable (an *ssa.Alloc). A load of it yields this set.
 	allocs map[*ssa.Alloc]errSet
+	// closureWrites is the union of the sets stored into a variable by a
+	// function other than the one that declares it (a literal that captures
+	// it). Such a store may run after the return that the declaring function
+	// makes, so it is part of the variable's value at the return.
+	closureWrites map[*ssa.Alloc]errSet
+	// rets is the set that a result variable (an *ssa.Alloc of the declaring
+	// function, read by its Return) has when the function returns: the values
+	// stored by the return statements, plus closureWrites. A deferred literal
+	// reads it, since it runs at the return (see deferOnly).
+	rets map[*ssa.Alloc]errSet
+	// escaped marks the variables whose address reaches an instruction other
+	// than a load, a store to them or a closure binding; a call may write them
+	// through the pointer, so the return of such a variable adds an opaque.
+	escaped map[*ssa.Alloc]bool
+	// deferOnly marks the literals whose every creation is a defer statement.
+	deferOnly map[*ssa.Function]bool
+	// recovers is true when a function of the unit calls recover. A recovered
+	// panic returns the variables as they were at the panic, so a return then
+	// has every stored value (the union), not only the return's own store.
+	recovers bool
 	// lits is the error set of each literal with an error result.
 	lits map[*ssa.Function]errSet
 	// deps maps each same-package callee that the unit reads to its work
@@ -167,6 +187,10 @@ func (p *pkgState) newSSAUnit(u *fnUnit, top *ssa.Function) *ssaUnit {
 		freeOwner:     map[*ssa.FreeVar]freeRef{},
 		ownParams:     map[*ssa.Parameter]int{},
 		allocs:        map[*ssa.Alloc]errSet{},
+		closureWrites: map[*ssa.Alloc]errSet{},
+		rets:          map[*ssa.Alloc]errSet{},
+		escaped:       map[*ssa.Alloc]bool{},
+		deferOnly:     map[*ssa.Function]bool{},
 		lits:          map[*ssa.Function]errSet{},
 	}
 	var walk func(fn *ssa.Function)
@@ -193,6 +217,7 @@ func (p *pkgState) newSSAUnit(u *fnUnit, top *ssa.Function) *ssaUnit {
 			}
 		}
 	}
+	un.scanUses()
 	recv := 0
 	if top.Signature.Recv() != nil {
 		recv = 1

@@ -378,9 +378,7 @@ func (f *ssaFn) transfer(v ssa.Value, b *ssa.BasicBlock) errSet {
 			return setOf(opaqueVariant())
 		}
 		if root := f.u.root(x.X); root != nil {
-			out := errSet{}
-			out.putAll(f.u.allocs[root])
-			return out
+			return f.loadSet(x, root, b)
 		}
 		return setOf(opaqueVariant())
 	case *ssa.MakeInterface:
@@ -420,6 +418,12 @@ func (f *ssaFn) returnSet() errSet {
 		}
 		r, ok := b.Instrs[len(b.Instrs)-1].(*ssa.Return)
 		if !ok || len(r.Results) <= f.errIdx {
+			continue
+		}
+		// A result variable of this function is read at the return: its set
+		// is the value at each return and the closures' writes (see ssadefer.go).
+		if a := f.resultAlloc(r.Results[f.errIdx]); a != nil {
+			out.putAll(f.u.rets[a])
 			continue
 		}
 		out.putAll(f.effective(r.Results[f.errIdx], f.env[b]))
@@ -482,8 +486,21 @@ func (u *ssaUnit) solve() bool {
 					if cur.putAll(s) {
 						changed = true
 					}
+					if root.Parent() != f.fn {
+						cw := u.closureWrites[root]
+						if cw == nil {
+							cw = errSet{}
+							u.closureWrites[root] = cw
+						}
+						if cw.putAll(s) {
+							changed = true
+						}
+					}
 				}
 			}
+		}
+		if u.updateRets() {
+			changed = true
 		}
 		for _, f := range u.fns[1:] {
 			s := f.returnSet()
