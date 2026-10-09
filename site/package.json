@@ -10,7 +10,8 @@
     "typecheck": "astro check",
     "lint:docs": "node scripts/lint-docs.mjs",
     "build:public": "DOCS_PUBLIC=1 pnpm build",
-    "check:public": "node scripts/check-public.mjs"
+    "check:public": "node scripts/check-public.mjs",
+    "deploy:public": "bash scripts/deploy-public.sh"
   },
   "dependencies": {
     "@cloudflare/nimbus-docs": "^0.17.0",

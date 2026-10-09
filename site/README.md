@@ -71,3 +71,24 @@ After `pnpm build`, `dist/` contains:
 ## Versions
 
 Tracking latest: `@cloudflare/create-nimbus-docs` 0.7.11 (scaffolder), `@cloudflare/nimbus-docs` 0.17.0, `astro` 7.3.1. The exact versions are in `pnpm-lock.yaml`.
+
+## Deploy (public site)
+
+The public site is served by Cloudflare (Pages on Workers, static assets only) at
+https://effectgo-docs.faintghost.workers.dev, deployed with the `cf` CLI:
+
+```sh
+pnpm deploy:public            # build:public → check:public → copy dist → cf deploy
+pnpm deploy:public --dry-run  # everything except the upload
+```
+
+`scripts/deploy-public.sh` builds in public mode (journal excluded, private
+names redacted), refuses to continue if `check:public` finds a denylisted term,
+copies the result into `deploy/public/`, and runs `cf deploy` from `deploy/`.
+`deploy/` holds only the Cloudflare config (`cloudflare.config.ts`,
+`wrangler.config.ts`) and its own `package.json`; its `public/`, `node_modules/`
+and `.cloudflare/` are gitignored. Because `deploy/` contains no site source,
+`cf deploy` cannot build or upload the unredacted default site. Never point a
+deploy at a default build.
+
+Override the origin with `SITE_URL=… pnpm deploy:public` if the Worker URL changes.
