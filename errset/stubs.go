@@ -300,6 +300,49 @@ func (p *pkgState) stubSet(f *types.Func) (errSet, bool) {
 	return s, ok
 }
 
+// stubSetVia is stubSet for a method called on a value of static type recv. A
+// method that an interface gets by embedding (hash.Hash gets Write from
+// io.Writer) names the embedded interface as its receiver, so a stub on the
+// interface the value has, "errors (hash.Hash).Write", is looked up by recv too.
+// The interfaces that recv embeds are searched as well: a hash.Hash32 is a
+// hash.Hash, so the contract of hash.Hash.Write holds for it. recv may be nil,
+// which gives stubSet.
+func (p *pkgState) stubSetVia(f *types.Func, recv types.Type) (errSet, bool) {
+	if s, ok := p.stubSet(f); ok {
+		return s, true
+	}
+	if recv == nil || f == nil || !isInterfaceMethod(f) || len(p.stubs) == 0 {
+		return nil, false
+	}
+	return p.stubInInterfaces(recv, f.Name(), 0)
+}
+
+// stubInInterfaces looks up the stub of method name on the named type t, then on
+// the named interfaces that t embeds, recursively (depth bounds the walk).
+func (p *pkgState) stubInInterfaces(t types.Type, name string, depth int) (errSet, bool) {
+	t = types.Unalias(t)
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(ptr.Elem())
+	}
+	named, ok := t.(*types.Named)
+	if !ok || named.Obj().Pkg() == nil || depth > 8 {
+		return nil, false
+	}
+	if s, ok := p.stubs[objKey(named.Obj())+"."+name]; ok {
+		return s, true
+	}
+	iface, ok := named.Underlying().(*types.Interface)
+	if !ok {
+		return nil, false
+	}
+	for i := 0; i < iface.NumEmbeddeds(); i++ {
+		if s, ok := p.stubInInterfaces(iface.EmbeddedType(i), name, depth+1); ok {
+			return s, true
+		}
+	}
+	return nil, false
+}
+
 // stubLabel is the witness label of a stub-provided variant.
 func stubLabel(f *types.Func) string {
 	if f.Type().(*types.Signature).Recv() != nil {
