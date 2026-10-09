@@ -174,9 +174,9 @@ type groupDef struct {
 	prefix string
 }
 
-// loadSinks reads the sink rules of the configured stub files.
-func loadSinks() (map[string]sinkRule, error) {
-	rules, err := stubs.Load(stubs.Paths())
+// loadSinks reads the sink rules of the stub files of the pass's package.
+func loadSinks(pass *analysis.Pass) (map[string]sinkRule, error) {
+	rules, err := stubs.RulesForPass(pass)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func loadSinks() (map[string]sinkRule, error) {
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	sinks, err := loadSinks()
+	sinks, err := loadSinks(pass)
 	if err != nil {
 		return nil, err
 	}

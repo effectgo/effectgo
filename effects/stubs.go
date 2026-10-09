@@ -27,13 +27,9 @@ func (t *stubTable) lookup(key string) ([]string, bool) {
 	return effs, ok
 }
 
-// loadStubs builds the effects table from the stub files named by -stubs (or
-// $EFFECTGO_STUBS). Malformed rules are errors that name the file and line.
-func loadStubs(paths []string) (*stubTable, error) {
-	rules, err := stubs.Load(paths)
-	if err != nil {
-		return nil, err
-	}
+// loadStubs builds the effects table from the stub rules of the analysis (see
+// stubs.RulesForPass). Malformed rules are errors that name the file and line.
+func loadStubs(rules []stubs.Rule) (*stubTable, error) {
 	t := &stubTable{effects: map[string][]string{}}
 	for _, r := range rules {
 		if r.Verb != stubs.VerbEffects {

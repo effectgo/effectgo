@@ -74,7 +74,7 @@ Flags (the same spelling standalone and under `go vet`):
 
 | Flag | Meaning |
 |---|---|
-| `-stubs=a.stubs,b.stubs` | stub files read by both analyzers. Falls back to `$EFFECTGO_STUBS` when empty. |
+| `-stubs=a.stubs,b.stubs` | stub files read by both analyzers. When empty, `$EFFECTGO_STUBS` is used; when that is empty too, the zero configuration applies (see "Stub files" below). |
 | `-test` | analyze `_test.go` files too (standalone only; default `false`) |
 | `-effects.report` | also print `effects of <F>: {…}` for every declared function |
 | `-effects.witness` | also print one `witness of <F>: <effect> via <chain>` line per effect |
@@ -82,7 +82,14 @@ Flags (the same spelling standalone and under `go vet`):
 | `-errset.witness` | also print one `witness of <F>: <variant> via <chain>` line per variant (`witness of <F> [handler]: …` for handler sets) |
 | `-errset.ignoreopaque` | do not report opaque (`?`) and fresh (`new@`) errors in handler checks |
 
-With no stub file configured (neither `-stubs` nor `$EFFECTGO_STUBS`), a standalone, `sig` or `openapi` run prints one warning line to stderr. go vet runs stay quiet.
+### Stub files (zero configuration)
+
+With neither `-stubs` nor `$EFFECTGO_STUBS` set, every run reads the stub files of the analyzed code's module, and nothing has to be configured:
+
+- the stub files shipped inside the binary (`stubs/*.stubs`, embedded with `go:embed`, so a binary or the golangci-lint plugin works without a checkout);
+- the project file `effectgo.stubs` at the module root (the nearest `go.mod` above the analyzed file), when the module has one. Its format is the stub format of `NOTES.md`; a malformed line is an error that names the file and line.
+
+Setting `-stubs` or `$EFFECTGO_STUBS` replaces the whole zero configuration: then exactly those files are read, and neither the shipped stubs nor the project file are. The former "no stub files" warning is gone, because the zero configuration always loads the shipped stubs.
 
 ### Witness lines
 
@@ -133,9 +140,9 @@ The original name is kept in witness lines only: `witness of F: ? (pgconn.connLo
 
 `go vet` forwards only the flags that the tool advertises with `-flags`. `-stubs` is advertised, so it works through `go vet -vettool`. The prototypes had per-analyzer `-effects.stubs` and `-errset.stubs`; those are gone, in favour of the single shared flag.
 
-Results are cached by `go vet` under the tool's identity. effectgo puts a hash of its own executable and of every stub file named in `$EFFECTGO_STUBS` into that identity, so editing a stub invalidates the cache. This covers the stub files named in `$EFFECTGO_STUBS` only. `go vet` asks the tool for its identity (`-V=full`) without any flags, so a stub file passed only through `-stubs` is not in the identity, and an edit to it can leave a stale cached vet result. For `go vet` use, put every stub file in `$EFFECTGO_STUBS` (as well as, or instead of, `-stubs`), or run `go vet -a` after editing a stub. The standalone run has no cache and is not affected. See `NOTES.md`, "Vet cache identity".
+Results are cached by `go vet` under the tool's identity. effectgo puts a hash of its own executable and of every stub file that the analysis reads from the working directory into that identity: the zero configuration (the shipped files and the module's `effectgo.stubs`), or the files named in `$EFFECTGO_STUBS`. An edit to any of them invalidates the cache. `go vet` asks the tool for its identity (`-V=full`) without any flags, so a file passed only through `-stubs` is not in the identity, and an edit to it can leave a stale cached vet result. For that case, name the file in `$EFFECTGO_STUBS` as well, or run `go vet -a` after editing it. Project files of other modules below the working directory are not hashed either. The standalone run has no cache and is not affected. See `NOTES.md`, "Vet cache identity".
 
-Recommended for `go vet`:
+`go vet` needs no stub configuration any more (the zero configuration applies). To pin the stub files explicitly, for example to use a different set:
 
 ```
 export EFFECTGO_STUBS=/abs/path/stubs/stdlib.stubs,/abs/path/stubs/fuego.stubs
@@ -354,6 +361,21 @@ $ cd service && effectgo http -json -all ./...  # one JSON object per finding
 ```
 
 The summary line on stderr counts both adapters (the `info` counts include the hidden findings).
+
+## Editor integration
+
+The contract analyzers (`effects`, `errset`) also run in the editor, through a golangci-lint v2 module plugin (`github.com/faintghost/effectgo/plugin`). The plugin exposes only the contract analyzers, not the report flags or the HTTP subcommands.
+
+```
+cd examples/editor && golangci-lint custom     # builds ./bin/custom-gcl with the plugin
+```
+
+Then enable `effectgo` in the module's `.golangci.yml` (example: `examples/editor/.golangci.yml`) and point the editor at the binary:
+
+- VS Code: `go.lintTool: "golangci-lint-v2"` with `go.alternateTools`, or `go.vetFlags: ["-vettool=…/effectgo"]`.
+- Neovim: nvim-lint's `golangcilint` linter with `cmd` set to the binary.
+
+The recipes, the exact invocations and what was and was not verified are in [docs/editor/](docs/editor/README.md). Stub files need no configuration (see "Stub files"). A known limitation: golangci-lint's result cache does not see stub file edits, so after editing a project `effectgo.stubs` run `golangci-lint cache clean` once; `go vet` does see them. Latency and the verification matrix are in `NOTES.md`, "Editor integration".
 
 ## Comparison with related tools
 

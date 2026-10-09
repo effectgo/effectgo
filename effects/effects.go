@@ -461,7 +461,11 @@ func run(pass *analysis.Pass) (any, error) {
 		// The result must still have the declared type (Result), not nil.
 		return Result{}, nil
 	}
-	table, err := loadStubs(stubs.Paths())
+	rules, err := stubs.RulesForPass(pass)
+	if err != nil {
+		return nil, err
+	}
+	table, err := loadStubs(rules)
 	if err != nil {
 		return nil, err
 	}

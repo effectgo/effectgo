@@ -1,0 +1,5 @@
+# Project stub file of the editor example. effectgo reads it from the module
+# root (the directory with go.mod) with no configuration: the shipped stubs
+# plus this file. The store package has no body that effectgo can see through,
+# so its effect is declared here.
+effects example.com/editor/store.Save db

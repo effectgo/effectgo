@@ -1,0 +1,2 @@
+# Intentionally empty: no stub rules. TestMain points -stubs here, so that a
+# test without stubs gets none (an empty -stubs would mean the zero configuration).

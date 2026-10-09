@@ -13,11 +13,18 @@ import (
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
-// TestMain clears EFFECTGO_STUBS: the tests state their stub files themselves
-// (TestStubsEnvFallback sets the variable for its own run). The shipped
-// stdlib.stubs would change the expected results, e.g. (error).Error is pure.
+// TestMain clears EFFECTGO_STUBS and selects an explicit empty stub file: the
+// tests state their stub files themselves (TestStubsEnvFallback sets the
+// variable for its own run). Without -stubs, the zero configuration would load
+// the shipped stdlib.stubs, which changes the expected results, e.g. (error).Error
+// is pure.
 func TestMain(m *testing.M) {
 	os.Unsetenv(stubs.Env)
+	none, err := filepath.Abs("testdata/stubs/none.stubs")
+	if err != nil {
+		panic(err)
+	}
+	stubs.Flag = none
 	os.Exit(m.Run())
 }
 

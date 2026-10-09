@@ -101,9 +101,10 @@ type rules struct {
 	statusFunc statusFuncRules             // status-function rules (carried.go)
 }
 
-// loadRules reads the route and errdefault rules of the configured stub files.
-func loadRules() (rules, error) {
-	all, err := stubs.Load(stubs.Paths())
+// loadRules reads the route and errdefault rules of the stub files of the
+// pass's package.
+func loadRules(pass *analysis.Pass) (rules, error) {
+	all, err := stubs.RulesForPass(pass)
 	if err != nil {
 		return rules{}, err
 	}
@@ -131,7 +132,7 @@ func loadRules() (rules, error) {
 
 func run(pass *analysis.Pass) (any, error) {
 	res, _ := pass.ResultOf[errset.Analyzer].(errset.Result)
-	rs, err := loadRules()
+	rs, err := loadRules(pass)
 	if err != nil {
 		return nil, err
 	}

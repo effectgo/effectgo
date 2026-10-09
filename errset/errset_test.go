@@ -10,12 +10,18 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-// TestMain clears EFFECTGO_STUBS: the tests state their stub files themselves.
-// The shipped stdlib.stubs would change the expected results (it makes
-// (error).Error pure and gives strconv.Atoi a *strconv.NumError), so an
-// inherited value must not reach them.
+// TestMain clears EFFECTGO_STUBS and selects an explicit empty stub file: the
+// tests state their stub files themselves. The shipped stdlib.stubs would change
+// the expected results (it makes (error).Error pure and gives strconv.Atoi a
+// *strconv.NumError), and without -stubs the zero configuration would load it,
+// so an inherited value must not reach them.
 func TestMain(m *testing.M) {
 	os.Unsetenv(stubs.Env)
+	none, err := filepath.Abs("testdata/stubs/none.stubs")
+	if err != nil {
+		panic(err)
+	}
+	stubs.Flag = none
 	// EFFECTGO_TEST_ENGINE=ssa runs the whole suite with the SSA engine.
 	if e := os.Getenv("EFFECTGO_TEST_ENGINE"); e != "" {
 		if err := errset.Analyzer.Flags.Set("engine", e); err != nil {
