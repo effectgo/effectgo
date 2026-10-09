@@ -190,6 +190,9 @@ var Analyzer = &analysis.Analyzer{
 // analyzers read the //effectgo: prefix; each skips the other's keywords.
 var effectsKinds = map[string]bool{"pure": true, "allow": true, "package": true}
 
+// otherKinds are the directive keywords of the mustuse and exhaustive analyzers.
+var otherKinds = map[string]bool{"mustuse": true, "sealed": true}
+
 // Flags of the errset analyzer. The stub files are shared (-stubs, see
 // internal/stubs), so there is no errset.stubs flag.
 var (
@@ -1613,8 +1616,8 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 		switch {
 		case d.kind == "errors" || d.kind == "errmap" || d.kind == "handler":
 			dirs = append(dirs, d)
-		case effectsKinds[d.kind]:
-			// a contract of the effects analyzer, which checks it
+		case effectsKinds[d.kind], otherKinds[d.kind]:
+			// a contract of the effects analyzer, or a keyword of mustuse or exhaustive
 		default:
 			p.pass.Reportf(u.decl.Name.Pos(), "unknown directive //effectgo:%s", d.kind)
 		}

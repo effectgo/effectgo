@@ -188,7 +188,7 @@ func parseDirective(c *ast.Comment, inPkgDoc bool) (bool, *contract, []string) {
 		return false, nil, []string{"empty //effectgo: directive"}
 	}
 	kw, rest := toks[0], toks[1:]
-	if errsetKinds[kw] {
+	if errsetKinds[kw] || otherKinds[kw] {
 		// The errset analyzer reads these from the same prefix. They are not
 		// effects directives, so they are neither valid nor an error here.
 		return false, nil, nil
@@ -239,6 +239,10 @@ func parseDirective(c *ast.Comment, inPkgDoc bool) (bool, *contract, []string) {
 // errsetKinds are the directive keywords of the errset analyzer. Both
 // analyzers read the //effectgo: prefix; each skips the other's keywords.
 var errsetKinds = map[string]bool{"errors": true, "errmap": true, "handler": true}
+
+// otherKinds are the directive keywords of the mustuse and exhaustive analyzers,
+// which read the same prefix on types.
+var otherKinds = map[string]bool{"mustuse": true, "sealed": true}
 
 // splitNames splits "time,db" / "time db" style argument lists.
 func splitNames(toks []string) []string {

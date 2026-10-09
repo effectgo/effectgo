@@ -81,8 +81,8 @@ func (p *pkgState) contractDirectives(cg *ast.CommentGroup) []directive {
 			out = append(out, d)
 			continue
 		}
-		if effectsKinds[d.kind] {
-			continue // a contract of the effects analyzer
+		if effectsKinds[d.kind] || otherKinds[d.kind] {
+			continue // a contract of the effects analyzer, or a keyword of mustuse or exhaustive
 		}
 		p.pass.Reportf(d.pos, "unknown directive //effectgo:%s on an interface method or type", d.kind)
 	}
