@@ -82,6 +82,19 @@ package domain
 
 The package directive is the default for every function of the package that has no directive of its own. A function's own directives replace it. When two files of a package carry different package directives, the first valid one wins and the other is reported as `conflicting package directive ...; keeping ...`.
 
+The default does not apply to a function declared in a `_test.go` file. A table of func values in a test is test data, not the code under contract, so a test function under `//effectgo:package pure` is not checked against it. A directive written on a test function itself is still enforced, so a test can state a contract on purpose:
+
+```go
+// TestPure is a test of the pure package: its own directive is still checked.
+//
+//effectgo:pure
+func TestPure(t *testing.T) {
+	// ...
+}
+```
+
+Only the effects analyzer applies package defaults; the errset analyzer reads the directive but does not use it. The rule is the same under `effectgo ./...` and under `go vet`, which also analyzes test files.
+
 Errors reported by the parser:
 
 - `//effectgo:package is only valid in a package doc comment`

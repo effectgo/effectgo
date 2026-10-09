@@ -33,7 +33,7 @@ The default engine is **SSA**, flow-sensitive over the program's SSA values (`-e
 Under SSA:
 
 1. **Values.** A call takes the callee's set (with `param:i` bound to the arguments). A load of a sentinel global is that sentinel. `nil` is empty. A conversion to an interface of a concrete error type T is T. A type assertion is the asserted type. A `Phi` (a merge point) is the union of its incoming values, each taken on its own edge. `fmt.Errorf` with a constant format takes its `%w` arguments, and without `%w` it is fresh. `errors.Join` is the union of its arguments. Anything unresolved is `?`.
-2. **Captured or address-taken variables** have the union of every value stored into them.
+2. **Captured or address-taken variables** have the union of every value stored into them, except a named result, which is read at each return (see [Named results and defers](#named-results-and-defers)).
 3. **Narrowing.** Each branch edge narrows the value it tests (rules below).
 4. **Returns.** A function's set is the union of the effective sets of its error result at every `return`. A literal's set is its own returns. A returned literal gives the function a *handler set*.
 5. **Fixed point.** Sets only grow, and a witness is replaced only by a strictly shorter one. A unit that does not converge in 200 rounds falls back to the AST engine. Generic function bodies are not lowered by SSA and use the AST result.
@@ -62,6 +62,49 @@ A reassigned variable, and a value reset by a guard (`err = nil`), no longer car
 Only `errors.Is`, `errors.As`, `==` and type assertions narrow. `errors.Unwrap` chains, `reflect`, and user `Is`/`As` methods are not evaluated.
 
 Consequences to expect: findings can disappear (the guarded path no longer reaches a sink), and a few can appear (a call through a local closure is resolved to the literal, and a per-use read sees the variable at its own use).
+
+## Named results and defers
+
+A function with a named error result (`func f() (err error)`) keeps it in a variable, and so does any result that a closure captures. A `return` stores its value into that variable, runs the deferred calls, and returns what the variable holds. The set of such a function is computed from that sequence, not from every value ever stored into the variable:
+
+- each `return` contributes the value it stores, narrowed as usual. A `return err` that reads the result contributes the value the result holds at that point: the store that reaches the read along a straight line of blocks (for example the assignment in `if err = f(); err != nil { return err }`);
+- a closure that writes the result contributes what it writes. A deferred closure runs at the return, so its write is part of the result;
+- a deferred closure that only reads the result reads the value at the return. It does not add the values of earlier assignments.
+
+```go
+func Hold(r Reservation) (err error) {
+	tx, err := db.Begin() // a raw driver error: stored, but not returned
+	if err != nil {
+		return storageErr("begin", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	return storageErr("insert", insert(tx, r))
+}
+```
+
+The set of `Hold` is the set of `storageErr`, not the raw error of `db.Begin`. A closure that wraps the result keeps the variants it wraps:
+
+```go
+defer func() {
+	if err != nil {
+		err = fmt.Errorf("commit: %w", err) // the wrapped value's variants
+	}
+}()
+```
+
+A `%v` in the wrap makes the write opaque (`?`), as it does everywhere else. Four cases keep the older, wider set:
+
+- **the address of the result escapes**: `defer fill(&err)` passes `&err` to a call that may write it, so the set adds `?`;
+- **the function calls `recover`**: a recovered panic returns the result as it was at the panic, which can be any stored value, so the set is the union of every store;
+- **a naked return** (`return` with no values) returns the variable as it is, so its set is the union of the stores;
+- **a read across a join** (two paths that assign the result meet before the read) has no single reaching store, so it reads the union of the stores;
+- **a closure started with `go`** or called in the body is not a deferred call, so it reads the union of the stores.
+
+The AST engine (`-errset.engine=ast`) keeps the union for every variable. The rules are in the errset package (`ssadefer.go`). The effects analyzer does not have this problem: its effects come from calls, not from values.
 
 ## Fresh errors (`new@`)
 

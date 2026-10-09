@@ -24,6 +24,7 @@ The text is moved from the former `NOTES.md`, lightly edited for readability. No
 | [11-p4a-mustuse-exhaustive.md](11-p4a-mustuse-exhaustive.md) | P4a | the mustuse and exhaustive analyzers, their prototype defects and their corpus results |
 | [12-p4b-editor.md](12-p4b-editor.md) | P4b | the golangci-lint plugin and the editor recipes: mechanism, verification matrix, latency |
 | [13-p4-integration.md](13-p4-integration.md) | P4 | the integration of P4a and P4b: conflicts, wiring, corpus and sanity results |
+| [14-p5-dogfood-fixes.md](14-p5-dogfood-fixes.md) | P5 | the fixes from the reservations dogfood run: named results and defers, test files and package defaults, net/http stubs, stub duplicates |
 
 ## Where the former NOTES.md sections went
 

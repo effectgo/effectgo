@@ -33,7 +33,15 @@ effects (context.CancelFunc) pure           # every call through a value of this
 effects github.com/danielgtaylor/huma/v2.NewError pure   # calls through this package-level func variable
 ```
 
-Effect names are checked: `unknown effect name "x" for <target>`. A second `effects` rule for the same target is an error (`duplicate effects rule for <target>`).
+Effect names are checked: `unknown effect name "x" for <target>`.
+
+Rules are in layers: the shipped files, then the project file or the `-stubs` files. Within a layer, a second `effects` rule for the same target is an error, and it names the first one:
+
+```text
+effectgo.stubs:3: duplicate effects rule for time.Now, first defined at /repo/effectgo.stubs:1
+```
+
+A rule from a project file (or an explicit `-stubs` file) for a target that a shipped rule also has **replaces** the shipped rule. The project file wins, so a project can state a different effect for a function that the shipped set covers. The replacement is the same as the `errors` verb, where a later rule already replaces an earlier one. Two shipped rules for one target are an error as well.
 
 ### `errors`
 
@@ -126,7 +134,9 @@ A bare `(pkgpath.Type)` target is only valid for `effects`, `errors` and `status
 The stub set of an analysis is decided per analyzed package, from its path, and every analyzer uses the same rule:
 
 1. If `-stubs` is set, or `$EFFECTGO_STUBS` when `-stubs` is empty, exactly those files are read. Nothing else is read: the shipped files and the project file are not.
-2. Otherwise (the **zero configuration**), the shipped stub files (embedded in the binary with `go:embed`) are read, and then `effectgo.stubs` at the root of the analyzed module, when the module has one. The module root is the nearest directory at or above the analyzed file that holds a `go.mod`.
+2. Otherwise (the **zero configuration**), the shipped stub files (embedded in the binary with `go:embed`) are read, and then `effectgo.stubs` at the root of the analyzed module, when the module has one. The module root is the nearest directory at or above the analyzed file that holds a `go.mod`. A project rule replaces a shipped rule for the same target (see [effects](#effects)).
+
+A standalone run (`effectgo ./...`) checks the stub files it will read before the analyzers start: the explicit files, or in zero configuration the shipped files and the `effectgo.stubs` of the working directory's module and of each pattern's module. A bad rule is then printed once, as `effectgo: <file>:<line>: <message>`, and the run exits 1. Without this check, the same error would be printed once per package, followed by a `failed prerequisites` line for every dependent package. The check does not cover a module below the working directory that is not named by a pattern; there, an error is still reported per package. Under `go vet`, each package is a separate process, so each reports its own stub error.
 
 `-stubs` takes comma-separated paths, absolute paths recommended. The explicit set replaces the zero configuration; an empty file given this way is still explicit, so it reads no shipped rules (the analyzers' own tests use one for this).
 
@@ -144,7 +154,7 @@ A later `-stubs` file does not merge with the zero configuration; to add a proje
 
 | File | Load it when | Covers |
 |---|---|---|
-| `stubs/stdlib.stubs` | always (it is part of the zero configuration) | `error.Error` pure; `fmt.Stringer`; `io` copy and read functions; `io` constructors; `context` (`Err` errors, `CancelFunc`); database/sql `Row`, `Rows`, `Result` and their errors; `io/fs` getters; `http.ResponseWriter.Header`; `strconv` parse errors; `net/url.Parse`; the always-nil writers `bytes.Buffer`, `strings.Builder` and `hash.Hash.Write` (`none`, with source lines in the file) |
+| `stubs/stdlib.stubs` | always (it is part of the zero configuration) | `error.Error` pure; `fmt.Stringer`; `io` copy and read functions; `io` constructors; `context` (`Err` errors, `CancelFunc`); database/sql `Row`, `Rows`, `Result` and their errors; `io/fs` getters; `net/http` `ResponseWriter` (`Header` pure, `Write` and `WriteHeader` net), `Flusher.Flush`, `Hijacker.Hijack`, and the helpers `Error`, `NotFound`, `Redirect` (net), `ServeFile` (fs and net), `ServeContent` and `ServeFileFS` (net and unknown); `strconv` parse errors; `net/url.Parse`; the always-nil writers `bytes.Buffer`, `strings.Builder` and `hash.Hash.Write` (`none`, with source lines in the file) |
 | `stubs/pgx.stubs` | the service uses pgx v5 | the pool, connection, `Tx`, `Rows`, `Row`, `BatchResults` methods as `db`, and the sentinels `pgx.ErrNoRows`, `pgx.ErrTxClosed`, `pgx.ErrTxCommitRollback` |
 | `stubs/gin.stubs` | the service uses gin | response writers and body readers as `net`; query, header and context-state readers as `pure`; the `sink` rules of the Gin check |
 | `stubs/huma.stubs` | the service uses Huma v2 | `huma.NewError` (pure, a package-level variable); the 40 status constructors (`status`); `NewError` (`arg:0`); the route functions; the default errmap (`errdefault`) |
