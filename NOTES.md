@@ -674,3 +674,57 @@ PUT /v3/todos/{id}  x-effectgo-handler: v3Update(...)
 - `-merge` replaces all 4xx, 5xx and `default` responses of each matched operation. Success responses, schemas and parameters are kept.
 - `-check` compares codes only: not the response schemas, the descriptions, or the success codes.
 - Not run: `go install` from the private repository, and CI.
+
+### Integration (P0+P1a+P1b)
+
+The branches `fix/determinism`, `feat/driver-stubs` and `feat/report-tooling` are merged into `integrate/p1` with `--no-ff`. Conflicts: one textual conflict, in `errset/errset_test.go` (both sides add tests; both kept). `effects/effects.go`, `errset/errset.go`, `README.md` and `NOTES.md` merged without conflict markers; they were then reconciled by hand (stub file table, `fmt.Errorf` limits, the no-stub warning).
+
+**Interaction tests** (each one passes and is listed with its expectation):
+- **(a) witness through literals and stubbed func values**, `effects/testdata/src/interact` with `TestInteractWitness`. A literal passed to a callee that calls it reaches the effect through parameter polymorphism: `witness of Caller: time via Run → func literal (interact.go:18) → time.Now`, and `Outer` extends it with `Caller →`. A named func type stub gives `witness of ViaClock: time via (Clock) call [stub]`. A package-level func variable with a `pure` stub gives no witness, and a stored literal is not charged (`map[]`).
+- **(b) immediately-invoked literal and fresh variants**, `errset/testdata/src/interact` with `TestInteractImmediateLiteral`. `func() error { return errors.New("x") }()` inside `Immediate` gives `new@interact.Immediate`: the literal's returns are its own set (driver-stubs rule), and the fresh variant is keyed by the declared function that runs the literal (report-tooling rule). The witness is `via (direct)`. A literal wrapped by `fmt.Errorf("%w", …)` gives the sentinel, not a fresh variant. A stored literal is a handler set of its enclosing function (`handler=new@interact.Stored`).
+- **(c) TestMain clears EFFECTGO_STUBS vs. explicit stubs**: `effects` and `errset` `TestMain` clear the variable; tests that load shipped files set them explicitly (`TestShippedStubs`, `TestFuncValueStubs`, `TestStubsEnvFallback`), and `TestAllShippedStubFilesViaEnv` sets the four shipped files through the variable after `TestMain` cleared it. Load succeeds: no malformed line, no duplicate target across the files.
+- **(d) foreign collapse vs. pgx stubs**, `errset/collapse_test.go` `TestShippedPgxStubsSurviveCollapse`. The variants named by the shipped `pgx.stubs` (`pgx.ErrNoRows`, `pgx.ErrTxClosed`, `pgx.ErrTxCommitRollback`) survive `collapseForeign`; an unexported driver internal collapses to `?`. This test found a naming bug: an unresolved `github.com/jackc/pgx/v5` was named `v5.ErrNoRows`; `shortPkg` now skips a major-version element.
+
+**Stub-file warning** (`cmd/effectgo`): a standalone, `sig` or `openapi` run with neither `-stubs` nor `EFFECTGO_STUBS` prints one stderr line. Go vet probes and `.cfg` invocations are quiet. `TestNoStubsWarning`.
+
+**Metrics** (`python3 -I metrics.py`; percentages, `avg_named_variants` = mean named variants per error function with a non-empty set). Baseline rows are from `baseline.jsonl`; P1a and P1b rows are recomputed from `runs/p1a/<project>.all.report` and `runs/p1b/<project>.report`. Integrated A is `EFFECTGO_STUBS=stdlib.stubs`; integrated B adds `pgx`, `gin`, `huma`. Integrated runs used a fresh GOCACHE each.
+
+order-mgmt (2201 functions, 854 with error sets)
+
+| row | pct_unknown | pct_opaque | pct_only_opaque | avg_named_variants | pct_db | pct_panic |
+|---|---|---|---|---|---|---|
+| baseline | 54.3 | 95.7 | 38.6 | 4.06 | 0.0 | 31.1 |
+| P1a-all | 30.3 | 95.2 | 41.5 | 1.48 | 30.2 | 2.2 |
+| P1b | 54.3 | 93.1 | 30.2 | 2.62 | 0.0 | 31.1 |
+| integrated A | 65.7 | 92.6 | 29.0 | 3.09 | 0.0 | 69.7 |
+| integrated B | 55.1 | 92.6 | 33.8 | 1.87 | 30.2 | 59.6 |
+
+kuzma-wms (1090 functions, 600 with error sets)
+
+| row | pct_unknown | pct_opaque | pct_only_opaque | avg_named_variants | pct_db | pct_panic |
+|---|---|---|---|---|---|---|
+| baseline | 48.1 | 92.7 | 50.3 | 0.77 | 41.0 | 10.6 |
+| P1a-all | 40.8 | 92.7 | 26.2 | 2.03 | 40.8 | 9.6 |
+| P1b | 48.1 | 87.5 | 34.2 | 1.30 | 41.0 | 10.6 |
+| integrated A | 67.9 | 87.5 | 16.5 | 2.59 | 40.0 | 67.0 |
+| integrated B | 67.4 | 87.5 | 16.3 | 2.59 | 40.8 | 67.0 |
+
+arcteryx-console (606 functions, 269 with error sets)
+
+| row | pct_unknown | pct_opaque | pct_only_opaque | avg_named_variants | pct_db | pct_panic |
+|---|---|---|---|---|---|---|
+| baseline | 41.4 | 94.4 | 69.1 | 0.86 | 24.1 | 20.0 |
+| P1a-all | 26.7 | 93.3 | 38.7 | 1.76 | 24.4 | 6.8 |
+| P1b | 41.4 | 89.2 | 48.7 | 1.34 | 24.1 | 20.0 |
+| integrated A | 59.9 | 88.1 | 24.2 | 2.24 | 24.4 | 59.7 |
+| integrated B | 59.6 | 88.1 | 24.2 | 2.24 | 24.4 | 58.9 |
+
+**Open problem: results depend on the build-cache state (not resolved here).** The integrated rows have `pct_panic` of 59 to 70, against 2 to 10 for P1a-all. The witness chains show the cause: `envInt → strconv.Atoi → strconv.toError → … → strconv.formatBits → panic`, and `fmt.Errorf → fmt.(*pp).doPrintf → reflect.Type.String` for `unknown`. These are stdlib bodies. The analyzer is written to never analyze the stdlib (`isStdlib` in `effects/effects.go`, which compares file paths against `build.Default.GOROOT`), so these chains mean that the stdlib files reached the analyzer as source with a path that did not match. The same binary gave `envInt: {env}` in the stored P1a and P1b reports and `{env, panic}` on a fresh cache. Two runs with the same inputs in the same directory disagreed (1555 sorted lines differed, one warm run of integrated A vs its cold rerun; the second warm rerun matched the cold run exactly). The shell in which these runs were launched exports `GOROOT=…/go/1.26.8`, while `go list` resolves the standard library under `…/go/1.26.9`. A mismatch like that would make `isStdlib` fail. This is the leading hypothesis, not verified: the per-command environment was limited to `GOFLAGS` and `GOPRIVATE`, so the run with `GOROOT` unset was not made. Until this is fixed, rows with stdlib-walk panic/unknown counts are not comparable, and the integrated `pct_panic`/`pct_unknown` should not be read as a gain or a regression.
+
+What the integrated runs do support: B adds `db` on order-mgmt (0.0 to 30.2) and kuzma-wms and arcteryx keep their `db` shares (drivers already modeled by the baseline). The `?` shares move as in P1b and P1a: `pct_only_opaque` falls on kuzma-wms (50.3 to 16.3) and rises on arcteryx-console relative to the P1b row.
+
+**Determinism smoke test.** Config B on kuzma-wms, two runs with separate fresh caches: 1690 lines each, the sorted outputs have the same md5 (`25523379adc959901519d95ddb260e0b`). The fresh-cache run matches run 1 exactly. The inconsistency above was seen only in order-mgmt configuration A; its first warm run is not reproduced by any later run.
+
+**Witness top-10** (config B, `-errset.witness -effects.witness`; script `runs/integrate/witness_top10.py`, output `runs/integrate/witness_top10.txt`). Plain `?` error witnesses (1545 across the three projects): `(Row).Scan [stub]` 22.8%, `(Pool).Query [stub]` 6.6%, `(Pool).Begin [stub]` 5.5%, `(Pool).Exec [stub]` 4.2%, `sql.DB.BeginTx` 4.2%, `json.Marshal` 3.9%, `sql.DB.QueryContext` 3.6%, `sql.DB.ExecContext` 3.3%, `row.Scan` 2.7%, `sql.Tx.QueryContext` 2.1%. `unknown` effect witnesses (2308): `reflect.Type.String` 16.6%, `reflectlite.Type.Comparable` 10.2%, `io.Writer.Write` 7.4%, `io.Closer.Close` 5.6%, `regexp.input.step` 4.1%, `dynamic call scan.step` 3.2%, `dynamic call copyenv` 2.7%, `queryer.QueryRowContext` 2.4%, `dynamic call p.New` 2.3%, `scanner.Scan` 2.3%. Caveat: the `unknown` list is dominated by stdlib-internal hops of the GOROOT issue above, and is not a project-level finding yet.
+
+**Limitations.** Three projects, one run each per configuration, except order-mgmt A (three runs). P1a and P1b rows were not re-measured with the integrated binary's environment, so their panic numbers may not be comparable with the integrated rows. The stub warning is not emitted for go vet runs.
