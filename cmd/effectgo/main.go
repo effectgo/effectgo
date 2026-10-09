@@ -8,8 +8,11 @@
 //	go vet -vettool=$(which effectgo) ./...         go vet, cached correctly (see identity)
 //
 // Flags: -stubs (shared by effects and errset; falls back to $EFFECTGO_STUBS),
-// -effects.report, -errset.report, -errset.ignoreopaque. Under go vet the
-// analyzer flags are forwarded the same way.
+// -effects.report, -effects.witness, -errset.report, -errset.witness,
+// -errset.ignoreopaque, and -test (default false: test files are not analyzed;
+// -test=true restores them). Under go vet the analyzer flags are forwarded the
+// same way; go vet itself decides which packages and test variants it passes
+// to the tool, so -test has no effect there.
 package main
 
 import (
@@ -18,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/tools/go/analysis/multichecker"
 
@@ -34,6 +38,12 @@ func init() {
 		"comma-separated stub files read by effects and errset; falls back to $"+stubs.Env+" when empty")
 }
 
+// testsFlag is the driver's flag that includes test files. multichecker
+// registers it inside Main, so it cannot be set beforehand; instead the default
+// is changed by putting -test=false in front of the arguments of a standalone
+// run (see withoutTests).
+const testsFlag = "-test"
+
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "-V=full" {
 		printIdentity()
@@ -44,10 +54,32 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)
+		os.Args = withoutTests(os.Args)
 		multichecker.Main(signature.Analyzer)
 		return
 	}
+	os.Args = withoutTests(os.Args)
 	multichecker.Main(effects.Analyzer, errset.Analyzer)
+}
+
+// withoutTests makes a standalone run skip test files unless -test is given:
+// it puts -test=false first, so the flag parser sees it before the package
+// patterns. A go vet invocation is left alone (it sends -flags, -V=full, or a
+// .cfg file, and go vet decides the test variants itself).
+func withoutTests(args []string) []string {
+	if len(args) < 2 {
+		return args
+	}
+	for _, a := range args[1:] {
+		switch {
+		case a == "-flags", strings.HasPrefix(a, "-V"), strings.HasSuffix(a, ".cfg"):
+			return args
+		case a == testsFlag, strings.HasPrefix(a, testsFlag+"="),
+			a == "--"+testsFlag[1:], strings.HasPrefix(a, "--"+testsFlag[1:]+"="):
+			return args // the user chose
+		}
+	}
+	return append([]string{args[0], testsFlag + "=false"}, args[1:]...)
 }
 
 // printIdentity answers "effectgo -V=full", which go vet runs to get a tool ID.

@@ -11,6 +11,10 @@ import (
 	"fake"
 )
 
+// unclassifiedFormat is not a constant, so an error formatted with it is opaque
+// ("?"). An error created with a constant format is fresh instead ("new@").
+var unclassifiedFormat = "unclassified %v"
+
 // ConflictError has a constant status: 409.
 type ConflictError struct{}
 
@@ -43,7 +47,7 @@ func ToStatus(err error) error { // want ToStatus:"." ToStatus:"."
 //effectgo:handler ToStatus
 func onlyOpaque() func(fake.Ctx[string, string]) (int, error) { // want onlyOpaque:"."
 	return func(c fake.Ctx[string, string]) (int, error) {
-		return 0, fmt.Errorf("unclassified %v", 1)
+		return 0, fmt.Errorf(unclassifiedFormat, 1)
 	}
 }
 
@@ -66,7 +70,7 @@ func conflictAndOpaque(svc int) func(fake.Ctx[string, string]) (int, error) { //
 		if svc == 0 {
 			return 0, domain.ErrConflict
 		}
-		return 0, fmt.Errorf("unclassified %v", svc)
+		return 0, fmt.Errorf(unclassifiedFormat, svc)
 	}
 }
 
@@ -82,7 +86,17 @@ func mixed(svc int) func(fake.Ctx[string, string]) (int, error) { // want mixed:
 		case 1:
 			return 0, DynamicError{}
 		}
-		return 0, fmt.Errorf("unclassified %v", svc)
+		return 0, fmt.Errorf(unclassifiedFormat, svc)
+	}
+}
+
+// freshOnly returns an error created in place: a fresh variant, which the
+// errmap cannot match, so it is 500 as well (see freshOnly in opaque_test.go).
+//
+//effectgo:handler ToStatus
+func freshOnly() func(fake.Ctx[string, string]) (int, error) { // want freshOnly:"."
+	return func(c fake.Ctx[string, string]) (int, error) {
+		return 0, errors.New("created here")
 	}
 }
 
@@ -92,4 +106,5 @@ func Register(s *fake.Server) { // want Register:"."
 	fake.Put(s, "/dynamic", onlyDynamic())
 	fake.Put(s, "/conflict-and-opaque", conflictAndOpaque(0))
 	fake.Put(s, "/mixed", mixed(0))
+	fake.Put(s, "/fresh", freshOnly())
 }

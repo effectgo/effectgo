@@ -81,6 +81,9 @@ func responseFor(status int, errs []RouteError) map[string]any {
 		d := e.Variant
 		if e.Opaque {
 			d = "unclassified error"
+			if e.Variant != "?" {
+				d += ": " + e.Variant + " (created in place; errors.Is and errors.As cannot match it)"
+			}
 			opaque = true
 		}
 		if len(e.Via) > 0 {

@@ -94,6 +94,27 @@ func TestMixedKinds(t *testing.T) {
 	}
 }
 
+// A fresh error (created in place, so not matchable by errors.Is or errors.As)
+// is an unclassified error: 500, never default, and the description says why.
+func TestFreshIs500(t *testing.T) {
+	r := find(t, routesOfPkg(t, "opaque"), "PUT", "/fresh")
+	if got := status(r, "new@opaque.freshOnly"); got != 500 {
+		t.Errorf("new@opaque.freshOnly status %d, want 500", got)
+	}
+	if d := defaultOf(r); len(d) != 0 {
+		t.Errorf("default has %v, want none", d)
+	}
+	frag := openapi.Fragment(mustOps(t, []openapi.Route{r}))
+	five, ok := responsesOf(t, frag, "/fresh", "put")["500"].(map[string]any)
+	if !ok {
+		t.Fatalf("no 500 response")
+	}
+	desc, _ := five["description"].(string)
+	if !strings.Contains(desc, "new@opaque.freshOnly") || !strings.Contains(desc, "created in place") {
+		t.Errorf("500 description %q does not explain the fresh error", desc)
+	}
+}
+
 func mustOps(t *testing.T, rs []openapi.Route) []*openapi.Op {
 	t.Helper()
 	ops, undocumented := openapi.Operations(rs)

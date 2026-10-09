@@ -101,5 +101,8 @@ func HOpaque() func() (int, error) { return func() (int, error) { return 0, Opaq
 
 //effectgo:handler ToStatus
 func HUnclassified() func() (int, error) { // want HUnclassified:"." "unclassified error" "statuses of HUnclassified: 500"
-	return func() (int, error) { return 0, fmt.Errorf("x %v", 1) }
+	return func() (int, error) { return 0, fmt.Errorf(unclassifiedFormat, 1) }
 }
+
+// unclassifiedFormat is not a constant, so the error it formats is opaque.
+var unclassifiedFormat = "x %v"

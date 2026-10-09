@@ -27,10 +27,10 @@ func violated() error { return domain.ErrInvalid } // want "violated may return 
 func unresolved() error { return nil } // want "effectgo:errors: cannot resolve \"Missing\"" unresolved:"."
 
 //effectgo:errors ?
-func opaqueAllowed() error { return errors.New("x") } // want opaqueAllowed:"."
+func opaqueAllowed(e error) error { return e } // want opaqueAllowed:"."
 
 //effectgo:errors ErrOwn
-func opaqueViolated() error { return errors.New("x") } // want "opaqueViolated may return \\? \\(via errors.New\\), not in its //effectgo:errors contract" opaqueViolated:"."
+func opaqueViolated() error { return errors.New("x") } // want "opaqueViolated may return new@contracts.opaqueViolated, not in its //effectgo:errors contract" opaqueViolated:"."
 
 //effectgo:errors domain.Nope, domain.ErrInvalid
 func nameMismatch() error { return domain.ErrNotFound } // want "cannot resolve \"domain.Nope\"" "nameMismatch may return domain.ErrNotFound" nameMismatch:"."
