@@ -7,6 +7,7 @@
 //	effectgo openapi [-merge|-check spec.json] ./... OpenAPI error responses of the routes
 //	effectgo http-gin [-json] [-all] [-mappers] ./... Gin responses against the error sets
 //	effectgo http-huma [-json] [-all] ./...         Huma routes: variants that reach HTTP 500
+//	effectgo http [-json] [-all] ./...              the gin and Huma adapters over one load, one list
 //	go vet -vettool=$(which effectgo) ./...         go vet, cached correctly (see identity)
 //
 // Flags: -stubs (shared by effects and errset; falls back to $EFFECTGO_STUBS),
@@ -62,6 +63,9 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "http-huma" {
 		os.Exit(runHTTPHuma(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "http" {
+		os.Exit(runHTTP(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)

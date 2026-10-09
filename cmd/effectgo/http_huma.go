@@ -14,9 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/checker"
-	"golang.org/x/tools/go/packages"
 
 	huma "github.com/faintghost/effectgo/adapters/huma"
 	"github.com/faintghost/effectgo/internal/stubs"
@@ -62,21 +60,16 @@ func runHTTPHuma(args []string) int {
 // the per-package results of the packages that the patterns name, with every
 // position made relative to the working directory.
 func analyzeHuma(patterns []string) ([]*huma.Result, error) {
-	// NeedModule gives the analysis passes their module, which errset uses to
-	// tell project errors from foreign ones. Tests are off, as in standalone runs.
-	cfg := &packages.Config{Mode: packages.LoadAllSyntax | packages.NeedModule}
-	pkgs, err := packages.Load(cfg, patterns...)
+	graph, err := analyzeHTTP(patterns, huma.Analyzer)
 	if err != nil {
 		return nil, err
 	}
-	if packages.PrintErrors(pkgs) > 0 {
-		return nil, fmt.Errorf("the packages do not load")
-	}
-	graph, err := checker.Analyze([]*analysis.Analyzer{huma.Analyzer}, pkgs, nil)
-	if err != nil {
-		return nil, err
-	}
-	cwd, _ := os.Getwd()
+	return humaFromGraph(graph, mustGetwd())
+}
+
+// humaFromGraph reads the Huma results of an analyzed graph and makes their
+// positions relative to cwd.
+func humaFromGraph(graph *checker.Graph, cwd string) ([]*huma.Result, error) {
 	var out []*huma.Result
 	for _, act := range graph.Roots {
 		if act.Err != nil {
@@ -90,6 +83,13 @@ func analyzeHuma(patterns []string) ([]*huma.Result, error) {
 		out = append(out, r)
 	}
 	return out, nil
+}
+
+// mustGetwd returns the working directory, or "" when it cannot be read (the
+// positions then stay as the analysis gives them).
+func mustGetwd() string {
+	cwd, _ := os.Getwd()
+	return cwd
 }
 
 // relativizeHuma rewrites the positions of a result relative to dir, when they are

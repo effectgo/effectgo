@@ -135,6 +135,10 @@ errors (context.Context).Err context.Canceled,context.DeadlineExceeded
 # (sql.go:3513, the "return ErrNoRows" of Row.Scan), r.err or rows.Err (driver
 # errors, opaque), and the scan error (opaque).
 errors (*database/sql.Row).Scan database/sql.ErrNoRows,?
+# Rows.Scan has no errors rule, on purpose: it never returns ErrNoRows. Its
+# result is rs.lasterr, the closed-rows error or a conversion error (Scan at
+# sql.go:3365-3380, scanLocked after it), so its set is opaque, as for any call
+# without a rule. Only Row.Scan above names ErrNoRows.
 # Rows.Err returns the context error that stopped the iteration (sql.go:3011-3020,
 # ctx.Err()) or a driver error.
 errors (*database/sql.Rows).Err context.Canceled,context.DeadlineExceeded,?

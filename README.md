@@ -65,6 +65,7 @@ effectgo sig ./...                                  # signatures only (see below
 effectgo openapi [-merge|-check spec.json] ./...    # OpenAPI error responses (see below)
 effectgo http-gin [-json] [-all] [-mappers] ./...   # Gin responses against the error sets (see below)
 effectgo http-huma [-json] [-all] ./...             # Huma routes: variants that reach HTTP 500 (see below)
+effectgo http [-json] [-all] ./...                  # both HTTP checks in one load, one list (see below)
 ```
 
 Standalone runs skip `_test.go` files by default (`-test=false`). Pass `-test=true` to analyze them too. `go vet` is different: it decides by itself which packages and test variants it passes to the tool, so `-test` has no effect there (see "Test files" below).
@@ -162,7 +163,12 @@ errors  <target> <variant,variant,...>   # or: none        (read by errset)
 status  (pkgpath.Type) <code>            #                 (read by errset)
 route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>  (read by openapi)
 sink    <target> status=<argIndex> [body=<argIndex>]   (read by http-gin)
+status  pkgpath.Func <code | arg:N>       # a constructor that carries its status (read by errset)
+route   pkgpath.Func <METHOD|@N.Field> <pathArgIndex|@N.Field> <handlerArgIndex>  (read by http-huma, openapi)
+errdefault <pkgpath> passthrough=iface:pkgpath.Iface,fallback=<code>   (read by http-huma)
 ```
+
+`@N.Field` reads a field of the composite literal that is argument N (Huma's `Register(api, huma.Operation{Method, Path}, h)` is `route … Register @1.Method @1.Path 2`). A status target can be a function or method (`status pkgpath.Func 404`) or a type (`status (pkgpath.Type) 400`). A file may hold every form; a malformed line is an error that names its file and line. The shipped `stubs/*.stubs` load together (`EFFECTGO_STUBS=stubs/fuego.stubs,stubs/gin.stubs,stubs/huma.stubs,stubs/pgx.stubs,stubs/stdlib.stubs`).
 
 Targets: `pkgpath.Func`, `(pkgpath.Type).Method`, `(*pkgpath.Type).Method`, `(pkgpath.Iface).Method`, `(error).Error`. Two more forms name a function value rather than a declared function: `(pkgpath.Type)`, a named func type (`effects (context.CancelFunc) pure` covers every call through a value of that type), and `pkgpath.Var`, a package-level variable of func type (`effects github.com/danielgtaylor/huma/v2.NewError pure`). A `status` target is a type. Variants: `pkgpath.Name` (sentinel), `type:pkgpath.Type`, `iface:pkgpath.Iface`, or `?`. Indexes are 0-based.
 
@@ -294,6 +300,17 @@ Each record is one JSON object per line, with `severity`, `framework` (`gin`), `
 
 The analysis is flow-insensitive per declaration (errset's sets), so a variable reused for two calls carries the variants of both. See NOTES.md, "Gin adapter", for the limitations and the evaluation on three services.
 
+## HTTP check: both adapters (`effectgo http`)
+
+`effectgo http [-json] [-all] [-stubs …] ./...` runs the Gin and the Huma adapters over one load of the packages and prints their findings as one list in the shared schema (`severity, framework, route, handler, pos, variant, status, via, reason`). The list is sorted by severity (`high`, `medium`, `leak`, `info`), then by position. `info` is hidden unless `-all`. The output is the union of `http-gin -json -all` and `http-huma -json -all`; the two subcommands are unchanged and still work on their own.
+
+```
+$ cd service && effectgo http ./...             # text: both checks, one list
+$ cd service && effectgo http -json -all ./...  # one JSON object per finding
+```
+
+The summary line on stderr counts both adapters (the `info` counts include the hidden findings).
+
 ## Comparison with related tools
 
 This section describes the other tools at a high level, as their own documentation summarises them. It was not re-checked against their current releases.
@@ -321,6 +338,8 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 | `openapi/` | the route analyzer and the OpenAPI fragment, merge and check output, reached through `effectgo openapi` |
 | `internal/stubs/` | the shared stub-file parser |
 | `adapters/gin/` | the Gin response check (`effectgo http-gin`): sinks, mappers, handler findings, leaks, routes |
+| `adapters/huma/` | the Huma route check (`effectgo http-huma`): routes, carried statuses, the default errmap, findings |
+| `cmd/effectgo/http.go` | the umbrella `effectgo http`: both adapters over one package load |
 | `cmd/effectgo/` | the binary |
 | `stubs/` | shipped stub files |
 | `examples/layers/` | effects demo (its own module) |

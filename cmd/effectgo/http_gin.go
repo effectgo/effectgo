@@ -16,9 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/checker"
-	"golang.org/x/tools/go/packages"
 
 	ginhttp "github.com/faintghost/effectgo/adapters/gin"
 	"github.com/faintghost/effectgo/internal/stubs"
@@ -82,7 +80,7 @@ func runHTTPGin(args []string) int {
 			}
 		}
 	} else {
-		printGinText(os.Stdout, out)
+		printHTTPText(os.Stdout, out)
 	}
 	fmt.Fprintf(os.Stderr, "effectgo http-gin: handlers=%d mappers=%d routes=%d high=%d medium=%d info=%d leak=%d\n",
 		res.Handlers, len(res.Mappers), len(res.Routes), counts["high"], counts["medium"], counts["info"], counts["leak"])
@@ -103,18 +101,15 @@ type ginRun struct {
 // collectGin loads the packages, runs the adapter, and returns its findings
 // (sorted by position) with the aggregate.
 func collectGin(patterns []string) ([]ginhttp.Finding, *ginRun, error) {
-	cfg := &packages.Config{Mode: packages.LoadAllSyntax | packages.NeedModule}
-	pkgs, err := packages.Load(cfg, patterns...)
+	graph, err := analyzeHTTP(patterns, ginhttp.Analyzer)
 	if err != nil {
 		return nil, nil, err
 	}
-	if packages.PrintErrors(pkgs) > 0 {
-		return nil, nil, fmt.Errorf("the packages do not load")
-	}
-	graph, err := checker.Analyze([]*analysis.Analyzer{ginhttp.Analyzer}, pkgs, nil)
-	if err != nil {
-		return nil, nil, err
-	}
+	return ginFromGraph(graph)
+}
+
+// ginFromGraph reads the gin results of an analyzed graph (see analyzeHTTP).
+func ginFromGraph(graph *checker.Graph) ([]ginhttp.Finding, *ginRun, error) {
 	run := &ginRun{mapped: map[string]bool{}, routeOf: map[string]string{}}
 	var findings []ginhttp.Finding
 	for _, act := range graph.Roots {
@@ -209,8 +204,8 @@ func relativize(hf httpFinding, cwd string) httpFinding {
 	return hf
 }
 
-// printGinText prints one line per finding, in the text form.
-func printGinText(w io.Writer, fs []httpFinding) {
+// printHTTPText prints one line per finding, in the text form (http-gin and http).
+func printHTTPText(w io.Writer, fs []httpFinding) {
 	for _, f := range fs {
 		route := f.Route
 		if route == "" {
