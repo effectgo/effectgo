@@ -111,8 +111,8 @@ type routeRule struct {
 }
 
 // routeTable reads the route rules of the stub files, keyed by pkgpath.Name.
-func routeTable() (map[string]routeRule, error) {
-	rules, err := stubs.Load(stubs.Paths())
+func routeTable(pass *analysis.Pass) (map[string]routeRule, error) {
+	rules, err := stubs.RulesForPass(pass)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func run(pass *analysis.Pass) (any, error) {
 		pass.ExportObjectFact(obj, &ErrmapInfo{Fact: *m})
 	}
 
-	table, err := routeTable()
+	table, err := routeTable(pass)
 	if err != nil {
 		return nil, err
 	}

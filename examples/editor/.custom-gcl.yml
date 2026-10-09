@@ -1,0 +1,14 @@
+# Builds a golangci-lint binary that contains the effectgo plugin:
+#
+#   golangci-lint custom        (writes ./bin/custom-gcl; see docs/editor/)
+#
+# The plugin is taken from the effectgo checkout two levels up. Outside this
+# repository, replace `path` with `version: <effectgo tag>` (the module must be
+# reachable through the Go proxy, or GOPRIVATE must be set for it).
+version: v2.14.0
+name: custom-gcl
+destination: ../../bin
+plugins:
+  - module: github.com/faintghost/effectgo
+    import: github.com/faintghost/effectgo/plugin
+    path: ../..

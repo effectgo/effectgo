@@ -1,0 +1,20 @@
+# golangci-lint v2 configuration for the editor example. Run golangci-lint from
+# this directory (editors do this from the module root). Only the effectgo
+# plugin is enabled; it reads the project stub file effectgo.stubs and the
+# shipped stubs with no settings (zero configuration).
+version: "2"
+
+run:
+  # effectgo ./... skips _test.go files by default; match it here.
+  tests: false
+
+linters:
+  default: none
+  enable:
+    - effectgo
+  settings:
+    custom:
+      effectgo:
+        type: module
+        description: effectgo contract analyzers (effects, errset)
+        settings: {}

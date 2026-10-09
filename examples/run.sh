@@ -41,6 +41,12 @@ section "todo, go vet with -errset.ignoreopaque (drops the opaque body findings)
 section "todo, signatures: effectgo sig ./... (EFFECTGO_STUBS)"
 (cd "$here/todo" && EFFECTGO_STUBS="$stdlib,$fuego" "$bin" sig ./... 2>&1 | grep -E "(Service\.Update|Store\.modify|v3Update):"); echo
 
+section "editor, zero configuration: effectgo ./... (no -stubs, no EFFECTGO_STUBS; the project file effectgo.stubs is read)"
+(cd "$here/editor" && env -u EFFECTGO_STUBS "$bin" ./...); echo "exit $?"
+
+section "editor, zero configuration through go vet"
+(cd "$here/editor" && env -u EFFECTGO_STUBS go vet -vettool="$bin" ./...); echo "exit $?"
+
 section "check: the normal run prints no signatures"
 n=$(cd "$here/todo" && EFFECTGO_STUBS="$stdlib,$fuego" "$bin" ./... 2>&1 | grep -c "Effect<")
 echo "lines with Effect<: $n"

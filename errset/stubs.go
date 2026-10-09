@@ -99,10 +99,10 @@ func parseStubFile(path string) ([]stubRule, error) {
 	return parseErrorRules(rules)
 }
 
-// loadStubs parses the stub files named by -stubs (or EFFECTGO_STUBS) and
+// loadStubs parses the stub files of this package (see stubs.RulesForPass) and
 // resolves them against this package's import graph.
 func (p *pkgState) loadStubs() error {
-	rules, err := stubs.Load(stubs.Paths())
+	rules, err := stubs.RulesForPass(p.pass)
 	if err != nil {
 		return err
 	}
