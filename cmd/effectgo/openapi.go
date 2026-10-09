@@ -75,7 +75,9 @@ func runOpenAPI(args []string) int {
 // collect loads the packages, runs the openapi analyzer on them, and groups the
 // routes into operations. The operations are sorted by path and method.
 func collect(patterns []string) ([]*openapi.Op, []openapi.Route, error) {
-	cfg := &packages.Config{Mode: packages.LoadAllSyntax}
+	// NeedModule gives the analysis passes their module, which errset uses to
+	// collapse foreign unexported variants. Tests are off by default.
+	cfg := &packages.Config{Mode: packages.LoadAllSyntax | packages.NeedModule}
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		return nil, nil, err

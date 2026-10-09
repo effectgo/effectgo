@@ -69,7 +69,7 @@ func (b Branch) matches(v Variant) bool {
 	case matchType:
 		return v.Kind == KindType && v.Key == b.Key
 	case matchIface:
-		if v.Kind == KindOpaque || v.Kind == KindParam {
+		if v.Kind == KindOpaque || v.Kind == KindParam || v.Kind == KindFresh {
 			return false
 		}
 		if b.Key != "" && v.Key == ifacePrefix+b.Key {
@@ -93,6 +93,13 @@ func (b Branch) matches(v Variant) bool {
 // cases are the param and iface variants, and a dynamic status.
 func ownStatus(v Variant) (int, bool) {
 	switch {
+	case v.Kind == KindFresh:
+		return 500, true
+	case v.Kind == KindOpaque && v.Status > 0:
+		// a collapsed foreign variant keeps the status of its type
+		return v.Status, true
+	case v.Kind == KindOpaque && v.DynamicStatus:
+		return 0, false
 	case v.Kind == KindOpaque:
 		return 500, true
 	case v.Kind == KindParam, v.Kind == KindIface:

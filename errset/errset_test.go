@@ -1,6 +1,7 @@
 package errset_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -8,6 +9,15 @@ import (
 	"github.com/faintghost/effectgo/internal/stubs"
 	"golang.org/x/tools/go/analysis/analysistest"
 )
+
+// TestMain clears EFFECTGO_STUBS: the tests state their stub files themselves.
+// The shipped stdlib.stubs would change the expected results (it makes
+// (error).Error pure and gives strconv.Atoi a *strconv.NumError), so an
+// inherited value must not reach them.
+func TestMain(m *testing.M) {
+	os.Unsetenv(stubs.Env)
+	os.Exit(m.Run())
+}
 
 // Only the packages named here are analysis roots, where diagnostics and
 // facts are checked. Their dependencies (domain, httpres) are analyzed for
@@ -106,4 +116,20 @@ func TestStatusInference(t *testing.T) {
 	setStubs(t, filepath.Join(testdata(t), "stubs", "status.stubs"))
 	setFlag(t, "statuses", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "status")
+}
+
+// TestFreshErrors: errors.New and a constant fmt.Errorf without %w are fresh
+// ("new@pkg.F", one variant per creating function); a package-level error var
+// stays a sentinel; "new" permits fresh variants, "?" does not; a fresh error
+// is an unclassified error in a handler check.
+func TestFreshErrors(t *testing.T) {
+	setFlag(t, "report", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "fresh")
+}
+
+// TestWitnessFlag: -witness prints one witness line per variant, with the
+// chain below the reporting function ("(direct)" when there is none).
+func TestWitnessFlag(t *testing.T) {
+	setFlag(t, "witness", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "witness")
 }

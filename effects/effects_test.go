@@ -13,6 +13,14 @@ import (
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
+// TestMain clears EFFECTGO_STUBS: the tests state their stub files themselves
+// (TestStubsEnvFallback sets the variable for its own run). The shipped
+// stdlib.stubs would change the expected results, e.g. (error).Error is pure.
+func TestMain(m *testing.M) {
+	os.Unsetenv(stubs.Env)
+	os.Exit(m.Run())
+}
+
 func TestSamePackageTransitive(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "chain")
 }
@@ -128,4 +136,15 @@ func absPath(t *testing.T, rel string) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// TestWitnessFlag: -witness prints "witness of <F>: <effect> via <chain>" for
+// each effect; the chain starts below the function itself.
+func TestWitnessFlag(t *testing.T) {
+	old := effects.Analyzer.Flags.Lookup("witness").Value.String()
+	if err := effects.Analyzer.Flags.Set("witness", "true"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = effects.Analyzer.Flags.Set("witness", old) })
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "witness")
 }

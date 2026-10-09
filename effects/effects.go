@@ -126,12 +126,18 @@ var Analyzer = &analysis.Analyzer{
 	ResultType: reflect.TypeOf(Result{}),
 }
 
-// reportFlag backs -report (-effects.report under go vet).
-var reportFlag bool
+// reportFlag backs -report (-effects.report under go vet); witnessFlag backs
+// -witness (-effects.witness under go vet).
+var (
+	reportFlag  bool
+	witnessFlag bool
+)
 
 func init() {
 	Analyzer.Flags.BoolVar(&reportFlag, "report", false,
 		"also emit an informational diagnostic with the inferred effect set of every declared function")
+	Analyzer.Flags.BoolVar(&witnessFlag, "witness", false,
+		"also emit one \"witness of <F>: <effect> via <chain>\" diagnostic per effect of every declared function")
 }
 
 // ---------------------------------------------------------------------------
@@ -525,6 +531,16 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 		if reportFlag {
 			pass.Reportf(st.decl.Name.Pos(), "effects of %s: {%s}", st.display, strings.Join(effs, ", "))
+		}
+		if witnessFlag {
+			for _, e := range effs {
+				// The witness starts with the function itself; the chain does not.
+				chain := "(direct)"
+				if w := st.effs[e]; len(w) > 1 {
+					chain = renderWitness(w[1:], pkgPath)
+				}
+				pass.Reportf(st.decl.Name.Pos(), "witness of %s: %s via %s", st.display, e, chain)
+			}
 		}
 	}
 
