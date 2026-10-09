@@ -57,6 +57,10 @@ type Branch struct {
 	Methods     []string // method set of an interface target
 	Status      int      // the constant status the rule returns; 0 when unknown
 	Passthrough bool     // the rule returns the error itself: each variant keeps its own status
+	// Carrier narrows a passthrough: only a carried variant (Variant.Carried)
+	// keeps its status; any other matching variant has an unknown status. Used by
+	// DefaultErrmap, where the framework reads the status from a method.
+	Carrier bool
 }
 
 // matches reports whether the branch selects variant v.
@@ -121,6 +125,12 @@ func (m *ErrmapFact) StatusOf(v Variant) (int, bool) {
 			continue
 		}
 		if b.Passthrough {
+			if b.Carrier {
+				if v.Carried && v.Status > 0 {
+					return v.Status, true
+				}
+				return 0, false
+			}
 			return ownStatus(v)
 		}
 		return b.Status, b.Status > 0
@@ -307,6 +317,10 @@ func (p *pkgState) exprStatus(e ast.Expr, param, bound types.Object) (code int, 
 		if lit, ok := unparen(x.X).(*ast.CompositeLit); ok && x.Op == token.AND {
 			return p.literalStatus(lit), false
 		}
+	case *ast.CallExpr:
+		// return huma.Error404NotFound(…): the status the call carries (carried.go)
+		code, _ := p.callCarriedCode(x)
+		return code, false
 	}
 	if obj != nil && (obj == param || obj == bound) {
 		return 0, true

@@ -43,6 +43,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/internal/goroot"
+	"github.com/faintghost/effectgo/internal/stubs"
 )
 
 // Kinds of variant.
@@ -85,6 +86,10 @@ type Variant struct {
 	// Orig is the original display name of a foreign unexported variant that
 	// was collapsed to "?" (see collapseForeign). It is shown in witness lines only.
 	Orig string
+	// Carried is true for an error that a status rule names as carrying its own
+	// status (huma.Error404NotFound): Status is the status the value carries, and
+	// a passthrough errmap branch keeps it (see carried.go).
+	Carried bool
 }
 
 // ErrFact is exported on every function with a body in a analyzed package.
@@ -147,6 +152,10 @@ type Result struct {
 	Funcs    map[*types.Func]FuncErrors  // every function with a body
 	Literals map[*ast.FuncLit]FuncErrors // every func literal with an error result, in this package
 	Errmaps  map[*types.Func]*ErrmapFact // every valid //effectgo:errmap function of this package
+	// Mappers holds the branches of every func(error) error of this package,
+	// with or without a directive: the evidence that a mapper maps a variant to
+	// a status (see MappingsOf). Unlike Errmaps, it is not a claim of coverage.
+	Mappers map[*types.Func]*ErrmapFact
 }
 
 // FuncErrors is the error set of one function. When the function returns
@@ -879,6 +888,9 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 		return c.dynamicCallSet(call)
 	}
 	callee = callee.Origin()
+	if v, ok := c.p.carriedOfCall(callee, call); ok {
+		return setOf(v)
+	}
 	if s, ok := c.p.stubSet(callee); ok {
 		return s.prefixed(stubLabel(callee))
 	}
@@ -918,6 +930,9 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 // or opaque) and calls of other func values (opaque).
 func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 	fun := unparen(call.Fun)
+	if v, ok := c.p.carriedOfVarCall(call); ok {
+		return setOf(v)
+	}
 	if s, label, ok := c.p.dynamicStubSet(c.info, call); ok {
 		return s.prefixed(label)
 	}
@@ -1216,6 +1231,9 @@ type pkgState struct {
 	statusStubs map[string]int
 	// errmaps holds the errmap facts of this package, by function.
 	errmaps map[*types.Func]*ErrmapFact
+	// statusFuncs holds the status rules that name a function or variable, by
+	// pkgpath.Name (see carried.go).
+	statusFuncs map[string]stubs.StatusValue
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -1296,7 +1314,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
-	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps}
+	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Mappers: p.mappers()}
 	for _, u := range p.units {
 		w := p.work[u.obj]
 		arg, errmap := p.handlerRef(u)
@@ -1573,6 +1591,15 @@ func (p *pkgState) exportErrmap(u *fnUnit) *ErrmapFact {
 		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:errmap: %s must have signature func(error) error", funcName(u.obj))
 		return nil
 	}
+	fact := p.buildErrmap(u)
+	p.pass.ExportObjectFact(u.obj, fact)
+	return fact
+}
+
+// buildErrmap reads the mapping rules of a func(error) error: the variants it
+// matches, the interfaces it targets, and its branches with their statuses. It
+// reports nothing and exports nothing; exportErrmap does both for a directive.
+func (p *pkgState) buildErrmap(u *fnUnit) *ErrmapFact {
 	mapped := map[string]bool{}
 	ifaces := map[string]Iface{}
 	addType := func(t types.Type) {
@@ -1669,7 +1696,6 @@ func (p *pkgState) exportErrmap(u *fnUnit) *ErrmapFact {
 	for _, k := range keys {
 		fact.Ifaces = append(fact.Ifaces, ifaces[k])
 	}
-	p.pass.ExportObjectFact(u.obj, fact)
 	return fact
 }
 

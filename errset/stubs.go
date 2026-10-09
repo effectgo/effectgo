@@ -111,8 +111,9 @@ func (p *pkgState) loadStubs() error {
 		return err
 	}
 	var statusRules []statusRule
+	p.loadStatusFuncs(rules)
 	for _, r := range rules {
-		if r.Verb == stubs.VerbStatus {
+		if r.Verb == stubs.VerbStatus && r.Target.Name == "" {
 			code, _ := strconv.Atoi(r.Value) // checked by internal/stubs
 			statusRules = append(statusRules, statusRule{pkg: r.Target.Pkg, typ: r.Target.Type, code: code})
 		}
