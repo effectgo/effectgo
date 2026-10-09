@@ -161,3 +161,26 @@ func TestWitnessFlag(t *testing.T) {
 	t.Cleanup(func() { _ = effects.Analyzer.Flags.Set("witness", old) })
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "witness")
 }
+
+// TestInteractWitness: witness chains where a literal reaches the effect through
+// parameter polymorphism, and where a stub on a named func type or on a func
+// variable supplies the effect.
+func TestInteractWitness(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/interact.stubs"))
+	setFlag(t, "witness", "true")
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "interact")
+}
+
+// TestAllShippedStubFilesViaEnv: TestMain clears EFFECTGO_STUBS, so this sets it
+// for its own run to the four shipped files together. Loading must succeed (no
+// malformed line, no duplicate target across files).
+func TestAllShippedStubFilesViaEnv(t *testing.T) {
+	setStubs(t, "")
+	t.Setenv("EFFECTGO_STUBS", strings.Join([]string{
+		absPath(t, "../stubs/stdlib.stubs"),
+		absPath(t, "../stubs/pgx.stubs"),
+		absPath(t, "../stubs/gin.stubs"),
+		absPath(t, "../stubs/huma.stubs"),
+	}, ","))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "shipped")
+}
