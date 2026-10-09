@@ -687,44 +687,48 @@ The branches `fix/determinism`, `feat/driver-stubs` and `feat/report-tooling` ar
 
 **Stub-file warning** (`cmd/effectgo`): a standalone, `sig` or `openapi` run with neither `-stubs` nor `EFFECTGO_STUBS` prints one stderr line. Go vet probes and `.cfg` invocations are quiet. `TestNoStubsWarning`.
 
-**Metrics** (`python3 -I metrics.py`; percentages, `avg_named_variants` = mean named variants per error function with a non-empty set). Baseline rows are from `baseline.jsonl`; P1a and P1b rows are recomputed from `runs/p1a/<project>.all.report` and `runs/p1b/<project>.report`. Integrated A is `EFFECTGO_STUBS=stdlib.stubs`; integrated B adds `pgx`, `gin`, `huma`. Integrated runs used a fresh GOCACHE each.
+**Stdlib detection bug (resolved).** The earlier open problem (integrated `pct_panic` 59 to 70 against 2 to 10 for P1a) had one cause. `isStdlib` (`effects/effects.go`) and `isStd` (`errset/errset.go`) compared file paths with `build.Default.GOROOT`. That value comes from `$GOROOT`, or else from the analyzer binary's own toolchain. The shell exported `GOROOT=…/go/1.26.8` while `go list` resolved the standard library under `…/go/1.26.9`, so the check failed and the stdlib bodies were analyzed as user code: `strconv.Atoi → … → formatBits → panic`, `fmt.Errorf → … → reflect.Type.String`. The rows that were measured under that mismatch are superseded below.
+
+**Fix.** `internal/goroot` decides stdlib from the source layout only. A package is stdlib iff its source directory is `<root>/src/<import path>` (or `<root>/src/vendor/<import path>`) and `<root>` has `src/runtime` plus a `VERSION` file or `pkg/tool` directory. The root comes from the file path, so the answer does not depend on `$GOROOT`, on the analyzer's build toolchain, or on `GOTOOLCHAIN`. Results are cached per root. `effects` checks the files of the package under analysis; `errset` checks the source files that declare the callee's objects (positions from the shared FileSet). No `go env` is run inside an analyzer. analysistest GOPATH testdata (`…/testdata/src/a`) has no such root and stays user code. Tests: `internal/goroot/goroot_test.go` (stdlib recognized with GOROOT unset, stale to another or a missing directory, or correct; testdata and the repository's own testdata non-stdlib; `unsafe` stdlib). The one-time "analyzed as user code" warning was not implemented: a dot-less module path such as `backend/...` would trigger it falsely, and nothing in the measurements needed it.
+
+**Robustness proof** (kuzma-wms, config B, `-effects.report -errset.report`, env `GOFLAGS=-buildvcs=false GOPRIVATE=github.com/VectorSprint/*`, fresh GOCACHE per run). Sorted outputs of the fixed binary are identical for GOROOT unset, GOROOT=…/1.26.8 and GOROOT=…/1.26.9 (1690 lines each, md5 `98b1ea254657c0c69ecdbcb1143c5bb4`). The old integrated binary with the stale GOROOT reproduces the bug (pct_panic 67.0, pct_unknown 67.4, against 9.6 and 40.8 for the fixed binary; its sorted output has md5 `25523379…`, the value recorded in the earlier determinism smoke test, which therefore measured the bug and not determinism).
+
+**Fair comparison.** Same environment for all rows: `env -u GOROOT GOFLAGS=-buildvcs=false GOPRIVATE=github.com/VectorSprint/*` and `EFFECTGO_STUBS`. The OLD baseline, P1a and P1b binaries run with `GOROOT=…/go/1.26.9` explicitly, because they still have the path bug. Baseline uses the `stdlib.stubs` of `feat/openapi`; P1a the four P1a stub files; P1b `effectgo-p1-tooling/stubs/stdlib.stubs`; integrated A `stdlib.stubs`; integrated B `stdlib,pgx,gin,huma`. Raw outputs and `metrics.jsonl` are in `runs/fix-stdlib/`. Percentages from `python3 -I metrics.py`; `avg_named_variants` = mean named variants per error function with a non-empty set.
 
 order-mgmt (2201 functions, 854 with error sets)
 
 | row | pct_unknown | pct_opaque | pct_only_opaque | avg_named_variants | pct_db | pct_panic |
 |---|---|---|---|---|---|---|
 | baseline | 54.3 | 95.7 | 38.6 | 4.06 | 0.0 | 31.1 |
-| P1a-all | 30.3 | 95.2 | 41.5 | 1.48 | 30.2 | 2.2 |
+| P1a | 30.3 | 95.2 | 41.5 | 1.48 | 30.2 | 2.2 |
 | P1b | 54.3 | 93.1 | 30.2 | 2.62 | 0.0 | 31.1 |
-| integrated A | 65.7 | 92.6 | 29.0 | 3.09 | 0.0 | 69.7 |
-| integrated B | 55.1 | 92.6 | 33.8 | 1.87 | 30.2 | 59.6 |
+| integrated A | 50.5 | 92.6 | 29.0 | 3.09 | 0.0 | 29.7 |
+| integrated B | 30.3 | 92.6 | 33.8 | 1.87 | 30.2 | 2.2 |
 
 kuzma-wms (1090 functions, 600 with error sets)
 
 | row | pct_unknown | pct_opaque | pct_only_opaque | avg_named_variants | pct_db | pct_panic |
 |---|---|---|---|---|---|---|
 | baseline | 48.1 | 92.7 | 50.3 | 0.77 | 41.0 | 10.6 |
-| P1a-all | 40.8 | 92.7 | 26.2 | 2.03 | 40.8 | 9.6 |
+| P1a | 40.8 | 92.7 | 26.2 | 2.03 | 40.8 | 9.6 |
 | P1b | 48.1 | 87.5 | 34.2 | 1.30 | 41.0 | 10.6 |
-| integrated A | 67.9 | 87.5 | 16.5 | 2.59 | 40.0 | 67.0 |
-| integrated B | 67.4 | 87.5 | 16.3 | 2.59 | 40.8 | 67.0 |
+| integrated A | 42.5 | 87.5 | 16.5 | 2.59 | 40.0 | 9.9 |
+| integrated B | 40.8 | 87.5 | 16.3 | 2.59 | 40.8 | 9.6 |
 
 arcteryx-console (606 functions, 269 with error sets)
 
 | row | pct_unknown | pct_opaque | pct_only_opaque | avg_named_variants | pct_db | pct_panic |
 |---|---|---|---|---|---|---|
 | baseline | 41.4 | 94.4 | 69.1 | 0.86 | 24.1 | 20.0 |
-| P1a-all | 26.7 | 93.3 | 38.7 | 1.76 | 24.4 | 6.8 |
+| P1a | 26.7 | 93.3 | 38.7 | 1.76 | 24.4 | 6.8 |
 | P1b | 41.4 | 89.2 | 48.7 | 1.34 | 24.1 | 20.0 |
-| integrated A | 59.9 | 88.1 | 24.2 | 2.24 | 24.4 | 59.7 |
-| integrated B | 59.6 | 88.1 | 24.2 | 2.24 | 24.4 | 58.9 |
+| integrated A | 27.2 | 88.1 | 24.2 | 2.24 | 24.4 | 7.8 |
+| integrated B | 26.7 | 88.1 | 24.2 | 2.24 | 24.4 | 6.8 |
 
-**Open problem: results depend on the build-cache state (not resolved here).** The integrated rows have `pct_panic` of 59 to 70, against 2 to 10 for P1a-all. The witness chains show the cause: `envInt → strconv.Atoi → strconv.toError → … → strconv.formatBits → panic`, and `fmt.Errorf → fmt.(*pp).doPrintf → reflect.Type.String` for `unknown`. These are stdlib bodies. The analyzer is written to never analyze the stdlib (`isStdlib` in `effects/effects.go`, which compares file paths against `build.Default.GOROOT`), so these chains mean that the stdlib files reached the analyzer as source with a path that did not match. The same binary gave `envInt: {env}` in the stored P1a and P1b reports and `{env, panic}` on a fresh cache. Two runs with the same inputs in the same directory disagreed (1555 sorted lines differed, one warm run of integrated A vs its cold rerun; the second warm rerun matched the cold run exactly). The shell in which these runs were launched exports `GOROOT=…/go/1.26.8`, while `go list` resolves the standard library under `…/go/1.26.9`. A mismatch like that would make `isStdlib` fail. This is the leading hypothesis, not verified: the per-command environment was limited to `GOFLAGS` and `GOPRIVATE`, so the run with `GOROOT` unset was not made. Until this is fixed, rows with stdlib-walk panic/unknown counts are not comparable, and the integrated `pct_panic`/`pct_unknown` should not be read as a gain or a regression.
+Reading the tables: integrated B now matches P1a on the panic and unknown shares for all three projects, and keeps P1a's `db` share on order-mgmt (30.2). Integrated A (stdlib stubs only) has a higher panic share on order-mgmt (29.7), which is not a stdlib effect: the pgx and gin bodies are then analyzed as user code, since their stubs are absent. This was not separately verified. P1b and the baseline are unchanged by the fix, as expected: their numbers were measured with the correct GOROOT. The `pct_only_opaque` direction and the `db` gains in P1a and B are unchanged from the earlier analysis.
 
-What the integrated runs do support: B adds `db` on order-mgmt (0.0 to 30.2) and kuzma-wms and arcteryx keep their `db` shares (drivers already modeled by the baseline). The `?` shares move as in P1b and P1a: `pct_only_opaque` falls on kuzma-wms (50.3 to 16.3) and falls on arcteryx-console relative to the P1b row (48.7 to 24.2), which is consistent with the stdlib-walk caveat below rather than with a precision gain.
+**Witness top-10** (config B, fixed binary, `-errset.witness -effects.witness`; script `runs/fix-stdlib/witness_top10.py`, output `runs/fix-stdlib/witness_top10.txt`). Plain `?` last hops (1545 witnesses, all three projects): `(Row).Scan [stub]` 22.8%, `(Pool).Query [stub]` 6.6%, `(Pool).Begin [stub]` 5.5%, `(Pool).Exec [stub]` 4.2%, `sql.DB.BeginTx` 4.2%, `json.Marshal` 3.9%, `sql.DB.QueryContext` 3.6%, `sql.DB.ExecContext` 3.3%, `row.Scan` 2.7%, `sql.Tx.QueryContext` 2.1%. `unknown` last hops (1275 witnesses): `io.Closer.Close` 10.9%, `queryer.QueryRowContext` 5.3%, `scanner.Scan` 4.9%, `dynamic call GenerateOperationID` 3.8%, `io.ReadAll` 2.7%, `cipher.AEAD.NonceSize` 1.9%, `io.Writer.Write` 1.9%, `giftCardQuerier.Query` 1.6%, `huma.API.OpenAPI` 1.3%, `io.Copy` 1.3%. The old `reflect.Type.String`, `reflectlite.Type.Comparable` and `regexp.input.step` hops are gone, and no stdlib body (`formatBits`, `fmt.(*pp)`, `reflect.Type.String`) appears in any witness file. The remaining hops are project-level or driver-level (`queryer`, `scanner`, `giftCardQuerier`, dynamic calls) or stdlib API boundaries (`sql.DB.*`, `json.Marshal`, `io.Closer.Close`, `io.ReadAll`), which the analyzer treats as unknown or opaque by design. Per project: order-mgmt and arcteryx-console lead with `(Row).Scan`/`(Pool).*` and `io.Closer.Close`; kuzma-wms leads with `(Row).Scan` and `sql.DB.BeginTx`, and its `unknown` list is `io.Closer.Close`, `queryer.QueryRowContext`, `scanner.Scan`, `dynamic call GenerateOperationID`.
 
-**Determinism smoke test.** Config B on kuzma-wms, two runs with separate fresh caches: 1690 lines each, the sorted outputs have the same md5 (`25523379adc959901519d95ddb260e0b`). The fresh-cache run matches run 1 exactly. The inconsistency above was seen only in order-mgmt configuration A; its first warm run is not reproduced by any later run.
+**Determinism.** Config B on kuzma-wms, three runs with fresh caches under three GOROOT settings: identical sorted outputs (md5 `98b1ea254657c0c69ecdbcb1143c5bb4`).
 
-**Witness top-10** (config B, `-errset.witness -effects.witness`; script `runs/integrate/witness_top10.py`, output `runs/integrate/witness_top10.txt`). Plain `?` error witnesses (1545 across the three projects): `(Row).Scan [stub]` 22.8%, `(Pool).Query [stub]` 6.6%, `(Pool).Begin [stub]` 5.5%, `(Pool).Exec [stub]` 4.2%, `sql.DB.BeginTx` 4.2%, `json.Marshal` 3.9%, `sql.DB.QueryContext` 3.6%, `sql.DB.ExecContext` 3.3%, `row.Scan` 2.7%, `sql.Tx.QueryContext` 2.1%. `unknown` effect witnesses (2308): `reflect.Type.String` 16.6%, `reflectlite.Type.Comparable` 10.2%, `io.Writer.Write` 7.4%, `io.Closer.Close` 5.6%, `regexp.input.step` 4.1%, `dynamic call scan.step` 3.2%, `dynamic call copyenv` 2.7%, `queryer.QueryRowContext` 2.4%, `dynamic call p.New` 2.3%, `scanner.Scan` 2.3%. Caveat: the `unknown` list is dominated by stdlib-internal hops of the GOROOT issue above, and is not a project-level finding yet.
-
-**Limitations.** Three projects, one run each per configuration, except order-mgmt A (three runs). P1a and P1b rows were not re-measured with the integrated binary's environment, so their panic numbers may not be comparable with the integrated rows. The stub warning is not emitted for go vet runs.
+**Limitations.** Three projects, one run each per configuration, except order-mgmt A (three runs). P1a and P1b rows were not re-measured with the integrated binary's environment, so their panic numbers may not be comparable with the integrated rows. The stub warning is not emitted for go vet runs. Each row is one run; the fixed binary's results are deterministic across the GOROOT settings tested, but other toolchains were not tested.
