@@ -63,6 +63,7 @@ effectgo ./...                                      # standalone: effects and er
 go vet -vettool=$(which effectgo) ./...             # the same checks through go vet
 effectgo sig ./...                                  # signatures only (see below)
 effectgo openapi [-merge|-check spec.json] ./...    # OpenAPI error responses (see below)
+effectgo http-gin [-json] [-all] [-mappers] ./...   # Gin responses against the error sets (see below)
 ```
 
 Standalone runs skip `_test.go` files by default (`-test=false`). Pass `-test=true` to analyze them too. `go vet` is different: it decides by itself which packages and test variants it passes to the tool, so `-test` has no effect there (see "Test files" below).
@@ -159,6 +160,7 @@ effects <target> <effect,effect,...>     # or: pure        (read by effects)
 errors  <target> <variant,variant,...>   # or: none        (read by errset)
 status  (pkgpath.Type) <code>            #                 (read by errset)
 route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>  (read by openapi)
+sink    <target> status=<argIndex> [body=<argIndex>]   (read by http-gin)
 ```
 
 Targets: `pkgpath.Func`, `(pkgpath.Type).Method`, `(*pkgpath.Type).Method`, `(pkgpath.Iface).Method`, `(error).Error`. Two more forms name a function value rather than a declared function: `(pkgpath.Type)`, a named func type (`effects (context.CancelFunc) pure` covers every call through a value of that type), and `pkgpath.Var`, a package-level variable of func type (`effects github.com/danielgtaylor/huma/v2.NewError pure`). A `status` target is a type. Variants: `pkgpath.Name` (sentinel), `type:pkgpath.Type`, `iface:pkgpath.Iface`, or `?`. Indexes are 0-based.
@@ -223,6 +225,34 @@ Fuego's document has 400, 404 and 500 on every operation, not 404 only, so the s
 
 The subcommand exits with status 3 when it printed something, because each signature is a diagnostic. The normal run (`effectgo ./...`) prints no signatures; `sig` mode runs the two analyzers as dependencies and does not print their diagnostics.
 
+## HTTP check: Gin
+
+`effectgo http-gin` is the Gin counterpart of the errmap check. A Gin handler returns nothing: it writes the response with `c.JSON`, `c.AbortWithStatusJSON` or a project helper such as `httpapi.Detail(c, status, msg)`. So the boundary is a call, not a return value. The subcommand finds the response calls (sinks), reads their constant status, and reports each error variant that reaches a 5xx response. It also reports error text written into a response body.
+
+```
+$ EFFECTGO_STUBS=$STUBS,/abs/project.stubs effectgo http-gin -json ./...   # records of the shared HTTP schema
+$ effectgo http-gin -mappers ./...                                          # text, and the mappers on stderr
+```
+
+A sink is declared by a stub line, `sink <target> status=<argIndex> [body=<argIndex>]`, with 0-based argument indexes. The Gin writers are in `stubs/gin.stubs`. A project helper is declared in the project's own stub file, outside the code:
+
+```
+sink github.com/example/app/internal/httpapi.Detail status=1 body=2
+```
+
+Mappers are found without annotations. A sink mapper is a function with a `*gin.Context` and an error parameter whose errors.Is, errors.As, `==` or switch branches answer with constant statuses; its default is the catch-all status. A status mapper is `func(error) (int, bool)` whose branches return a constant status. At a call site, `m(c, err)` gives the mapped variants their status and the rest the default; `if status, ok := m(err); ok { sink(c, status) }` followed by a sink gives the rest the fallthrough status.
+
+Each record is one JSON object per line, with `severity`, `framework` (`gin`), `route`, `handler`, `pos`, `variant`, `status`, `via`, and `reason`. Severities:
+
+| severity | meaning |
+|---|---|
+| `high` | a named variant (sentinel or type) reaches a 5xx response, and the same variant is mapped to a non-5xx status elsewhere in the project: an inconsistent mapping |
+| `medium` | a named variant reaches a 5xx response; no mapping covers it |
+| `info` | `?` or `new@` reaches a 5xx response; hidden unless `-all` |
+| `leak` | a sink body carries `err.Error()` or an error formatted into a string (up to two composite literals deep); the status is the response status |
+
+The analysis is flow-insensitive per declaration (errset's sets), so a variable reused for two calls carries the variants of both. See NOTES.md, "Gin adapter", for the limitations and the evaluation on three services.
+
 ## Comparison with related tools
 
 This section describes the other tools at a high level, as their own documentation summarises them. It was not re-checked against their current releases.
@@ -249,6 +279,7 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 | `signature/` | the `Effect<A, E, R>` analyzer, reached through `effectgo sig` |
 | `openapi/` | the route analyzer and the OpenAPI fragment, merge and check output, reached through `effectgo openapi` |
 | `internal/stubs/` | the shared stub-file parser |
+| `adapters/gin/` | the Gin response check (`effectgo http-gin`): sinks, mappers, handler findings, leaks, routes |
 | `cmd/effectgo/` | the binary |
 | `stubs/` | shipped stub files |
 | `examples/layers/` | effects demo (its own module) |

@@ -71,3 +71,26 @@ func TestShippedStubFilesParse(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSinkRules(t *testing.T) {
+	rules, err := Parse("t.stubs", []byte("sink (*github.com/gin-gonic/gin.Context).JSON status=0 body=1\nsink fixture/httpapi.Detail status=1 body=2\nsink (*github.com/gin-gonic/gin.Context).AbortWithStatus status=0\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 3 || rules[0].Verb != VerbSink || rules[1].Target.Name != "Detail" {
+		t.Fatalf("unexpected rules %+v", rules)
+	}
+	if rules[0].Args[0] != "0" || rules[0].Args[1] != "1" || rules[2].Args[1] != "-1" {
+		t.Errorf("argument indexes %v %v", rules[0].Args, rules[2].Args)
+	}
+	for _, bad := range []string{
+		"sink fixture/httpapi.Detail body=2\n",
+		"sink fixture/httpapi.Detail status=x\n",
+		"sink fixture/httpapi.Detail status=1 extra=2\n",
+		"sink (fixture/httpapi.Detail) status=1\n",
+	} {
+		if _, err := Parse("bad.stubs", []byte(bad)); err == nil {
+			t.Errorf("want an error for %q", bad)
+		}
+	}
+}

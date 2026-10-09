@@ -114,3 +114,29 @@ effects (*github.com/gin-gonic/gin.Context).Deadline pure
 effects (*github.com/gin-gonic/gin.Context).Done pure
 effects (*github.com/gin-gonic/gin.Context).Err pure
 effects (*github.com/gin-gonic/gin.Context).Value pure
+
+## ---- sink rules (the http-gin adapter) ------------------------------------
+#
+# A sink is a call that writes a response, with the status and the body given as
+# argument indexes (0-based, the receiver not counted). The Context writers take
+# the status first (c.JSON(code, obj): code is argument 0, obj argument 1).
+# status=0 is the status; body=N is the argument that is sent to the client, the
+# one the error-text leak check reads. A writer without a body argument, or whose
+# body is not text (a template name, an error value), has no body= field.
+#
+# c.Status is not a sink: it only sets the status that the next write sends
+# (context.go:1073-1077). Redirect and File have no status argument of their own.
+sink (*github.com/gin-gonic/gin.Context).JSON status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).PureJSON status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).JSONP status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).XML status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).YAML status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).ProtoBuf status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).String status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).Data status=0 body=2
+sink (*github.com/gin-gonic/gin.Context).HTML status=0
+sink (*github.com/gin-gonic/gin.Context).Render status=0
+sink (*github.com/gin-gonic/gin.Context).AbortWithStatusJSON status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).AbortWithStatusPureJSON status=0 body=1
+sink (*github.com/gin-gonic/gin.Context).AbortWithStatus status=0
+sink (*github.com/gin-gonic/gin.Context).AbortWithError status=0
