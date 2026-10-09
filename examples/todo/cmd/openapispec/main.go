@@ -22,7 +22,9 @@ func main() {
 	}
 	data = append(data, '\n')
 	if *out == "" {
-		os.Stdout.Write(data)
+		if _, err := os.Stdout.Write(data); err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 	if err := os.WriteFile(*out, data, 0o644); err != nil {

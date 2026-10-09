@@ -193,7 +193,7 @@ result of domain.Charge is discarded; handle it or assign to _
 
 `_ = f()` is the explicit discard. `go` and `defer` statements are not reported. The only built-in allowlist is `fmt.Print*` and `fmt.Fprint*`; `-mustuse.allow=os.Remove,(*os.File).Close` adds fully-qualified names (for a call through a local func variable, the function assigned to it is matched).
 
-*Integration with error sets.* An error result is reported only when errset cannot prove the callee's error set empty. A function that always returns nil is silent, and so is a stub rule `errors <target> none`. The shipped `stubs/stdlib.stubs` states this for the writers that never fail (`bytes.Buffer`, `strings.Builder`, `hash.Hash.Write`, with the source lines in the file). These rules need the stub file: without it, `buf.WriteString("x")` is reported, since the former built-in allowlist for those writers is gone. A `//effectgo:mustuse` value is reported whatever the error set.
+*Integration with error sets.* An error result is reported only when errset cannot prove the callee's error set empty. A function that always returns nil is silent, and so is a stub rule `errors <target> none`. The shipped `stubs/stdlib.stubs` states this for the writers that never fail (`bytes.Buffer`, `strings.Builder`, `hash.Hash.Write`, with the source lines in the file). The rules come from the stub files that the analysis loads: the zero configuration loads the shipped stubs, so a plain run is silent for them. Under an explicit `-stubs` file that does not state them, `buf.WriteString("x")` is reported, since the former built-in allowlist for those writers is gone. A `//effectgo:mustuse` value is reported whatever the error set.
 
 **Exhaustive (`exhaustive`).** A type switch on a sealed interface without `default` must have a case for every variant:
 
@@ -364,7 +364,7 @@ The summary line on stderr counts both adapters (the `info` counts include the h
 
 ## Editor integration
 
-The contract analyzers (`effects`, `errset`) also run in the editor, through a golangci-lint v2 module plugin (`github.com/faintghost/effectgo/plugin`). The plugin exposes only the contract analyzers, not the report flags or the HTTP subcommands.
+The contract analyzers (`effects`, `errset`) and the must-use and exhaustive analyzers (`mustuse`, `exhaustive`) also run in the editor, through a golangci-lint v2 module plugin (`github.com/faintghost/effectgo/plugin`). The plugin's analyzer list is one variable, `analyzers` in `plugin/plugin.go`; the plugin exposes only these analyzers, not the report flags or the HTTP subcommands. Its settings are `stubs`, `ignoreOpaque` and `mustuseAllow` (the list form of `-mustuse.allow`, e.g. `mustuseAllow: ["(*os.File).Close"]`).
 
 ```
 cd examples/editor && golangci-lint custom     # builds ./bin/custom-gcl with the plugin
@@ -393,7 +393,7 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 - Stdlib effects and errors are modelled by a table and by stubs. Anything outside them is invisible (effects) or opaque (`?`, errset), except `errors.New` and constant-format `fmt.Errorf` without `%w`, which are fresh (`new@pkg.F`).
 - Errset is flow-sensitive over SSA values, with the guard forms listed above; a captured or address-taken error variable is the union of its stores; a field, map value or channel receive is opaque. Generic function bodies, which SSA does not lower, use the AST engine (flow-insensitive). `-errset.engine=ast` selects the AST engine for everything.
 - `go vet` cache: see "Usage" above for files named only by `-stubs`.
-- `mustuse` needs the stub file for the always-nil writers (see "Must-use results"). `exhaustive` cannot see variants declared in another package's test files, and it does not know a sealed interface that has no unexported method. A deferred error check (a sticky error that is read later, as in `csv.Writer`) is not seen: such a discard is reported.
+- `mustuse` needs the writer rules of the stub files for the always-nil writers (see "Must-use results"); the zero configuration and the shipped `stdlib.stubs` have them. `exhaustive` cannot see variants declared in another package's test files, and it does not know a sealed interface that has no unexported method. A deferred error check (a sticky error that is read later, as in `csv.Writer`) is not seen: such a discard is reported.
 
 ## Layout
 

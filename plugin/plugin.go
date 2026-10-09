@@ -12,6 +12,9 @@
 //	              module root of the working directory.
 //	ignoreOpaque: do not report opaque ("?") and fresh (new@) errors in handler
 //	              checks (errset -ignoreopaque). Default false.
+//	mustuseAllow: callees whose discarded results mustuse does not report, by
+//	              full name, e.g. "(*os.File).Close" (mustuse -mustuse.allow).
+//	              Default none.
 //
 // Report flags (-effects.report, -errset.report and the witness flags) are
 // never set: golangci-lint reports diagnostics, and the report lines are not
@@ -29,7 +32,9 @@ import (
 
 	"github.com/faintghost/effectgo/effects"
 	"github.com/faintghost/effectgo/errset"
+	"github.com/faintghost/effectgo/exhaustive"
 	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/faintghost/effectgo/mustuse"
 )
 
 // analyzers is the set of analyzers that the editors run. To expose another
@@ -37,6 +42,8 @@ import (
 var analyzers = []*analysis.Analyzer{
 	effects.Analyzer,
 	errset.Analyzer,
+	mustuse.Analyzer,
+	exhaustive.Analyzer,
 }
 
 // Name is the plugin name: the key under linters.settings.custom, and the
@@ -52,6 +59,7 @@ func init() {
 type Settings struct {
 	Stubs        []string `json:"stubs"`
 	IgnoreOpaque bool     `json:"ignoreOpaque"`
+	MustuseAllow []string `json:"mustuseAllow"`
 }
 
 // Plugin is the golangci-lint module plugin of effectgo.
@@ -77,6 +85,9 @@ func New(conf any) (register.LinterPlugin, error) {
 	if err := errset.Analyzer.Flags.Set("ignoreopaque", fmt.Sprint(s.IgnoreOpaque)); err != nil {
 		return nil, fmt.Errorf("effectgo: ignoreOpaque: %w", err)
 	}
+	if err := mustuse.Analyzer.Flags.Set("allow", strings.Join(trimAll(s.MustuseAllow), ",")); err != nil {
+		return nil, fmt.Errorf("effectgo: mustuseAllow: %w", err)
+	}
 	return &Plugin{analyzers: analyzers}, nil
 }
 
@@ -90,6 +101,17 @@ func (p *Plugin) BuildAnalyzers() ([]*analysis.Analyzer, error) {
 // mode does not provide.
 func (p *Plugin) GetLoadMode() string {
 	return register.LoadModeTypesInfo
+}
+
+// trimAll drops blank entries and surrounding space from a list setting.
+func trimAll(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // resolveStubs makes the configured stub paths absolute. Relative paths are

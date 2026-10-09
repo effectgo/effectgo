@@ -10,6 +10,7 @@ import (
 
 	"github.com/faintghost/effectgo/errset"
 	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/faintghost/effectgo/mustuse"
 )
 
 // withStubs isolates the process-wide stub configuration of one test.
@@ -40,8 +41,8 @@ func TestAnalyzersAndLoadMode(t *testing.T) {
 	for _, a := range as {
 		names = append(names, a.Name)
 	}
-	if got := strings.Join(names, ","); got != "effects,errset" {
-		t.Errorf("analyzers = %s, want effects,errset (report-only and HTTP analyzers are not exposed)", got)
+	if got := strings.Join(names, ","); got != "effects,errset,mustuse,exhaustive" {
+		t.Errorf("analyzers = %s, want effects,errset,mustuse,exhaustive (report-only and HTTP analyzers are not exposed)", got)
 	}
 	if p.GetLoadMode() != register.LoadModeTypesInfo {
 		t.Errorf("load mode = %q, want %q", p.GetLoadMode(), register.LoadModeTypesInfo)
@@ -52,6 +53,18 @@ func TestSettingsDecodeStrictly(t *testing.T) {
 	withStubs(t)
 	if _, err := New(map[string]any{"stubz": []any{"x"}}); err == nil {
 		t.Error("an unknown setting must be an error")
+	}
+}
+
+func TestSettingsMustuseAllow(t *testing.T) {
+	withStubs(t)
+	old := mustuse.Analyzer.Flags.Lookup("allow").Value.String()
+	t.Cleanup(func() { _ = mustuse.Analyzer.Flags.Set("allow", old) })
+	if _, err := New(map[string]any{"mustuseAllow": []any{"(*os.File).Close", " ", "(*a.T).M"}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustuse.Analyzer.Flags.Lookup("allow").Value.String(); got != "(*os.File).Close,(*a.T).M" {
+		t.Errorf("mustuse -allow = %q, want the two non-blank names", got)
 	}
 }
 

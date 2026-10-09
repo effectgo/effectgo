@@ -10,9 +10,17 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-// TestMain clears EFFECTGO_STUBS: each test states its stub files itself.
+// TestMain clears EFFECTGO_STUBS and selects an explicit empty stub file: each
+// test states its stub files itself. An empty -stubs would be the zero
+// configuration, which loads the shipped stdlib.stubs and its writer rules, so
+// the tests without stubs would not see the unstubbed behaviour.
 func TestMain(m *testing.M) {
 	os.Unsetenv(stubs.Env)
+	none, err := filepath.Abs("testdata/stubs/none.stubs")
+	if err != nil {
+		panic(err)
+	}
+	stubs.Flag = none
 	os.Exit(m.Run())
 }
 
@@ -33,16 +41,33 @@ func TestMustUseAllowFlag(t *testing.T) {
 }
 
 // TestWriterStubs runs the writers of package w with the shipped stdlib stub
-// file, which states "errors ... none" for them. TestWriterStubsAbsent runs the
-// same calls without stub files: they are reported.
+// file, which states "errors ... none" for them. TestWriterStubsZeroConfig runs
+// the same calls with no -stubs and no $EFFECTGO_STUBS: the zero configuration
+// loads the shipped files, so they are silent too. TestWriterStubsAbsent runs
+// them with the empty stub file: they are reported.
 func TestWriterStubs(t *testing.T) {
 	setStubs(t, stdlibStubs(t))
 	analysistest.Run(t, analysistest.TestData(), mustuse.Analyzer, "w")
 }
 
-func TestWriterStubsAbsent(t *testing.T) {
+func TestWriterStubsZeroConfig(t *testing.T) {
 	setStubs(t, "")
+	analysistest.Run(t, analysistest.TestData(), mustuse.Analyzer, "w")
+}
+
+func TestWriterStubsAbsent(t *testing.T) {
+	setStubs(t, noStubs(t))
 	analysistest.Run(t, analysistest.TestData(), mustuse.Analyzer, "wn")
+}
+
+// noStubs is the absolute path of the empty stub file that TestMain pins.
+func noStubs(t *testing.T) string {
+	t.Helper()
+	p, err := filepath.Abs("testdata/stubs/none.stubs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 // stdlibStubs is the absolute path of the shipped stdlib.stubs.

@@ -1,6 +1,6 @@
 # Editor integration
 
-effectgo's contract analyzers (`effects`, `errset`) can report while you write
+effectgo's contract analyzers (`effects`, `errset`) and its must-use and exhaustive analyzers (`mustuse`, `exhaustive`) can report while you write
 code, through golangci-lint v2 and its module plugin system. The editor recipes
 are [VS Code](vscode.md) and [Neovim](neovim.md). Both run the same thing: a
 golangci-lint binary that contains the `effectgo` plugin.
@@ -48,7 +48,7 @@ linters:
     custom:
       effectgo:
         type: module
-        description: effectgo contract analyzers (effects, errset)
+        description: effectgo analyzers (effects, errset, mustuse, exhaustive)
         settings: {}
 ```
 
