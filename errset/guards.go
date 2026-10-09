@@ -67,26 +67,28 @@ type target struct {
 // errorMethods is the method set of a fresh error (errors.New's type).
 var errorMethods = []string{"Error()(string)"}
 
-// narrowEdge narrows the environment e of the edge p -> b by the branch that
-// ends p.
-func (f *ssaFn) narrowEdge(p, b *ssa.BasicBlock, e map[ssa.Value]errSet) {
+// narrowEdge narrows the environment *e of the edge p -> b by the branch that
+// ends p. The map may be shared with another edge, so it is copied before the
+// first write. It reports whether the edge narrows at all.
+func (f *ssaFn) narrowEdge(p, b *ssa.BasicBlock, e *map[ssa.Value]errSet) bool {
 	if len(p.Instrs) == 0 || len(p.Succs) != 2 {
-		return
+		return false
 	}
 	ifi, ok := p.Instrs[len(p.Instrs)-1].(*ssa.If)
 	if !ok {
-		return
+		return false
 	}
 	tb, fb := p.Succs[0], p.Succs[1]
-	if tb == fb {
-		return
+	if tb == fb || (b != tb && b != fb) {
+		return false
 	}
-	switch b {
-	case tb:
-		f.narrowCond(ifi.Cond, true, e)
-	case fb:
-		f.narrowCond(ifi.Cond, false, e)
+	cp := make(map[ssa.Value]errSet, len(*e)+1)
+	for v, s := range *e {
+		cp[v] = s
 	}
+	*e = cp
+	f.narrowCond(ifi.Cond, b == tb, cp)
+	return true
 }
 
 // narrowCond narrows e for the condition cond being positive (true) or not.

@@ -70,6 +70,7 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)
 		os.Args = withoutTests(os.Args)
+		signature.Analyzer.Flags.Var(engineFlag{}, "errset.engine", errsetEngineUsage)
 		multichecker.Main(signature.Analyzer)
 		return
 	}
@@ -169,4 +170,20 @@ func printIdentity() {
 		h.Write(data)
 	}
 	fmt.Printf("effectgo version devel buildID=%x\n", h.Sum(nil))
+}
+
+// errsetEngineUsage is the usage line of -errset.engine.
+const errsetEngineUsage = "error-set engine: ast (flow-insensitive) or ssa (flow-sensitive, SSA values); see errset"
+
+// engineFlag is the -errset.engine flag of the subcommands that run the errset
+// analyzer. It sets the engine of that analyzer, which the analysis reads.
+type engineFlag struct{}
+
+func (engineFlag) String() string { return errset.Analyzer.Flags.Lookup("engine").Value.String() }
+
+func (engineFlag) Set(v string) error { return errset.Analyzer.Flags.Set("engine", v) }
+
+// bindEngine adds -errset.engine to a subcommand's flag set.
+func bindEngine(fs *flag.FlagSet) {
+	fs.Var(engineFlag{}, "errset.engine", errsetEngineUsage)
 }

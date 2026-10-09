@@ -9,9 +9,11 @@ package ginhttp
 //     the else of a test, a switch's default, or the sink that follows an
 //     if-return on the same block ("fallthrough").
 //
-// The rules are gathered in source order, flow-insensitively. A variant takes
-// the first matching variant rule, else the default of its variable, else no
-// status (the variant is not reported).
+// The rules are gathered in source order. A variant takes the first matching
+// variant rule, else the default of its variable, else no status (the variant
+// is not reported). A rule or default is read at its own use: the variants of
+// the variable at that identifier (errset.Flow.Of), so a guard above a sink
+// removes the variants it tests before the sink answers them.
 
 import (
 	"go/ast"
@@ -23,6 +25,7 @@ import (
 
 // varRule gives a status to the variants of one variable that match a branch.
 type varRule struct {
+	id         *ast.Ident // the use where the rule is read
 	subj       types.Object
 	br         errset.Branch
 	status     int
@@ -33,6 +36,7 @@ type varRule struct {
 
 // defRule gives the status of every variant of a variable without a variant rule.
 type defRule struct {
+	id     *ast.Ident // the use where the default is read
 	status int
 	pos    token.Pos
 	how    string
@@ -47,10 +51,13 @@ type engine struct {
 	defs    map[types.Object]defRule
 	order   []types.Object
 	pending []types.Object
+	// pendID is the use of each pending variable at its guard (the fallback
+	// use of a sink that does not name the variable).
+	pendID map[types.Object]*ast.Ident
 }
 
 func newEngine(a *analyzer, flow errset.Flow, params map[types.Object]bool) *engine {
-	return &engine{a: a, flow: flow, params: params, idents: map[types.Object]*ast.Ident{}, defs: map[types.Object]defRule{}}
+	return &engine{a: a, flow: flow, params: params, idents: map[types.Object]*ast.Ident{}, defs: map[types.Object]defRule{}, pendID: map[types.Object]*ast.Ident{}}
 }
 
 // note records a subject in order of first appearance.
@@ -80,18 +87,19 @@ func (e *engine) addDef(id *ast.Ident, obj types.Object, st int, pos token.Pos, 
 	if _, ok := e.defs[obj]; ok {
 		return
 	}
-	e.defs[obj] = defRule{status: st, pos: pos, how: how}
+	e.defs[obj] = defRule{id: id, status: st, pos: pos, how: how}
 }
 
 // addPending marks a variable whose variant rule returns: a sink that follows
 // on the same block answers the variants this rule did not select.
-func (e *engine) addPending(obj types.Object) {
+func (e *engine) addPending(obj types.Object, id *ast.Ident) {
 	for _, p := range e.pending {
 		if p == obj {
 			return
 		}
 	}
 	e.pending = append(e.pending, obj)
+	e.pendID[obj] = id
 }
 
 // walk reads a statement list. Pending fallthroughs are scoped to the list: a
@@ -118,7 +126,12 @@ func (e *engine) walk(list []ast.Stmt) {
 				if r, ok := e.a.sinkOf(call); ok {
 					st := e.a.statusOfCall(call, r)
 					for _, obj := range e.pending {
-						e.addDef(e.idents[obj], obj, st, call.Pos(), "the sink after the if-return")
+						// The sink answers the variable at its own use when it names it.
+						id := identOfObj(e.a.info, call, obj)
+						if id == nil {
+							id = e.pendID[obj]
+						}
+						e.addDef(id, obj, st, call.Pos(), "the sink after the if-return")
 					}
 					e.pending = nil
 				}
@@ -168,7 +181,7 @@ func terminates(b *ast.BlockStmt) bool {
 // variant with a known status.
 func (e *engine) addRule(id *ast.Ident, obj types.Object, br errset.Branch, st int, pos token.Pos, how string, fromMapper bool) {
 	e.note(id, obj)
-	e.vrs = append(e.vrs, varRule{subj: obj, br: br, status: st, pos: pos, how: how, fromMapper: fromMapper})
+	e.vrs = append(e.vrs, varRule{id: id, subj: obj, br: br, status: st, pos: pos, how: how, fromMapper: fromMapper})
 	if !fromMapper && st > 0 && (br.Match == "sentinel" || br.Match == "type") && br.Key != "" {
 		e.a.res.Obs = append(e.a.res.Obs, Obs{Key: br.Key, Status: st, Pos: e.a.posStr(pos)})
 	}
@@ -182,6 +195,7 @@ func (e *engine) ifChain(s *ast.IfStmt, chain *ast.Ident) {
 	// if-return answers; it is added once the body is read, so that the sinks
 	// of the body do not consume it.
 	var pendObj types.Object
+	var pendID *ast.Ident
 	if s.Init != nil {
 		if as, ok := s.Init.(*ast.AssignStmt); ok && len(as.Lhs) == 2 && len(as.Rhs) == 1 {
 			if call, ok := as.Rhs[0].(*ast.CallExpr); ok && len(call.Args) > 0 {
@@ -191,7 +205,7 @@ func (e *engine) ifChain(s *ast.IfStmt, chain *ast.Ident) {
 							e.addRule(id, obj, b.Br, b.Status, call.Pos(), "status mapper "+e.a.calleeName(call), true)
 						}
 						if terminates(s.Body) && s.Else == nil {
-							pendObj = obj
+							pendObj, pendID = obj, id
 						}
 						if chain == nil {
 							chain = id
@@ -206,7 +220,7 @@ func (e *engine) ifChain(s *ast.IfStmt, chain *ast.Ident) {
 			if st, pos, has := e.blockStatus(s.Body.List); has {
 				e.addRule(id, obj, br, st, pos, "inline test (if-branch) at "+e.a.posStr(s.Pos()), false)
 				if terminates(s.Body) && s.Else == nil {
-					pendObj = obj
+					pendObj, pendID = obj, id
 				}
 			}
 			if chain == nil {
@@ -239,7 +253,7 @@ func (e *engine) ifChain(s *ast.IfStmt, chain *ast.Ident) {
 	}
 	e.walk(s.Body.List)
 	if pendObj != nil {
-		e.addPending(pendObj)
+		e.addPending(pendObj, pendID)
 	}
 	switch el := s.Else.(type) {
 	case *ast.IfStmt:
@@ -318,19 +332,61 @@ func (e *engine) switchStmt(s *ast.SwitchStmt) {
 // the 5xx findings of the handler (name and handlerPos label the handler).
 func (e *engine) finalize(name, handlerPos string) []Finding {
 	var out []Finding
+	seen := map[string]bool{}
+	report := func(v errset.Variant, st int, pos token.Pos, how string) {
+		key := e.a.posStr(pos) + "|" + v.Key + "|" + v.Name
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, e.a.reachFinding(name, handlerPos, pos, v, st, how))
+	}
 	for _, obj := range e.order {
-		if e.params[obj] || e.flow.Of(e.idents[obj]) == nil {
+		if e.params[obj] {
 			continue
 		}
-		for _, v := range e.flow.Of(e.idents[obj]) {
-			st, pos, how, ok := e.statusFor(obj, v)
-			if !ok || st < 500 {
+		// The default of a variable answers the variants that reach its own use
+		// (the sink or the catch-all test). A variant rule answers the variants
+		// that its branch matches at its own use. A variant at any other use is
+		// not answered by either.
+		if d, ok := e.defs[obj]; ok && d.id != nil {
+			for _, v := range e.flow.Of(d.id) {
+				if st, pos, how, ok := e.statusFor(obj, v); ok && st >= 500 {
+					report(v, st, pos, how)
+				}
+			}
+		}
+		for _, r := range e.vrs {
+			if r.subj != obj || r.id == nil {
 				continue
 			}
-			out = append(out, e.a.reachFinding(name, handlerPos, pos, v, st, how))
+			for _, v := range e.flow.Of(r.id) {
+				if !r.br.Matches(v) {
+					continue
+				}
+				if st, pos, how, ok := e.statusFor(obj, v); ok && st >= 500 {
+					report(v, st, pos, how)
+				}
+			}
 		}
 	}
 	return out
+}
+
+// identOfObj returns the first identifier under node that uses obj, or nil.
+func identOfObj(info *types.Info, node ast.Node, obj types.Object) *ast.Ident {
+	var found *ast.Ident
+	ast.Inspect(node, func(n ast.Node) bool {
+		if found != nil {
+			return false
+		}
+		if id, ok := n.(*ast.Ident); ok && info.Uses[id] == obj {
+			found = id
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // statusFor returns the status of variant v of a subject.

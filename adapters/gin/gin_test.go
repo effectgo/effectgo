@@ -1,6 +1,7 @@
 package ginhttp_test
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	ginhttp "github.com/faintghost/effectgo/adapters/gin"
+	"github.com/faintghost/effectgo/errset"
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
@@ -176,4 +178,15 @@ func TestNoFindingForStatusOnly(t *testing.T) {
 			t.Errorf("a mapper's own parameter must not produce a finding: %+v", f)
 		}
 	}
+}
+
+// TestMain runs the adapter tests with the error-set engine named by
+// EFFECTGO_TEST_ENGINE (ast or ssa); the default is the AST engine.
+func TestMain(m *testing.M) {
+	if e := os.Getenv("EFFECTGO_TEST_ENGINE"); e != "" {
+		if err := errset.Analyzer.Flags.Set("engine", e); err != nil {
+			panic(err)
+		}
+	}
+	os.Exit(m.Run())
 }

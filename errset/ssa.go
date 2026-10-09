@@ -40,6 +40,10 @@ func (p *pkgState) buildSSA() (ok bool) {
 		prog.CreatePackage(imp, nil, nil, true)
 	}
 	sp := prog.CreatePackage(p.pass.Pkg, p.pass.Files, p.pass.TypesInfo, true)
+	// Debug mode records a DebugRef for each evaluated expression: the per-use
+	// queries of Flow.Of read them (see useMap). Only this package is lowered
+	// in debug mode.
+	sp.SetDebugMode(true)
 	sp.Build()
 	p.ssaProg = prog
 	p.callAt = map[token.Pos]*ast.CallExpr{}
@@ -52,6 +56,56 @@ func (p *pkgState) buildSSA() (ok bool) {
 		})
 	}
 	return true
+}
+
+// ssaUse is the SSA value of one expression use (a DebugRef): the value, its
+// block, and the state of the function that contains it.
+type ssaUse struct {
+	f *ssaFn
+	v ssa.Value
+	b *ssa.BasicBlock
+}
+
+// flowTable is the per-use answer of a unit, computed when the pass ends so
+// that the SSA program can be released: byExpr gives the visible set of each
+// expression of error type at its use, and byObj the union of the uses of
+// each variable (the fallback of Flow.Of for an identifier with no use).
+type flowTable struct {
+	byExpr map[ast.Expr][]Variant
+	byObj  map[types.Object][]Variant
+}
+
+// flowTable builds the table of the unit. An address (IsAddr) is not a use of
+// a value, and only error-typed values are kept.
+func (u *ssaUnit) flowTable() *flowTable {
+	out := &flowTable{byExpr: map[ast.Expr][]Variant{}, byObj: map[types.Object][]Variant{}}
+	objSets := map[types.Object]errSet{}
+	for _, f := range u.fns {
+		for _, b := range f.fn.Blocks {
+			for _, in := range b.Instrs {
+				ref, ok := in.(*ssa.DebugRef)
+				if !ok || ref.IsAddr || ref.Expr == nil || !implementsError(ref.X.Type()) {
+					continue
+				}
+				s := f.effective(ref.X, f.env[b])
+				out.byExpr[ref.Expr] = u.p.visible(s.list())
+				if id, ok := ast.Unparen(ref.Expr).(*ast.Ident); ok {
+					if obj := u.p.pass.TypesInfo.Uses[id]; obj != nil {
+						cur := objSets[obj]
+						if cur == nil {
+							cur = errSet{}
+							objSets[obj] = cur
+						}
+						cur.putAll(s)
+					}
+				}
+			}
+		}
+	}
+	for obj, s := range objSets {
+		out.byObj[obj] = u.p.visible(s.list())
+	}
+	return out
 }
 
 // ssaFuncOf returns the SSA function of a declared unit, or nil when SSA has
@@ -90,6 +144,13 @@ type ssaUnit struct {
 	allocs map[*ssa.Alloc]errSet
 	// lits is the error set of each literal with an error result.
 	lits map[*ssa.Function]errSet
+	// deps maps each same-package callee that the unit reads to its work
+	// version at the last evaluation (see current).
+	deps map[*types.Func]int
+	// errs, handler and has are the results of the last evaluation.
+	errs    errSet
+	handler errSet
+	has     bool
 }
 
 type freeRef struct {

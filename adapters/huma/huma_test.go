@@ -2,6 +2,7 @@ package huma_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -278,4 +279,15 @@ func TestJSONSchema(t *testing.T) {
 	if n := strings.Count(all.String(), "\n"); n != len(rep.Findings) {
 		t.Errorf("with -all: %d lines, want %d", n, len(rep.Findings))
 	}
+}
+
+// TestMain runs the adapter tests with the error-set engine named by
+// EFFECTGO_TEST_ENGINE (ast or ssa); the default is the AST engine.
+func TestMain(m *testing.M) {
+	if e := os.Getenv("EFFECTGO_TEST_ENGINE"); e != "" {
+		if err := errset.Analyzer.Flags.Set("engine", e); err != nil {
+			panic(err)
+		}
+	}
+	os.Exit(m.Run())
 }

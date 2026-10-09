@@ -40,6 +40,10 @@ type ssaFn struct {
 	// block itself is never in its entry environment.
 	env  map[*ssa.BasicBlock]map[ssa.Value]errSet
 	done map[*ssa.BasicBlock]bool
+	// edges caches edgeEnv for the current round.
+	edges map[[2]*ssa.BasicBlock]map[ssa.Value]errSet
+	// carry lists the error-carrying instruction values of each block, in order.
+	carry map[*ssa.BasicBlock][]valueInfo
 }
 
 func newSSAFn(u *ssaUnit, fn *ssa.Function) *ssaFn {
@@ -49,14 +53,30 @@ func newSSAFn(u *ssaUnit, fn *ssa.Function) *ssaFn {
 		set:   map[ssa.Value]errSet{},
 		env:   map[*ssa.BasicBlock]map[ssa.Value]errSet{},
 		done:  map[*ssa.BasicBlock]bool{},
+		carry: map[*ssa.BasicBlock][]valueInfo{},
 	}
 	if len(fn.Blocks) > 0 {
 		f.rpo = reversePostorder(fn.Blocks[0])
 		for _, b := range f.rpo {
 			f.reach[b] = true
+			for _, in := range b.Instrs {
+				v, ok := in.(ssa.Value)
+				if !ok || !carriesError(v.Type()) {
+					continue
+				}
+				f.carry[b] = append(f.carry[b], valueInfo{v: v, errTyped: implementsError(v.Type())})
+			}
 		}
 	}
 	return f
+}
+
+// valueInfo is an instruction value that can hold an error: errTyped when its
+// type is an error type (its set is a set of errors), else an interface type
+// whose set is only passed through conversions.
+type valueInfo struct {
+	v        ssa.Value
+	errTyped bool
 }
 
 // reversePostorder lists the blocks reachable from entry in reverse postorder.
@@ -94,6 +114,7 @@ func defBlockOf(v ssa.Value) *ssa.BasicBlock {
 // whether a set or an environment changed.
 func (f *ssaFn) iterate() bool {
 	changed := false
+	f.edges = map[[2]*ssa.BasicBlock]map[ssa.Value]errSet{}
 	for _, b := range f.rpo {
 		var env map[ssa.Value]errSet
 		if b == f.fn.Blocks[0] {
@@ -115,16 +136,23 @@ func (f *ssaFn) iterate() bool {
 		}
 		f.env[b] = env
 		f.done[b] = true
-		for _, in := range b.Instrs {
-			v, ok := in.(ssa.Value)
-			if !ok || !carriesError(v.Type()) {
-				continue
+		for _, vi := range f.carry[b] {
+			if !vi.errTyped {
+				// An interface value that is not an error: only conversions pass
+				// its set through (see transfer).
+				if _, isConv := vi.v.(*ssa.ChangeInterface); !isConv {
+					if _, isMake := vi.v.(*ssa.MakeInterface); !isMake {
+						if _, isAssert := vi.v.(*ssa.TypeAssert); !isAssert {
+							continue
+						}
+					}
+				}
 			}
-			s := f.transfer(v, b)
-			cur := f.set[v]
+			s := f.transfer(vi.v, b)
+			cur := f.set[vi.v]
 			if cur == nil {
 				cur = errSet{}
-				f.set[v] = cur
+				f.set[vi.v] = cur
 			}
 			if cur.putAll(s) {
 				changed = true
@@ -170,16 +198,35 @@ func (f *ssaFn) joinEnv(b *ssa.BasicBlock) (map[ssa.Value]errSet, bool) {
 
 // edgeEnv is the environment at the end of p on its edge to b: the entry
 // environment of p without the values that p defines, then the narrowing of
-// p's branch on that edge.
+// p's branch on that edge. It is computed once per round (f.edges).
 func (f *ssaFn) edgeEnv(p, b *ssa.BasicBlock) map[ssa.Value]errSet {
-	e := map[ssa.Value]errSet{}
-	for v, s := range f.env[p] {
-		if defBlockOf(v) == p {
-			continue
-		}
-		e[v] = s
+	key := [2]*ssa.BasicBlock{p, b}
+	if e, ok := f.edges[key]; ok {
+		return e
 	}
-	f.narrowEdge(p, b, e)
+	// Copy only when the edge changes something: a value that p defines is
+	// dropped, or the branch narrows. The shared map is read-only.
+	src := f.env[p]
+	needCopy := false
+	for v := range src {
+		if defBlockOf(v) == p {
+			needCopy = true
+			break
+		}
+	}
+	var e map[ssa.Value]errSet
+	if needCopy {
+		e = make(map[ssa.Value]errSet, len(src))
+		for v, s := range src {
+			if defBlockOf(v) != p {
+				e[v] = s
+			}
+		}
+	} else {
+		e = src
+	}
+	f.narrowEdge(p, b, &e)
+	f.edges[key] = e
 	return e
 }
 
@@ -541,6 +588,7 @@ func (f *ssaFn) staticCallSet(callee *types.Func, cc *ssa.CallCommon, call *ast.
 		return setOf(opaqueVariant(pkg.Name() + "." + name))
 	}
 	if pkg == p.pass.Pkg {
+		p.dep(callee)
 		if w, ok := p.work[callee]; ok {
 			return f.bind(w.errs, cc, callee, b, env, name)
 		}
@@ -680,12 +728,28 @@ func (p *pkgState) computeSSA(u *fnUnit) (errs, handler errSet, hasHandler bool,
 	if fn == nil {
 		return nil, nil, false, false
 	}
-	un := p.newSSAUnit(u, fn)
-	if !un.solve() {
+	// The state of a unit persists over the package rounds: its sets only grow
+	// with the callees' sets, so the fixed point continues from the last round.
+	// A unit whose callees did not change since its last evaluation keeps its
+	// results: the package rounds re-evaluate only the units that depend on a
+	// change (see ssaUnit.deps).
+	un := p.ssaUnits[u]
+	if un != nil && un.current(p) {
+		return un.errs, un.handler, un.has, true
+	}
+	if un == nil {
+		un = p.newSSAUnit(u, fn)
+		p.ssaUnits[u] = un
+	}
+	un.deps = map[*types.Func]int{}
+	p.curDeps = un.deps
+	ok = un.solve()
+	p.curDeps = nil
+	if !ok {
 		return nil, nil, false, false
 	}
-	errs = un.fns[0].returnSet()
-	handler, hasHandler = un.handlerOf()
+	un.errs = un.fns[0].returnSet()
+	un.handler, un.has = un.handlerOf()
 	for _, f := range un.fns[1:] {
 		lit, isLit := f.fn.Syntax().(*ast.FuncLit)
 		if !isLit || errIndex(f.fn.Signature) < 0 {
@@ -693,5 +757,32 @@ func (p *pkgState) computeSSA(u *fnUnit) (errs, handler errSet, hasHandler bool,
 		}
 		p.litSets[lit] = FuncErrors{Variants: p.visible(un.litSet(f.fn).list())}
 	}
-	return errs, handler, hasHandler, true
+	return un.errs, un.handler, un.has, true
+}
+
+// current reports whether the results of the unit are still those of its
+// callees' current sets: every callee it read has the version it had then.
+// A unit that has not been evaluated is never current.
+func (u *ssaUnit) current(p *pkgState) bool {
+	if u.deps == nil || u.errs == nil {
+		return false
+	}
+	for fn, ver := range u.deps {
+		w, ok := p.work[fn]
+		if !ok || w.ver != ver {
+			return false
+		}
+	}
+	return true
+}
+
+// dep records that the unit being evaluated reads the set of a same-package
+// callee, at its current version.
+func (p *pkgState) dep(fn *types.Func) {
+	if p.curDeps == nil {
+		return
+	}
+	if w, ok := p.work[fn]; ok {
+		p.curDeps[fn] = w.ver
+	}
 }

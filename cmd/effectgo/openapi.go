@@ -26,6 +26,7 @@ import (
 // fails, 2 on a usage error.
 func runOpenAPI(args []string) int {
 	fs := flag.NewFlagSet("effectgo openapi", flag.ContinueOnError)
+	bindEngine(fs)
 	fs.StringVar(&stubs.Flag, "stubs", stubs.Flag,
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
 	mergePath := fs.String("merge", "", "merge the error responses into this OpenAPI 3 JSON document and print the result")

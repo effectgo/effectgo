@@ -40,6 +40,7 @@ type httpSummary struct {
 // returns 0 on success, 2 on a usage error and 1 when the run fails.
 func runHTTP(args []string) int {
 	fs := flag.NewFlagSet("effectgo http", flag.ContinueOnError)
+	bindEngine(fs)
 	fs.StringVar(&stubs.Flag, "stubs", stubs.Flag,
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
 	jsonOut := fs.Bool("json", false, "one JSON object per line (the shared HTTP schema)")

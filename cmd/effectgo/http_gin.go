@@ -39,6 +39,7 @@ type httpFinding struct {
 // It returns 0 on success, 2 on a usage error and 1 when the run fails.
 func runHTTPGin(args []string) int {
 	fs := flag.NewFlagSet("effectgo http-gin", flag.ContinueOnError)
+	bindEngine(fs)
 	fs.StringVar(&stubs.Flag, "stubs", stubs.Flag,
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
 	jsonOut := fs.Bool("json", false, "one JSON object per line (the shared HTTP schema)")

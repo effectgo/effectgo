@@ -432,8 +432,17 @@ func implementsError(t types.Type) bool {
 	if t == nil {
 		return false
 	}
-	return types.Implements(t, errorIface) || types.Implements(types.NewPointer(t), errorIface)
+	if v, ok := implCache.Load(t); ok {
+		return v.(bool)
+	}
+	ok := types.Implements(t, errorIface) || types.Implements(types.NewPointer(t), errorIface)
+	implCache.Store(t, ok)
+	return ok
 }
+
+// implCache memoizes implementsError by type: the SSA engine asks it for
+// every value, and types.Implements is the most expensive step of the test.
+var implCache sync.Map
 
 // namedErrorType returns the named non-interface type T for T or *T when T implements error.
 func namedErrorType(t types.Type) *types.Named {
@@ -1037,6 +1046,7 @@ func (p *pkgState) namedFuncSet(fn *types.Func) errSet {
 	case fn.Pkg() == nil || isStd(p.pass.Fset, fn.Pkg()):
 		return setOf(opaqueVariant(label))
 	case fn.Pkg() == p.pass.Pkg:
+		p.dep(fn)
 		w, ok := p.work[fn]
 		if !ok {
 			return setOf(opaqueVariant(label))
@@ -1214,6 +1224,9 @@ type work struct {
 	errs       errSet
 	handler    errSet
 	hasHandler bool
+	// ver counts the changes of the sets (see solve); the SSA engine reads it
+	// to know whether a unit's callees changed since the unit was evaluated.
+	ver int
 }
 
 // effective is the handler set when the function has one, otherwise its error set.
@@ -1247,12 +1260,18 @@ type pkgState struct {
 	ssaProg *ssa.Program
 	callAt  map[token.Pos]*ast.CallExpr
 	litSets map[*ast.FuncLit]FuncErrors
+	// ssaUnits holds the converged SSA state of each unit (the last round's),
+	// which Flow.Of reads after the analysis.
+	ssaUnits map[*fnUnit]*ssaUnit
+	// curDeps records the same-package callees that the unit being evaluated
+	// reads (see ssaUnit.deps); nil outside computeSSA.
+	curDeps map[*types.Func]int
 	// tests holds the TestFact of each predicate of this package (see guards.go).
 	tests map[*types.Func]TestFact
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}, litSets: map[*ast.FuncLit]FuncErrors{}}
+	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}, litSets: map[*ast.FuncLit]FuncErrors{}, ssaUnits: map[*fnUnit]*ssaUnit{}}
 	switch engineFlag {
 	case engineAST:
 	case engineSSA:
@@ -1341,6 +1360,10 @@ func run(pass *analysis.Pass) (any, error) {
 
 	flows := map[*ast.FuncDecl]Flow{}
 	for _, u := range p.units {
+		if un := p.ssaUnits[u]; un != nil {
+			flows[u.decl] = Flow{p: p, table: un.flowTable()}
+			continue
+		}
 		flows[u.decl] = Flow{p: p, c: p.newFlow(u)}
 	}
 	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows, Mappers: p.mappers()}
@@ -1349,6 +1372,8 @@ func run(pass *analysis.Pass) (any, error) {
 		arg, errmap := p.handlerRef(u)
 		res.Funcs[u.obj] = FuncErrors{Variants: p.visible(w.effective().list()), Handler: w.hasHandler, HandlerDirective: arg, Errmap: errmap}
 	}
+	// The SSA program is not needed after the pass: the flow tables hold the answers.
+	p.ssaProg, p.ssaUnits, p.callAt = nil, nil, nil
 	return res, nil
 }
 
@@ -1372,13 +1397,16 @@ func (p *pkgState) solve() {
 			w := p.work[u.obj]
 			if w.errs.putAll(errs) {
 				changed = true
+				w.ver++
 			}
 			if w.handler.putAll(handler) {
 				changed = true
+				w.ver++
 			}
 			if has && !w.hasHandler {
 				w.hasHandler = true
 				changed = true
+				w.ver++
 			}
 		}
 	}

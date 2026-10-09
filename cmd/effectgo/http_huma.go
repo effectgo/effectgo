@@ -25,6 +25,7 @@ import (
 // fails, 2 on a usage error. Findings do not change the status.
 func runHTTPHuma(args []string) int {
 	fs := flag.NewFlagSet("effectgo http-huma", flag.ContinueOnError)
+	bindEngine(fs)
 	fs.StringVar(&stubs.Flag, "stubs", stubs.Flag,
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
 	jsonOut := fs.Bool("json", false, "print one JSON object per finding (the schema shared with the other HTTP adapters)")

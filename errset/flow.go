@@ -3,6 +3,11 @@ package errset
 // Read-only views of the errset machinery for other analyzers (the gin HTTP
 // adapter). They reuse the flow sets and the errors.Is / errors.As / == readers
 // of this package; nothing here changes how a set is computed.
+//
+// A Flow answers per use: Of gives the set of an expression at the point where
+// it is evaluated. Under the SSA engine that is the narrowed set of the value
+// there (see ssaflow.go); under the AST engine it is the flow-insensitive set
+// of the variable.
 
 import (
 	"go/ast"
@@ -13,18 +18,38 @@ import (
 )
 
 // Flow is the error flow of one declared function, read after the analysis.
-// Its sets are flow-insensitive: a local error variable holds the union of
-// everything assigned to it anywhere in the declaration, nested literals
-// included.
+// Under the AST engine its sets are flow-insensitive: a local error variable
+// holds the union of everything assigned to it anywhere in the declaration,
+// nested literals included. Under the SSA engine (table is set) each use has
+// the set of its value at that point, computed when the pass ended.
 type Flow struct {
-	p *pkgState
-	c *flowCtx
+	p     *pkgState
+	c     *flowCtx
+	table *flowTable
 }
 
 // Of returns the visible variants of an expression of error type inside the
-// declaration. A nil or unknown expression gives the opaque variant "?". A
-// nil Flow gives nil.
+// declaration, at the point where it is evaluated. An expression that the SSA
+// engine has no use for gives the opaque variant "?", except an identifier
+// whose variable has uses (the union of them). A nil Flow gives nil.
 func (f Flow) Of(e ast.Expr) []Variant {
+	if f.table != nil {
+		if e == nil {
+			return nil
+		}
+		e = ast.Unparen(e)
+		if vs, ok := f.table.byExpr[e]; ok {
+			return vs
+		}
+		if id, ok := e.(*ast.Ident); ok {
+			if obj := f.p.pass.TypesInfo.Uses[id]; obj != nil {
+				if vs, ok := f.table.byObj[obj]; ok {
+					return vs
+				}
+			}
+		}
+		return f.p.visible(setOf(opaqueVariant()).list())
+	}
 	if f.c == nil || e == nil {
 		return nil
 	}
