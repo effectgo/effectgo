@@ -59,20 +59,59 @@ Requires Go 1.26.
 One binary, two ways to run it:
 
 ```
-effectgo ./...                                      # standalone: effects and errset diagnostics
+effectgo ./...                                      # standalone: effects and errset diagnostics (no test files)
 go vet -vettool=$(which effectgo) ./...             # the same checks through go vet
 effectgo sig ./...                                  # signatures only (see below)
 effectgo openapi [-merge|-check spec.json] ./...    # OpenAPI error responses (see below)
 ```
+
+Standalone runs skip `_test.go` files by default (`-test=false`). Pass `-test=true` to analyze them too. `go vet` is different: it decides by itself which packages and test variants it passes to the tool, so `-test` has no effect there (see "Test files" below).
 
 Flags (the same spelling standalone and under `go vet`):
 
 | Flag | Meaning |
 |---|---|
 | `-stubs=a.stubs,b.stubs` | stub files read by both analyzers. Falls back to `$EFFECTGO_STUBS` when empty. |
+| `-test` | analyze `_test.go` files too (standalone only; default `false`) |
 | `-effects.report` | also print `effects of <F>: {…}` for every declared function |
+| `-effects.witness` | also print one `witness of <F>: <effect> via <chain>` line per effect |
 | `-errset.report` | print `errors of <F>: …` (and `handler errors of <F>: …`) for every function with an error result |
-| `-errset.ignoreopaque` | do not report opaque (`?`) errors in handler checks |
+| `-errset.witness` | also print one `witness of <F>: <variant> via <chain>` line per variant (`witness of <F> [handler]: …` for handler sets) |
+| `-errset.ignoreopaque` | do not report opaque (`?`) and fresh (`new@`) errors in handler checks |
+
+### Witness lines
+
+`-effects.witness` and `-errset.witness` add lines next to the report lines; the `effects of` and `errors of` lines are unchanged:
+
+```
+$ effectgo -errset.report -errset.witness ./...
+domain/service.go:42:19: errors of Service.Update: domain.ErrConflict | domain.ErrInvalid | domain.ErrNotFound
+domain/service.go:42:19: witness of Service.Update: domain.ErrConflict via Store.checkTitle
+domain/service.go:42:19: witness of Service.Update: domain.ErrInvalid via checkTitle
+domain/service.go:42:19: witness of Service.Update: domain.ErrNotFound via Store.modify
+```
+
+The chain is the callee names from the function down to the origin, the function itself excluded. `(direct)` means the variant is created in the function. Effect chains use the same convention (`witness of F: time via Now → time.Now`). Witness lines print without the report flags too.
+
+### Error variants: `new@` and `?`
+
+- `new@<pkg>.<Func>`: a fresh error created in `<Func>` without wrapping: `errors.New(...)`, or `fmt.Errorf` with a constant format and no `%w`, when the call is in a returned expression or flows into a returned local. There is one variant per creating function, not per call site, so that sets stay small. No `errors.Is` or `errors.As` can match it. A package-level `var ErrX = errors.New(...)` is still a sentinel.
+- `?`: an error of unknown origin (opaque). It also covers a collapsed foreign variant, see below.
+- `//effectgo:errors` accepts `new` (every fresh variant) and `?` (every opaque variant). They do not allow each other.
+- In handler checks and in OpenAPI, a fresh error is an unclassified error: it is not covered by any errmap and becomes HTTP 500.
+
+### Foreign variants: collapsed to `?`
+
+Two kinds of variant are shown as `?` when they come from outside the analyzed module:
+
+- a sentinel, type or interface whose identifier is unexported (for example `pgconn.connLockError`). Code outside its package cannot name it, so it cannot be matched with `errors.Is` or `errors.As`;
+- a fresh `new@` variant created by a function of a foreign package, whatever the creator's name (for example `new@pgconn.Pipeline.Flush`). A fresh error is never matchable, so the name only exposes a dependency's internals.
+
+The original name is kept in witness lines only: `witness of F: ? (pgconn.connLockError) via …`. The analyzed module is `pass.Module` of the package whose report or check runs. A package is inside it when its path is the module path or below it. Exported foreign sentinels and types (`pgx.ErrNoRows`, `sql.ErrNoRows`, `context.Canceled`, `*url.Error`) are kept. Without module information (`pass.Module` is nil, as in GOPATH test data) nothing is collapsed. The status of a collapsed type is kept.
+
+### Test files
+
+`effectgo ./...` and `effectgo sig ./...` skip test files by default. This removes the `_testmain.go` packages of the build cache as well. `-test=true` restores them. `go vet -vettool` is not changed by effectgo: `go vet` includes test variants itself, and effectgo cannot exclude them there. Run standalone for report output without test code.
 
 `go vet` forwards only the flags that the tool advertises with `-flags`. `-stubs` is advertised, so it works through `go vet -vettool`. The prototypes had per-analyzer `-effects.stubs` and `-errset.stubs`; those are gone, in favour of the single shared flag.
 
@@ -103,7 +142,7 @@ Errset (`errset` analyzer):
 
 | Directive | Where | Meaning |
 |---|---|---|
-| `//effectgo:errors A, pkg.B, ?, iface:pkg.I` | function, or interface method or type | every inferred error variant must be allowed |
+| `//effectgo:errors A, pkg.B, new, ?, iface:pkg.I` | function, or interface method or type | every inferred error variant must be allowed; `new` allows fresh (`new@`) variants, `?` allows opaque ones |
 | `//effectgo:errmap` | `func(error) error` | the function maps domain errors to HTTP errors; its coverage is exported |
 | `//effectgo:handler M` | an HTTP handler or handler constructor | every error the handler can return must be covered by errmap `M`; uncovered ones are reported as HTTP 500 |
 
