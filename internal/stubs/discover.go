@@ -17,6 +17,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 
@@ -29,6 +30,22 @@ const ProjectFile = "effectgo.stubs"
 // ShippedPrefix marks the names of the shipped files in error messages and in
 // the vet identity, so they cannot be mistaken for files on disk.
 const ShippedPrefix = "effectgo:"
+
+// IsShipped reports whether a rule's file name (Rule.File) is one of the stub
+// files embedded in the binary.
+func IsShipped(name string) bool {
+	return strings.HasPrefix(name, ShippedPrefix)
+}
+
+// Where renders a rule's position for a message: stubs/<file>:<line> for a
+// shipped file (the file of the repository, whose name is the base name), else
+// the path and line as given.
+func Where(name string, line int) string {
+	if IsShipped(name) {
+		return fmt.Sprintf("stubs/%s:%d", strings.TrimPrefix(name, ShippedPrefix), line)
+	}
+	return fmt.Sprintf("%s:%d", name, line)
+}
 
 // Source is one stub file: its name (a path, or ShippedPrefix plus the base
 // name of a shipped file) and its text.

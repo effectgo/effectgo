@@ -73,6 +73,10 @@ func main() {
 		multichecker.Main(signature.Analyzer)
 		return
 	}
+	if err := checkStubs(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "effectgo: %v\n", err)
+		os.Exit(1)
+	}
 	os.Args = withoutTests(os.Args)
 	multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer)
 }
