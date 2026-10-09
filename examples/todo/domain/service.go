@@ -95,7 +95,7 @@ var updateRHook func()
 
 // UpdateR is Update composed from GetR and a validate-then-apply step.
 // Note: GetR and the write are two separate lock acquisitions, so this
-// composition is not atomic (see NOTES.md).
+// composition is not atomic.
 func (s *Service) UpdateR(id int, title *string, done *bool) result.Result[Todo] {
 	return result.AndThen(s.GetR(id), func(cur Todo) result.Result[Todo] {
 		if title != nil {

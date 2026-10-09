@@ -22,7 +22,7 @@
 //     formatted into a string.
 //
 // The sets come from errset's flow of the enclosing declaration, so they are
-// flow-insensitive: see NOTES.md ("Gin adapter") for the limitations.
+// flow-insensitive: see docs/design/limitations.md (Gin adapter) for the limitations.
 package ginhttp
 
 import (

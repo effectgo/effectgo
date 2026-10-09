@@ -7,8 +7,8 @@
 // for func-typed parameters (the placeholder "param:i"), and effect stub files
 // (see stubs.go) are part of the analysis.
 //
-// See NOTES.md in the module root for the design, the fact format and the
-// known limitations.
+// See docs/design/ and docs/reference/effects.md for the design, the fact
+// format and the known limitations.
 package effects
 
 import (
