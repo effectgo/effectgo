@@ -59,7 +59,7 @@ Requires Go 1.26.
 One binary, two ways to run it:
 
 ```
-effectgo ./...                                      # standalone: effects and errset diagnostics (no test files)
+effectgo ./...                                      # standalone: effects, errset, mustuse and exhaustive diagnostics (no test files)
 go vet -vettool=$(which effectgo) ./...             # the same checks through go vet
 effectgo sig ./...                                  # signatures only (see below)
 effectgo openapi [-merge|-check spec.json] ./...    # OpenAPI error responses (see below)
@@ -164,7 +164,38 @@ Errset (`errset` analyzer):
 | `//effectgo:errmap` | `func(error) error` | the function maps domain errors to HTTP errors; its coverage is exported |
 | `//effectgo:handler M` | an HTTP handler or handler constructor | every error the handler can return must be covered by errmap `M`; uncovered ones are reported as HTTP 500 |
 
+Must-use and exhaustive matching (`mustuse` and `exhaustive` analyzers, see "Must-use results and exhaustive matching" below):
+
+| Directive | Where | Meaning |
+|---|---|---|
+| `//effectgo:mustuse` | a named type declaration | a call that discards a value of this type (or of a pointer to it) is reported; an alias is not allowed here, mark the type it names |
+| `//effectgo:sealed` | an interface with an unexported method, or a named integer or string type | a type switch on the interface, or an expression switch on the type, with no `default`, must cover every variant (see below) |
+
 Unknown keywords are reported. In the combined binary, an unknown keyword is reported once by each analyzer, so a typo can appear twice.
+
+## Must-use results and exhaustive matching
+
+Two Rust-style guarantees, in the same `effectgo` binary and under the same rule: a diagnostic is reported only when the code is provably at risk, and everything else is silent.
+
+**Must-use (`mustuse`).** A bare call statement is reported when one of its results is an error, or a `//effectgo:mustuse` type:
+
+```
+result of os.Remove is discarded; handle it or assign to _
+result of domain.Charge is discarded; handle it or assign to _
+```
+
+`_ = f()` is the explicit discard. `go` and `defer` statements are not reported. The only built-in allowlist is `fmt.Print*` and `fmt.Fprint*`; `-mustuse.allow=os.Remove,(*os.File).Close` adds fully-qualified names (for a call through a local func variable, the function assigned to it is matched).
+
+*Integration with error sets.* An error result is reported only when errset cannot prove the callee's error set empty. A function that always returns nil is silent, and so is a stub rule `errors <target> none`. The shipped `stubs/stdlib.stubs` states this for the writers that never fail (`bytes.Buffer`, `strings.Builder`, `hash.Hash.Write`, with the source lines in the file). These rules need the stub file: without it, `buf.WriteString("x")` is reported, since the former built-in allowlist for those writers is gone. A `//effectgo:mustuse` value is reported whatever the error set.
+
+**Exhaustive (`exhaustive`).** A type switch on a sealed interface without `default` must have a case for every variant:
+
+```
+missing cases in type switch on Shape: Square, Triangle
+missing cases in switch on Status: Archived
+```
+
+An interface is sealed when it has an unexported method declared in its own package (the marker-method pattern: only that package can implement it), or when it carries `//effectgo:sealed`. Its variants are the named types of the package that implement it, so a switch in another package sees the same set. Types declared in `_test.go` files are not variants. An interface that embeds a sealed interface is checked against the variants that implement it. A named integer or string type with `//effectgo:sealed` is an enum: its variants are the distinct values of its constants, and only exported constants are required outside the package. A case that is not a constant leaves the switch undecided. See NOTES.md, "mustuse & exhaustive", for the rules and the defects of the prototype that were fixed.
 
 ## Stub file format
 
@@ -340,6 +371,7 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 - Stdlib effects and errors are modelled by a table and by stubs. Anything outside them is invisible (effects) or opaque (`?`, errset), except `errors.New` and constant-format `fmt.Errorf` without `%w`, which are fresh (`new@pkg.F`).
 - Errset is flow-sensitive over SSA values, with the guard forms listed above; a captured or address-taken error variable is the union of its stores; a field, map value or channel receive is opaque. Generic function bodies, which SSA does not lower, use the AST engine (flow-insensitive). `-errset.engine=ast` selects the AST engine for everything.
 - `go vet` cache: see "Usage" above for files named only by `-stubs`.
+- `mustuse` needs the stub file for the always-nil writers (see "Must-use results"). `exhaustive` cannot see variants declared in another package's test files, and it does not know a sealed interface that has no unexported method. A deferred error check (a sticky error that is read later, as in `csv.Writer`) is not seen: such a discard is reported.
 
 ## Layout
 
@@ -349,6 +381,8 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 | `errset/` | the errset analyzer |
 | `signature/` | the `Effect<A, E, R>` analyzer, reached through `effectgo sig` |
 | `openapi/` | the route analyzer and the OpenAPI fragment, merge and check output, reached through `effectgo openapi` |
+| `mustuse/` | the must-use analyzer: discarded errors and `//effectgo:mustuse` results |
+| `exhaustive/` | the exhaustive analyzer: type switches on sealed interfaces, switches on sealed enums |
 | `internal/stubs/` | the shared stub-file parser |
 | `adapters/gin/` | the Gin response check (`effectgo http-gin`): sinks, mappers, handler findings, leaks, routes |
 | `adapters/huma/` | the Huma route check (`effectgo http-huma`): routes, carried statuses, the default errmap, findings |
