@@ -632,6 +632,7 @@ func (f *ssaFn) bind(s errSet, cc *ssa.CallCommon, callee *types.Func, b *ssa.Ba
 	for _, v := range s {
 		if v.Kind != KindParam {
 			v.Chain = append([]string{name}, v.Chain...)
+			v.Via = callee.FullName()
 			out.put(v)
 			continue
 		}

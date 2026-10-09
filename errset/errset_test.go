@@ -170,3 +170,17 @@ func TestInteractImmediateLiteral(t *testing.T) {
 	setFlag(t, "witness", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "interact")
 }
+
+// TestRootSuppressed covers the root rule (testdata/src/root and rootdep): a
+// contract violation whose only source is a violating callee is not reported;
+// the other cases (a direct source, no contract, an allowing contract, a
+// second callee that does not violate) are reported.
+func TestRootSuppressed(t *testing.T) {
+	analysistest.Run(t, testdata(t), errset.Analyzer, "root")
+}
+
+// TestRootSuppressedAll: -all reports the callers of a violating function too.
+func TestRootSuppressedAll(t *testing.T) {
+	setFlag(t, "all", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "rootall")
+}

@@ -11,8 +11,11 @@ func stamp() string { // want stamp:`map\[time:\[\{chain chain stamp\} \{time ti
 	return time.Now().String()
 }
 
+// Deep's violation is the consequence of Normalize's: it is not reported
+// (see TestSuppressed and -effects.all).
+//
 //effectgo:pure
-func Deep() string { // want Deep:`map\[time:\[\{chain chain Deep\} \{chain chain Normalize\} \{chain chain stamp\} \{time time Now\}\]\]` `Deep is declared //effectgo:pure but has effect time via Deep → Normalize → stamp → time\.Now`
+func Deep() string { // want Deep:`map\[time:\[\{chain chain Deep\} \{chain chain Normalize\} \{chain chain stamp\} \{time time Now\}\]\]`
 	return Normalize()
 }
 

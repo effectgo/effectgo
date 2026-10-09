@@ -27,6 +27,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/internal/goroot"
+	"github.com/faintghost/effectgo/internal/hidden"
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
@@ -89,6 +90,10 @@ type Witness []Step
 // is gob-encodable.
 type EffectFact struct {
 	Effects map[string]Witness
+	// Violated lists, sorted, the effects of Effects that the function's own
+	// contract does not allow. A caller that reaches one of them only through
+	// this function is not reported (see suppressed): the root is here.
+	Violated []string
 }
 
 // AFact marks EffectFact as an analysis.Fact.
@@ -127,10 +132,12 @@ var Analyzer = &analysis.Analyzer{
 }
 
 // reportFlag backs -report (-effects.report under go vet); witnessFlag backs
-// -witness (-effects.witness under go vet).
+// -witness (-effects.witness under go vet); allFlag backs -all (-effects.all
+// under go vet), which reports the violations that suppressed would hide.
 var (
 	reportFlag  bool
 	witnessFlag bool
+	allFlag     bool
 )
 
 func init() {
@@ -138,6 +145,8 @@ func init() {
 		"also emit an informational diagnostic with the inferred effect set of every declared function")
 	Analyzer.Flags.BoolVar(&witnessFlag, "witness", false,
 		"also emit one \"witness of <F>: <effect> via <chain>\" diagnostic per effect of every declared function")
+	Analyzer.Flags.BoolVar(&allFlag, "all", false,
+		"report every contract violation, including the callers whose root is another function's violation (see docs/reference/analyzers.md)")
 }
 
 // ---------------------------------------------------------------------------
@@ -393,8 +402,12 @@ type fnState struct {
 	self    Step
 	display string
 	effs    map[string]Witness
-	sites   []callSite         // calls to declared, non-stub functions, resolved in the fixed point
-	params  map[*types.Var]int // parameters of this function, by object
+	// direct holds the effects that the body of the function produces itself
+	// (taxonomy calls, stubs, interface and dynamic calls, globals, ...), as
+	// opposed to those that come from a call to a declared function (sites).
+	direct map[string]bool
+	sites  []callSite         // calls to declared, non-stub functions, resolved in the fixed point
+	params map[*types.Var]int // parameters of this function, by object
 }
 
 // callSite is a call whose callee's effects are resolved in the fixed point,
@@ -460,6 +473,11 @@ type checker struct {
 	contracts map[*types.Func]*ContractFact // contracts of interface methods declared in this package
 	lits      map[*ast.FuncLit]*fnState     // states of func literals that are not run by their function
 	litStates []*fnState
+	// viol holds, for each declared function of this package, the effects that
+	// its contract does not allow; suppressed reads it.
+	viol map[*types.Func]map[string]bool
+	// showAll is -all: nothing is suppressed.
+	showAll bool
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -483,6 +501,8 @@ func run(pass *analysis.Pass) (any, error) {
 		byObj:     map[*types.Func]*fnState{},
 		contracts: map[*types.Func]*ContractFact{},
 		lits:      map[*ast.FuncLit]*fnState{},
+		viol:      map[*types.Func]map[string]bool{},
+		showAll:   allFlag,
 	}
 	pkgCon := parsePackageContract(pass)
 	c.exportInterfaceContracts()
@@ -537,17 +557,39 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
+	// Every violation is known before any is reported: suppressed asks the
+	// callees whether they violate their own contracts.
+	cons := map[*fnState][]*contract{}
 	for _, st := range states {
-		pass.ExportObjectFact(st.obj, &EffectFact{Effects: st.effs})
+		cons[st] = c.funcContracts(st.decl, pkgCon)
+		var bad []string
+		for _, e := range sortedKeys(st.effs) {
+			for _, con := range cons[st] {
+				if !con.allows(e) {
+					bad = append(bad, e)
+					break
+				}
+			}
+		}
+		if len(bad) > 0 {
+			c.viol[st.obj] = map[string]bool{}
+			for _, e := range bad {
+				c.viol[st.obj][e] = true
+			}
+		}
+		pass.ExportObjectFact(st.obj, &EffectFact{Effects: st.effs, Violated: bad})
 	}
 
 	pkgPath := pass.Pkg.Path()
 	for _, st := range states {
-		cons := c.funcContracts(st.decl, pkgCon)
 		effs := sortedKeys(st.effs)
 		for _, e := range effs {
-			for _, con := range cons {
+			for _, con := range cons[st] {
 				if !con.allows(e) {
+					if !c.showAll && c.suppressed(st, e) {
+						hidden.Add("effects", pass.Pkg, fmt.Sprintf("%s|%s|%s", pass.Fset.Position(st.decl.Name.Pos()), st.display, e))
+						break
+					}
 					pass.Reportf(st.decl.Name.Pos(), "%s is declared %s but has effect %s via %s",
 						st.display, con.text, e, renderWitness(st.effs[e], pkgPath))
 					break
@@ -589,6 +631,10 @@ func (c *checker) collect(st *fnState) {
 	}
 	plan := planLits(c.pass.TypesInfo, st.decl.Body)
 	c.walk(st, st.decl.Body, plan)
+	st.direct = map[string]bool{}
+	for e := range st.effs {
+		st.direct[e] = true
+	}
 }
 
 // walk records the direct effects and call sites of body into st. A func
@@ -973,6 +1019,66 @@ func (c *checker) calleeEffects(fn *types.Func) map[string]Witness {
 		return f.Effects
 	}
 	return nil
+}
+
+// suppressed reports whether the violation of st for effect e is only the
+// consequence of a violation in a callee, so that it is not reported. That is
+// the case when every source of e in st is a call to a declared function that
+// itself violates its own contract for e: fixing the callee fixes st. The
+// rule is stricter than "the witness's next hop violates": if st also has e
+// from its own body, from a stub, an interface or dynamic call, or from a
+// callee that does not violate, st is reported. A callee that is not
+// analyzed (a dependency without facts, the stdlib) never suppresses.
+func (c *checker) suppressed(st *fnState, e string) bool {
+	if st.direct[e] {
+		return false
+	}
+	if w := st.effs[e]; len(w) < 2 {
+		return false
+	}
+	providers := 0
+	for _, site := range st.sites {
+		if site.callee == nil {
+			return false // a call through a func value may perform e
+		}
+		if hasFuncLitArg(site.call) && !c.bodyKnown(site.callee) {
+			return false // the literal's effects are charged to st
+		}
+		effs := c.calleeEffects(site.callee)
+		for k := range effs {
+			if _, ok := paramIndexOf(k); ok {
+				return false // an argument may supply e
+			}
+		}
+		if _, ok := effs[e]; !ok {
+			continue
+		}
+		if !c.violates(site.callee, e) {
+			return false
+		}
+		providers++
+	}
+	return providers > 0
+}
+
+// violates reports whether fn breaks its own contract for e. A function with
+// a stub, an interface method and a function without facts never violates
+// here: the stub, the contract or the missing analysis is the root.
+func (c *checker) violates(fn *types.Func, e string) bool {
+	if _, ok := c.stubs.lookup(targetKey(fn)); ok {
+		return false
+	}
+	if isIfaceMethod(fn) {
+		return false
+	}
+	if st := c.byObj[fn]; st != nil {
+		return c.viol[fn][e]
+	}
+	var f EffectFact
+	if c.pass.ImportObjectFact(fn, &f) {
+		return slices.Contains(f.Violated, e)
+	}
+	return false
 }
 
 // contractOf returns the contract of an interface method, declared in this

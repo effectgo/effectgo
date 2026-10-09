@@ -198,3 +198,19 @@ func TestShippedHTTPRules(t *testing.T) {
 	setStubs(t, absPath(t, "../stubs/stdlib.stubs"))
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "httpw")
 }
+
+// TestSuppressed covers the root rule (testdata/src/suppress and suppressdep):
+// a violation whose only source is a violating callee is not reported, and the
+// other cases (no contract, an allowing contract, an interface, a stub, a
+// direct source, a second callee that does not violate) are reported.
+func TestSuppressed(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/suppress.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "suppress")
+}
+
+// TestSuppressedAll: -all reports the callers too.
+func TestSuppressedAll(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/suppress.stubs"))
+	setFlag(t, "all", "true")
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "suppressall")
+}

@@ -33,6 +33,7 @@ import (
 	"go/token"
 	"go/types"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -45,6 +46,7 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/internal/goroot"
+	"github.com/faintghost/effectgo/internal/hidden"
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
@@ -74,6 +76,11 @@ type Variant struct {
 	Kind    string   // one of the Kind constants
 	Methods []string // method set as "Name(params)(results)"; used to match interface As targets
 	Chain   []string // witness: callee names from the reporting function down to the origin function
+	// Via is the full name of the first callee of Chain when that callee is a
+	// declared function (its name in a same-package or imported ErrFact); "" when
+	// the first step is a stub, a contract, an opaque callee or an argument.
+	// The root rule reads it (see suppressedVariant).
+	Via string
 	// Status is the HTTP status that Fuego gives this error when no errmap maps
 	// it, from the StatusCode method of its type (or a stub). 0 when unknown.
 	Status int
@@ -99,6 +106,10 @@ type ErrFact struct {
 	Errors     []Variant // error result set (may contain param:i)
 	HasHandler bool      // the function returns at least one func literal with an error result
 	Handler    []Variant // union of the error sets of those returned literals
+	// Violated lists the keys of the variants that the function's own
+	// //effectgo:errors contract does not allow. A caller that gets such a
+	// variant only through this function is not reported (see suppressedVariant).
+	Violated []string
 }
 
 // AFact marks ErrFact as an analysis fact.
@@ -206,6 +217,7 @@ var (
 	witnessFlag      bool
 	ignoreOpaqueFlag bool
 	statusesFlag     bool
+	allFlag          bool // -all: report the callers too (see suppressedVariant)
 	engineFlag       string
 )
 
@@ -214,6 +226,7 @@ func init() {
 	Analyzer.Flags.BoolVar(&witnessFlag, "witness", false, "print one \"witness of <F>: <variant> via <chain>\" line per variant of the error sets")
 	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") and fresh (new@) errors in handler checks")
 	Analyzer.Flags.BoolVar(&statusesFlag, "statuses", false, "print the HTTP status of every variant of each //effectgo:handler function")
+	Analyzer.Flags.BoolVar(&allFlag, "all", false, "report every //effectgo:errors violation, including the callers whose root is another function's violation (see docs/reference/analyzers.md)")
 	Analyzer.Flags.StringVar(&engineFlag, "engine", engineSSA, "error-set engine: ssa (flow-sensitive, SSA values; the default) or ast (flow-insensitive, the P2 engine)")
 }
 
@@ -253,6 +266,7 @@ func (s errSet) prefixed(name string) errSet {
 	out := errSet{}
 	for _, v := range s {
 		v.Chain = append([]string{name}, v.Chain...)
+		v.Via = ""
 		out.put(v)
 	}
 	return out
@@ -417,7 +431,7 @@ func collapseForeign(vs []Variant, module string) []Variant {
 			continue
 		}
 		out = append(out, Variant{
-			Key: opaqueKey + " " + v.Key, Name: "?", Kind: KindOpaque, Chain: v.Chain,
+			Key: opaqueKey + " " + v.Key, Name: "?", Kind: KindOpaque, Chain: v.Chain, Via: v.Via,
 			Status: v.Status, DynamicStatus: v.DynamicStatus, Orig: v.Name,
 		})
 	}
@@ -979,13 +993,13 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 	}
 	if pkg == c.p.pass.Pkg {
 		if w, ok := c.p.work[callee]; ok {
-			return c.bind(w.errs, call, name)
+			return c.bind(w.errs, call, name, callee)
 		}
 		return setOf(opaqueVariant(name))
 	}
 	var f ErrFact
 	if c.p.pass.ImportObjectFact(callee, &f) {
-		return c.bind(setOf(f.Errors...), call, name)
+		return c.bind(setOf(f.Errors...), call, name, callee)
 	}
 	return setOf(opaqueVariant(pkg.Name() + "." + name))
 }
@@ -1031,11 +1045,12 @@ func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 // bind substitutes the param:i variants of a callee's error set with the
 // error sets of the call's arguments, and prefixes every witness with the
 // callee name. An argument that cannot be followed gives "?".
-func (c *flowCtx) bind(s errSet, call *ast.CallExpr, name string) errSet {
+func (c *flowCtx) bind(s errSet, call *ast.CallExpr, name string, callee *types.Func) errSet {
 	out := errSet{}
 	for _, v := range s {
 		if v.Kind != KindParam {
 			v.Chain = append([]string{name}, v.Chain...)
+			v.Via = callee.FullName()
 			out.put(v)
 			continue
 		}
@@ -1115,6 +1130,7 @@ func (p *pkgState) namedFuncSet(fn *types.Func) errSet {
 			continue
 		}
 		v.Chain = append([]string{label}, v.Chain...)
+		v.Via = "" // the first hop of v is the callee's, not one of the caller's
 		out.put(v)
 	}
 	return out
@@ -1317,6 +1333,9 @@ type pkgState struct {
 	curDeps map[*types.Func]int
 	// tests holds the TestFact of each predicate of this package (see guards.go).
 	tests map[*types.Func]TestFact
+	// violated holds, for each unit, the variants its contract does not allow
+	// (see contractBad); the reports and the ErrFacts read it.
+	violated map[*types.Func][]Variant
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -1351,12 +1370,23 @@ func run(pass *analysis.Pass) (any, error) {
 	}
 	p.collectInterfaceContracts()
 	p.solve()
+	// The contract violations are computed before any fact is exported: a
+	// fact says which variants its function violates (see suppressedVariant).
+	p.violated = map[*types.Func][]Variant{}
+	for _, u := range p.units {
+		p.violated[u.obj] = p.contractBad(u)
+	}
 	for _, u := range p.units {
 		w := p.work[u.obj]
+		var violated []string
+		for _, v := range p.violated[u.obj] {
+			violated = append(violated, v.Key)
+		}
 		pass.ExportObjectFact(u.obj, &ErrFact{
 			Errors:     w.errs.list(),
 			HasHandler: w.hasHandler,
 			Handler:    w.handler.list(),
+			Violated:   violated,
 		})
 	}
 
@@ -1372,6 +1402,13 @@ func run(pass *analysis.Pass) (any, error) {
 
 	for _, u := range p.units {
 		p.checkDirectives(u)
+		for _, v := range p.violated[u.obj] {
+			if !allFlag && p.suppressedVariant(u, v) {
+				hidden.Add("errset", pass.Pkg, fmt.Sprintf("%s|%s|%s", pass.Fset.Position(u.decl.Name.Pos()), funcName(u.obj), v.Key))
+				continue
+			}
+			pass.Reportf(u.decl.Name.Pos(), "%s may return %s%s, not in its //effectgo:errors contract", funcName(u.obj), v.Name, via(v.Chain))
+		}
 	}
 	p.checkConformance()
 
@@ -1662,6 +1699,94 @@ func (p *pkgState) visible(vs []Variant) []Variant {
 	return collapseForeign(vs, module)
 }
 
+// contractBad returns the variants of u's effective set that its
+// //effectgo:errors contract does not allow, in display order. It resolves the
+// contract (and reports its unresolvable names) once per function; nil when the
+// function has no contract, or when none of its names resolves.
+func (p *pkgState) contractBad(u *fnUnit) []Variant {
+	var dirs []directive
+	for _, d := range directivesOf(u.decl.Doc) {
+		if d.kind == "errors" {
+			dirs = append(dirs, d)
+		}
+	}
+	if len(dirs) == 0 {
+		return nil
+	}
+	allowed, usable := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
+	if !usable {
+		return nil
+	}
+	var bad []Variant
+	for _, v := range displayOrder(p.visible(p.work[u.obj].effective().list())) {
+		if !allowedBy(v, allowed) {
+			bad = append(bad, v)
+		}
+	}
+	return bad
+}
+
+// violatesKey reports whether fn violates its own contract for the variant
+// key. A function that is not analyzed (no fact) does not.
+func (p *pkgState) violatesKey(fn *types.Func, key string) bool {
+	if _, ok := p.work[fn]; ok {
+		for _, v := range p.violated[fn] {
+			if v.Key == key {
+				return true
+			}
+		}
+		return false
+	}
+	var f ErrFact
+	return p.pass.ImportObjectFact(fn, &f) && slices.Contains(f.Violated, key)
+}
+
+// suppressedVariant reports whether the contract violation v of u is only the
+// consequence of a violation in a callee, so that it is not reported. That is
+// the case when v reaches u through a declared callee G (v.Via) that violates
+// its own contract for v, and every other call of u that may return v is a
+// declared callee that violates too. A stub, an interface call, a call through
+// a func value or an argument, a directly created error, or a handler function
+// keeps the report. The rule is the errset analogue of the effects rule (see
+// docs/reference/analyzers.md).
+func (p *pkgState) suppressedVariant(u *fnUnit, v Variant) bool {
+	if v.Via == "" || len(v.Chain) == 0 || p.work[u.obj].hasHandler {
+		return false
+	}
+	c := p.newFlow(u)
+	hop, blocked := false, false
+	ast.Inspect(u.decl.Body, func(n ast.Node) bool {
+		if blocked {
+			return false
+		}
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if tv, ok := c.info.Types[call.Fun]; ok && tv.IsType() {
+			return true
+		}
+		var callee *types.Func
+		if f := typeutil.StaticCallee(c.info, call); f != nil {
+			callee = f.Origin()
+		}
+		if callee != nil && callee.FullName() == v.Via && p.violatesKey(callee, v.Key) {
+			hop = true
+			return true
+		}
+		mayReturn := slices.ContainsFunc(p.visible(c.callSet(call).list()), func(w Variant) bool { return w.Key == v.Key })
+		if !mayReturn {
+			return true
+		}
+		if callee != nil && p.violatesKey(callee, v.Key) {
+			return true
+		}
+		blocked = true
+		return false
+	})
+	return hop && !blocked
+}
+
 func (p *pkgState) checkDirectives(u *fnUnit) {
 	var dirs []directive
 	for _, d := range directivesOf(u.decl.Doc) {
@@ -1672,22 +1797,6 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 			// a contract of the effects analyzer, or a keyword of mustuse or exhaustive
 		default:
 			p.pass.Reportf(u.decl.Name.Pos(), "unknown directive //effectgo:%s", d.kind)
-		}
-	}
-
-	hasContract := false
-	for _, d := range dirs {
-		if d.kind == "errors" {
-			hasContract = true
-		}
-	}
-	if hasContract {
-		allowed, usable := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
-		for _, v := range displayOrder(p.visible(p.work[u.obj].effective().list())) {
-			if !usable || allowedBy(v, allowed) {
-				continue
-			}
-			p.pass.Reportf(u.decl.Name.Pos(), "%s may return %s%s, not in its //effectgo:errors contract", funcName(u.obj), v.Name, via(v.Chain))
 		}
 	}
 
