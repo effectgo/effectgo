@@ -21,6 +21,8 @@ import (
 	"golang.org/x/tools/go/analysis/passes/inspect"
 	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/types/typeutil"
+
+	"github.com/faintghost/effectgo/errset"
 )
 
 // Directive marks a named type as must-use.
@@ -43,8 +45,8 @@ var allowFlag string
 var Analyzer = &analysis.Analyzer{
 	Name:      "mustuse",
 	Doc:       "report discarded error results and results of //effectgo:mustuse types",
-	Requires:  []*analysis.Analyzer{inspect.Analyzer},
-	FactTypes: []analysis.Fact{new(isMustUse)},
+	Requires:  []*analysis.Analyzer{inspect.Analyzer, errset.Analyzer},
+	FactTypes: []analysis.Fact{new(isMustUse), new(errorFree)},
 	Run:       run,
 }
 
@@ -53,22 +55,25 @@ func init() {
 		"comma-separated fully-qualified funcs whose results may be discarded, e.g. os.Remove,(*os.File).Close")
 }
 
-// builtinAllow lists calls whose error results are conventionally ignored.
-var builtinAllow = map[string]bool{
-	"(*bytes.Buffer).Write":          true,
-	"(*bytes.Buffer).WriteString":    true,
-	"(*bytes.Buffer).WriteByte":      true,
-	"(*bytes.Buffer).WriteRune":      true,
-	"(*strings.Builder).Write":       true,
-	"(*strings.Builder).WriteString": true,
-	"(*strings.Builder).WriteByte":   true,
-	"(*strings.Builder).WriteRune":   true,
+var errorIface = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+
+// errorFree is exported on a function whose error set errset proves empty (see
+// errset.Result.NoErrors). It carries the result of errset across packages.
+type errorFree struct {
+	Name string
 }
 
-var errorIface = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+func (*errorFree) AFact()           {}
+func (f *errorFree) String() string { return "errorfree(" + f.Name + ")" }
 
 func run(pass *analysis.Pass) (any, error) {
 	exportMarkedTypes(pass)
+	res, _ := pass.ResultOf[errset.Analyzer].(errset.Result)
+	for fn := range res.NoErrors {
+		if fn.Pkg() == pass.Pkg && !errset.IsStd(pass.Fset, pass.Pkg) && hasErrorResult(fn.Type().(*types.Signature).Results()) {
+			pass.ExportObjectFact(fn, &errorFree{Name: fn.Name()})
+		}
+	}
 	defs := singleDefs(pass)
 
 	allow := map[string]bool{}
@@ -88,8 +93,14 @@ func run(pass *analysis.Pass) (any, error) {
 		if fn != nil && isAllowed(fn, allow) {
 			return
 		}
-		if !resultsMustUse(pass, pass.TypesInfo.TypeOf(call)) {
-			return
+		t := pass.TypesInfo.TypeOf(call)
+		marked := markedResult(pass, t)
+		if !marked {
+			// Only an error can be discarded here. A callee whose error set is
+			// provably empty returns no error that matters.
+			if !hasErrorResult(t) || provablyNoError(pass, res, fn) {
+				return
+			}
 		}
 		name := types.ExprString(call.Fun)
 		if fn != nil {
@@ -252,7 +263,7 @@ func hasDirective(cg *ast.CommentGroup) bool {
 
 func isAllowed(fn *types.Func, allow map[string]bool) bool {
 	full := fn.Origin().FullName()
-	if allow[full] || builtinAllow[full] {
+	if allow[full] {
 		return true
 	}
 	// fmt.Print*, fmt.Fprint* (package-level functions only).
@@ -264,27 +275,64 @@ func isAllowed(fn *types.Func, allow map[string]bool) bool {
 	return false
 }
 
-// resultsMustUse reports whether any result type of a call is an error or a
-// must-use named type (or a pointer to one).
-func resultsMustUse(pass *analysis.Pass, t types.Type) bool {
-	if t == nil {
+// provablyNoError reports whether fn's error set is known to be empty: errset
+// proved it in this package, or the defining package exported the fact.
+func provablyNoError(pass *analysis.Pass, res errset.Result, fn *types.Func) bool {
+	if fn == nil {
 		return false
 	}
-	if tup, ok := t.(*types.Tuple); ok {
-		for i := 0; i < tup.Len(); i++ {
-			if typeMustUse(pass, tup.At(i).Type()) {
-				return true
-			}
-		}
-		return false
-	}
-	return typeMustUse(pass, t)
-}
-
-func typeMustUse(pass *analysis.Pass, t types.Type) bool {
-	if types.Implements(t, errorIface) {
+	fn = fn.Origin()
+	if res.NoErrors[fn] {
 		return true
 	}
+	if fn.Pkg() == nil || errset.IsStd(pass.Fset, fn.Pkg()) {
+		return false // a standard library function is known only through a stub
+	}
+	var f errorFree
+	return pass.ImportObjectFact(fn, &f)
+}
+
+// resultsOf returns the result types of a call's type: one, or the components of
+// a tuple.
+func resultsOf(t types.Type) []types.Type {
+	if t == nil {
+		return nil
+	}
+	if tup, ok := t.(*types.Tuple); ok && tup.Len() == 0 {
+		return nil
+	}
+	if tup, ok := t.(*types.Tuple); ok {
+		out := make([]types.Type, tup.Len())
+		for i := range out {
+			out[i] = tup.At(i).Type()
+		}
+		return out
+	}
+	return []types.Type{t}
+}
+
+// hasErrorResult reports whether a call's results include an error.
+func hasErrorResult(t types.Type) bool {
+	for _, r := range resultsOf(t) {
+		if types.Implements(r, errorIface) {
+			return true
+		}
+	}
+	return false
+}
+
+// markedResult reports whether a call's results include a must-use named type
+// (or a pointer to one).
+func markedResult(pass *analysis.Pass, t types.Type) bool {
+	for _, r := range resultsOf(t) {
+		if typeMarked(pass, r) {
+			return true
+		}
+	}
+	return false
+}
+
+func typeMarked(pass *analysis.Pass, t types.Type) bool {
 	t = types.Unalias(t)
 	if p, ok := t.(*types.Pointer); ok {
 		t = types.Unalias(p.Elem())

@@ -300,6 +300,30 @@ func (p *pkgState) stubSet(f *types.Func) (errSet, bool) {
 	return s, ok
 }
 
+// stubSetVia is stubSet for a method called on a value of static type recv. A
+// method that an interface gets by embedding (hash.Hash gets Write from
+// io.Writer) names the embedded interface as its receiver, so a stub on the
+// interface the value has, "errors (hash.Hash).Write", is looked up by recv too.
+// recv may be nil, which gives stubSet.
+func (p *pkgState) stubSetVia(f *types.Func, recv types.Type) (errSet, bool) {
+	if s, ok := p.stubSet(f); ok {
+		return s, true
+	}
+	if recv == nil || f == nil || !isInterfaceMethod(f) || len(p.stubs) == 0 {
+		return nil, false
+	}
+	t := types.Unalias(recv)
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(ptr.Elem())
+	}
+	named, ok := t.(*types.Named)
+	if !ok || named.Obj().Pkg() == nil {
+		return nil, false
+	}
+	s, ok := p.stubs[objKey(named.Obj())+"."+f.Name()]
+	return s, ok
+}
+
 // stubLabel is the witness label of a stub-provided variant.
 func stubLabel(f *types.Func) string {
 	if f.Type().(*types.Signature).Recv() != nil {

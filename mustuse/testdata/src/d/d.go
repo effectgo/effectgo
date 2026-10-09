@@ -20,12 +20,12 @@ func MakeBox[T any]() Box[T] { return Box[T]{} }
 func MakeAlias() Receipt { return Receipt{} }
 
 // Gen returns an error through a generic function.
-func Gen[T any]() error { return nil }
+func Gen[T any]() error { return nil } // want Gen:"errorfree\\(Gen\\)"
 
 func Use(f *os.File, g func() error) {
 	MakeBox[int]() // want "result of d.MakeBox is discarded"
 	MakeAlias()    // want "result of d.MakeAlias is discarded"
-	Gen[string]()  // want "result of d.Gen is discarded"
+	Gen[string]()  // provably no error
 	closer := f.Close
 	closer() // want "result of \\(\\*os.File\\).Close is discarded"
 	var h func() error = f.Close

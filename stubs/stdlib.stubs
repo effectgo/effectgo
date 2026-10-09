@@ -147,3 +147,30 @@ errors (*database/sql.Rows).Err context.Canceled,context.DeadlineExceeded,?
 # ErrTxDone or a driver error (sql.go:2358-2359).
 errors (*database/sql.Tx).Commit database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?
 errors (*database/sql.Tx).Rollback database/sql.ErrTxDone,?
+
+# Writers that never fail (mustuse reads these: a discarded call of a writer
+# whose error set is empty is not reported). Each rule was checked against the
+# Go 1.26.9 source under $GOROOT/src (paths relative to it).
+#
+# bytes.Buffer: the doc says err is always nil (bytes/buffer.go:190-192 for
+# Write, 202-204 for WriteString, 299-301 for WriteByte, 313-315 for WriteRune),
+# and every return statement returns nil or a nil-error pair (buffer.go:199,
+# 211, 310, 321 and 329). Its panic on a too-large buffer is not an error.
+errors (*bytes.Buffer).Write none
+errors (*bytes.Buffer).WriteString none
+errors (*bytes.Buffer).WriteByte none
+errors (*bytes.Buffer).WriteRune none
+
+# strings.Builder: "Write always returns len(p), nil" (strings/builder.go:85-86),
+# "The returned error is always nil" (93-94), "It returns the length of r and a
+# nil error" (101-102) and "It returns the length of s and a nil error"
+# (110-111); the returns are at builder.go:90, 98, 107 and 115.
+errors (*strings.Builder).Write none
+errors (*strings.Builder).WriteString none
+errors (*strings.Builder).WriteByte none
+errors (*strings.Builder).WriteRune none
+
+# hash.Hash: its Write comes from the embedded io.Writer, and the interface
+# documents "It never returns an error." (hash/hash.go:27-28). The rule names
+# the interface the value has; errset looks it up by the receiver's static type.
+errors (hash.Hash).Write none

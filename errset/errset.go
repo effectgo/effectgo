@@ -161,6 +161,12 @@ type Result struct {
 	// with or without a directive: the evidence that a mapper maps a variant to
 	// a status (see MappingsOf). Unlike Errmaps, it is not a claim of coverage.
 	Mappers map[*types.Func]*ErrmapFact
+	// NoErrors holds the functions whose error set is provably empty. It has
+	// every function of this package with an empty set, and every function
+	// that this package names (calls it, or uses it as a value) when a stub
+	// rule states "errors <target> none" for it (see stubSetVia). mustuse reads
+	// it to tell a discarded error that can occur from one that cannot.
+	NoErrors map[*types.Func]bool
 }
 
 // FuncErrors is the error set of one function. When the function returns
@@ -610,6 +616,39 @@ func recvTypeName(f *types.Func) string {
 	return ""
 }
 
+// noErrors computes Result.NoErrors (see there).
+func (p *pkgState) noErrors() map[*types.Func]bool {
+	out := map[*types.Func]bool{}
+	for _, u := range p.units {
+		if w := p.work[u.obj]; w != nil && len(w.errs.list()) == 0 {
+			out[u.obj] = true
+		}
+	}
+	note := func(fn *types.Func, recv types.Type) {
+		if s, ok := p.stubSetVia(fn, recv); ok && len(s) == 0 {
+			out[fn.Origin()] = true
+		}
+	}
+	for _, f := range p.pass.Files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.Ident:
+				if fn, ok := p.pass.TypesInfo.Uses[n].(*types.Func); ok {
+					note(fn, nil)
+				}
+			case *ast.SelectorExpr:
+				if sel, ok := p.pass.TypesInfo.Selections[n]; ok {
+					if fn, ok := sel.Obj().(*types.Func); ok {
+						note(fn, sel.Recv())
+					}
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
 func isInterfaceMethod(f *types.Func) bool {
 	recv := f.Type().(*types.Signature).Recv()
 	return recv != nil && types.IsInterface(recv.Type())
@@ -621,6 +660,13 @@ var stdCache sync.Map
 // isStd reports whether pkg is a standard library package, by the source
 // directory its objects were declared in (see internal/goroot). Facts exist for
 // std packages too, so std callees must be checked explicitly.
+// IsStd reports whether pkg is a standard library package. errset treats a call
+// into such a package as opaque unless a stub rule names it, so a fact derived
+// from its source does not count (mustuse follows the same rule).
+func IsStd(fset *token.FileSet, pkg *types.Package) bool {
+	return isStd(fset, pkg)
+}
+
 func isStd(fset *token.FileSet, pkg *types.Package) bool {
 	if v, ok := stdCache.Load(pkg); ok {
 		return v.(bool)
@@ -965,7 +1011,7 @@ func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 	if sel, ok := fun.(*ast.SelectorExpr); ok {
 		if m, ok := c.info.Uses[sel.Sel].(*types.Func); ok && isInterfaceMethod(m) {
 			m = m.Origin()
-			if s, ok := c.p.stubSet(m); ok {
+			if s, ok := c.p.stubSetVia(m, c.info.TypeOf(sel.X)); ok {
 				return s.prefixed(stubLabel(m))
 			}
 			if allowed, ok := c.p.contractOf(m); ok {
@@ -1369,7 +1415,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 		flows[u.decl] = Flow{p: p, c: p.newFlow(u)}
 	}
-	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows, Mappers: p.mappers()}
+	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows, Mappers: p.mappers(), NoErrors: p.noErrors()}
 	for _, u := range p.units {
 		w := p.work[u.obj]
 		arg, errmap := p.handlerRef(u)
