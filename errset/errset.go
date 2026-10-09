@@ -147,6 +147,9 @@ type Result struct {
 	Funcs    map[*types.Func]FuncErrors  // every function with a body
 	Literals map[*ast.FuncLit]FuncErrors // every func literal with an error result, in this package
 	Errmaps  map[*types.Func]*ErrmapFact // every valid //effectgo:errmap function of this package
+	// Flows is the error flow of every declared function with a body (see Flow).
+	// The gin adapter reads the sets of a handler's local error variables here.
+	Flows map[*ast.FuncDecl]Flow
 }
 
 // FuncErrors is the error set of one function. When the function returns
@@ -1296,7 +1299,11 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
-	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps}
+	flows := map[*ast.FuncDecl]Flow{}
+	for _, u := range p.units {
+		flows[u.decl] = Flow{p: p, c: p.newFlow(u)}
+	}
+	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows}
 	for _, u := range p.units {
 		w := p.work[u.obj]
 		arg, errmap := p.handlerRef(u)

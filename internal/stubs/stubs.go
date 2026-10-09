@@ -7,6 +7,7 @@
 //	errors  <target> <variant,variant,...> # or the word: none
 //	status  (pkgpath.Type) <code>
 //	route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>
+//	sink    <target> status=<argIndex> [body=<argIndex>]
 //
 // '#' starts a comment and fields are separated by whitespace. A target is
 // pkgpath.Func, (pkgpath.Type).Method, (*pkgpath.Type).Method, or
@@ -47,6 +48,7 @@ const (
 	VerbErrors  = "errors"
 	VerbStatus  = "status"
 	VerbRoute   = "route"
+	VerbSink    = "sink"
 )
 
 // verbArity is the number of fields of each verb, the verb included.
@@ -240,9 +242,18 @@ func Parse(name string, data []byte) ([]Rule, error) {
 			return fmt.Errorf("%s:%d: %s", name, i+1, fmt.Sprintf(format, a...))
 		}
 		verb := f[0]
+		if verb == VerbSink {
+			r, err := parseSink(f)
+			if err != nil {
+				return nil, fail("%v", err)
+			}
+			r.File, r.Line = name, i+1
+			rules = append(rules, r)
+			continue
+		}
 		arity, known := verbArity[verb]
 		if !known {
-			return nil, fail("unknown verb %q (want effects, errors, status or route)", verb)
+			return nil, fail("unknown verb %q (want effects, errors, status, route or sink)", verb)
 		}
 		if len(f) != arity {
 			return nil, fail("%s", arityMessage(verb, len(f)))
@@ -281,6 +292,43 @@ func Parse(name string, data []byte) ([]Rule, error) {
 		rules = append(rules, r)
 	}
 	return rules, nil
+}
+
+// parseSink reads "sink <target> status=<i> [body=<j>]". Args holds the two
+// argument indexes: the status index, and the body index ("-1" when the rule
+// has no body argument). A sink takes a variable number of fields, so it is
+// read outside the arity table.
+func parseSink(f []string) (Rule, error) {
+	if len(f) != 3 && len(f) != 4 {
+		return Rule{}, fmt.Errorf("sink wants <target> status=<argIndex> [body=<argIndex>], got %d fields", len(f))
+	}
+	t, err := ParseTarget(f[1])
+	if err != nil {
+		return Rule{}, err
+	}
+	if t.TypeOnly {
+		return Rule{}, fmt.Errorf("sink target %q must be a function or a method", f[1])
+	}
+	r := Rule{Verb: VerbSink, Target: t, Args: []string{"", "-1"}}
+	for _, kv := range f[2:] {
+		key, val, ok := strings.Cut(kv, "=")
+		n, convErr := strconv.Atoi(val)
+		if !ok || convErr != nil || n < 0 {
+			return Rule{}, fmt.Errorf("sink field %q: want status=<argIndex> or body=<argIndex>", kv)
+		}
+		switch key {
+		case "status":
+			r.Args[0] = val
+		case "body":
+			r.Args[1] = val
+		default:
+			return Rule{}, fmt.Errorf("sink field %q: want status=<argIndex> or body=<argIndex>", kv)
+		}
+	}
+	if r.Args[0] == "" {
+		return Rule{}, fmt.Errorf("sink wants status=<argIndex>")
+	}
+	return r, nil
 }
 
 func arityMessage(verb string, got int) string {
