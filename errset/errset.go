@@ -1600,9 +1600,14 @@ func (p *pkgState) contractVariant(name string, pos token.Pos) (Variant, bool) {
 }
 
 // resolveContract resolves the names of the //effectgo:errors directives in
-// dirs. Unresolvable names are reported at pos.
-func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string) []Variant {
-	allowed := []Variant{}
+// dirs. Unresolvable names are reported at pos. usable is false when no name
+// resolved and some did not: the contract is then empty only because of the
+// failed names, and a check against it would report every real variant as a
+// violation, so the caller skips the check and the unresolved names are the
+// only report. A partly resolved contract is still checked.
+func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string) (allowed []Variant, usable bool) {
+	allowed = []Variant{}
+	unresolved := 0
 	for _, d := range dirs {
 		if d.kind != "errors" {
 			continue
@@ -1611,12 +1616,13 @@ func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string
 			v, ok := p.contractVariant(name, pos)
 			if !ok {
 				p.pass.Reportf(pos, "effectgo:errors: cannot resolve %q in %s", name, owner)
+				unresolved++
 				continue
 			}
 			allowed = append(allowed, v)
 		}
 	}
-	return allowed
+	return allowed, len(allowed) > 0 || unresolved == 0
 }
 
 // allowedBy reports whether variant v is permitted by a contract. Unresolved
@@ -1676,9 +1682,9 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 		}
 	}
 	if hasContract {
-		allowed := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
+		allowed, usable := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
 		for _, v := range displayOrder(p.visible(p.work[u.obj].effective().list())) {
-			if allowedBy(v, allowed) {
+			if !usable || allowedBy(v, allowed) {
 				continue
 			}
 			p.pass.Reportf(u.decl.Name.Pos(), "%s may return %s%s, not in its //effectgo:errors contract", funcName(u.obj), v.Name, via(v.Chain))

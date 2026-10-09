@@ -106,6 +106,10 @@ func run(pass *analysis.Pass) (any, error) {
 		if fn != nil {
 			name = fn.Origin().FullName()
 		}
+		if marked {
+			pass.Reportf(call.Pos(), "result of %s is discarded: %s is //effectgo:mustuse; handle it or assign to _", name, markedType(pass, t))
+			return
+		}
 		pass.Reportf(call.Pos(), "result of %s is discarded; handle it or assign to _", name)
 	})
 	return nil, nil
@@ -330,6 +334,17 @@ func markedResult(pass *analysis.Pass, t types.Type) bool {
 		}
 	}
 	return false
+}
+
+// markedType names the first must-use result of a call, for the message of a
+// discarded value: "*a.Charge", with the package name as qualifier.
+func markedType(pass *analysis.Pass, t types.Type) string {
+	for _, r := range resultsOf(t) {
+		if typeMarked(pass, r) {
+			return types.TypeString(r, func(p *types.Package) string { return p.Name() })
+		}
+	}
+	return ""
 }
 
 func typeMarked(pass *analysis.Pass, t types.Type) bool {

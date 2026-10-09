@@ -36,7 +36,7 @@ func Plain() int { return 1 }
 func Use() {
 	Pay()     // want "result of a.Pay is discarded; handle it or assign to _"
 	Quote()   // want "result of a.Quote is discarded"
-	Mark()    // want "result of a.Mark is discarded"
+	Mark()    // want "result of a.Mark is discarded: \\*a.Charge is //effectgo:mustuse"
 	Plain()   // no result type is must-use
 	Nil()     // provably no error
 	Quiet()   // provably no error

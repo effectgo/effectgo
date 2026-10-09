@@ -26,6 +26,13 @@ func violated() error { return domain.ErrInvalid } // want "violated may return 
 //effectgo:errors Missing
 func unresolved() error { return nil } // want "effectgo:errors: cannot resolve \"Missing\"" unresolved:"."
 
+// No name of the contract resolves: the contract would be empty only because
+// of the failed names, so the real variant is not reported as a violation too.
+// A partly resolved contract is still checked (nameMismatch below).
+//
+//effectgo:errors Missing, Gone
+func unresolvedAll() error { return domain.ErrInvalid } // want "cannot resolve \"Missing\"" "cannot resolve \"Gone\"" unresolvedAll:"."
+
 //effectgo:errors ?
 func opaqueAllowed(e error) error { return e } // want opaqueAllowed:"."
 

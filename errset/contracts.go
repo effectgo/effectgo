@@ -44,7 +44,7 @@ func (p *pkgState) collectInterfaceContracts() {
 				hasTypeContract := len(typeDirs) > 0
 				var typeAllowed []Variant
 				if hasTypeContract {
-					typeAllowed = p.resolveContract(typeDirs, ts.Name.Pos(), ts.Name.Name)
+					typeAllowed, _ = p.resolveContract(typeDirs, ts.Name.Pos(), ts.Name.Name)
 				}
 				for _, field := range it.Methods.List {
 					if len(field.Names) != 1 {
@@ -58,7 +58,7 @@ func (p *pkgState) collectInterfaceContracts() {
 					var allowed []Variant
 					switch {
 					case len(own) > 0:
-						allowed = p.resolveContract(own, field.Names[0].Pos(), fn.Name())
+						allowed, _ = p.resolveContract(own, field.Names[0].Pos(), fn.Name())
 					case hasTypeContract:
 						allowed = typeAllowed
 					default:
