@@ -11,11 +11,13 @@
 //	go vet -vettool=$(which effectgo) ./...         go vet, cached correctly (see identity)
 //
 // Flags: -stubs (shared by effects and errset; falls back to $EFFECTGO_STUBS),
-// -effects.report, -effects.witness, -errset.report, -errset.witness,
-// -errset.ignoreopaque, and -test (default false: test files are not analyzed;
-// -test=true restores them). Under go vet the analyzer flags are forwarded the
-// same way; go vet itself decides which packages and test variants it passes
-// to the tool, so -test has no effect there.
+// -effects.report, -effects.witness, -effects.all, -errset.report,
+// -errset.witness, -errset.ignoreopaque, -errset.all, and -test (default true:
+// test files are analyzed, as go vet does; -test=false skips them). The
+// standalone run ends with a summary line on stderr; go vet does not print it.
+// Under go vet the analyzer flags are forwarded the same way; go vet itself
+// decides which packages and test variants it passes to the tool, so -test has
+// no effect there.
 package main
 
 import (
@@ -43,12 +45,6 @@ func init() {
 		"comma-separated stub files read by effects and errset; when empty, $"+stubs.Env+" is used, and when that is empty too, the shipped stubs plus the module's effectgo.stubs")
 }
 
-// testsFlag is the driver's flag that includes test files. multichecker
-// registers it inside Main, so it cannot be set beforehand; instead the default
-// is changed by putting -test=false in front of the arguments of a standalone
-// run (see withoutTests).
-const testsFlag = "-test"
-
 func main() {
 	if len(os.Args) == 2 && os.Args[1] == "-V=full" {
 		printIdentity()
@@ -68,7 +64,6 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)
-		os.Args = withoutTests(os.Args)
 		os.Args = takeEngineFlag(os.Args)
 		multichecker.Main(signature.Analyzer)
 		return
@@ -77,28 +72,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "effectgo: %v\n", err)
 		os.Exit(1)
 	}
-	os.Args = withoutTests(os.Args)
-	multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer)
+	if isVetInvocation(os.Args) || isHelpInvocation(os.Args) {
+		multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer)
+		return
+	}
+	os.Exit(runStandalone(os.Args))
 }
 
-// withoutTests makes a standalone run skip test files unless -test is given:
-// it puts -test=false first, so the flag parser sees it before the package
-// patterns. A go vet invocation is left alone (it sends -flags, -V=full, or a
-// .cfg file, and go vet decides the test variants itself).
-func withoutTests(args []string) []string {
-	if len(args) < 2 {
-		return args
-	}
-	for _, a := range args[1:] {
-		switch {
-		case a == "-flags", strings.HasPrefix(a, "-V"), strings.HasSuffix(a, ".cfg"):
-			return args
-		case a == testsFlag, strings.HasPrefix(a, testsFlag+"="),
-			a == "--"+testsFlag[1:], strings.HasPrefix(a, "--"+testsFlag[1:]+"="):
-			return args // the user chose
-		}
-	}
-	return append([]string{args[0], testsFlag + "=false"}, args[1:]...)
+// isHelpInvocation reports whether args ask for the help of the analyzers,
+// which the multichecker prints.
+func isHelpInvocation(args []string) bool {
+	return len(args) > 1 && (args[1] == "help" || args[1] == "-help" || args[1] == "--help" || args[1] == "-h")
 }
 
 // printIdentity answers "effectgo -V=full", which go vet runs to get a tool ID.
