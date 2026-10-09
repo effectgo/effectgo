@@ -303,15 +303,23 @@ func (c *checker) parseContracts(cg *ast.CommentGroup) []*contract {
 }
 
 // funcContracts returns the constraints that apply to a declared function:
-// its own directives if it has any, otherwise the package default.
+// its own directives if it has any, otherwise the package default. A function
+// declared in a _test.go file takes no package default: a test's table of
+// func values is test data, and the package contract is for the code under
+// test. Its own directives still apply.
 func (c *checker) funcContracts(fd *ast.FuncDecl, pkgCon *contract) []*contract {
 	if own := c.parseContracts(fd.Doc); len(own) > 0 {
 		return own
 	}
-	if pkgCon != nil {
+	if pkgCon != nil && !isTestFile(c.pass, fd.Pos()) {
 		return []*contract{pkgCon}
 	}
 	return nil
+}
+
+// isTestFile reports whether pos lies in a _test.go file.
+func isTestFile(pass *analysis.Pass, pos token.Pos) bool {
+	return strings.HasSuffix(pass.Fset.Position(pos).Filename, "_test.go")
 }
 
 // exportInterfaceContracts reads the directives on interface types and their
