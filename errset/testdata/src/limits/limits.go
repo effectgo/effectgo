@@ -1,24 +1,12 @@
 package limits
 
-import (
-	"domain"
-	"errors"
-)
+import "domain"
 
 type holder struct{ err error }
 
 func (h *holder) get() error { return domain.ErrNotFound } // want get:"." "errors of holder.get: domain.ErrNotFound"
 
 type doer interface{ Do() error }
-
-// Flow-insensitive: the nil reassignment does not remove ErrNotFound (false positive).
-func overwritten() error { // want overwritten:"." "errors of overwritten: domain.ErrNotFound"
-	err := domain.ErrNotFound
-	if errors.Is(err, domain.ErrNotFound) {
-		err = nil
-	}
-	return err
-}
 
 func viaInterface(d doer) error { // want viaInterface:"." "errors of viaInterface: \\?"
 	return d.Do()

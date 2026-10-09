@@ -182,7 +182,7 @@ var Analyzer = &analysis.Analyzer{
 	Name:       "errset",
 	Doc:        "infers error sets of Go functions, checks //effectgo:errors contracts and //effectgo:handler coverage by //effectgo:errmap",
 	Run:        run,
-	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact), new(StatusFact)},
+	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact), new(StatusFact), new(TestFact)},
 	ResultType: reflect.TypeOf(Result{}),
 }
 
@@ -1247,6 +1247,8 @@ type pkgState struct {
 	ssaProg *ssa.Program
 	callAt  map[token.Pos]*ast.CallExpr
 	litSets map[*ast.FuncLit]FuncErrors
+	// tests holds the TestFact of each predicate of this package (see guards.go).
+	tests map[*types.Func]TestFact
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -1272,6 +1274,9 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
+	if p.useSSA {
+		p.exportTests(p.units)
+	}
 	p.collectStatus()
 	if err := p.loadStubs(); err != nil {
 		return nil, err

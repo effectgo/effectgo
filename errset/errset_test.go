@@ -77,8 +77,18 @@ func TestReportFlag(t *testing.T) {
 	analysistest.Run(t, testdata(t), errset.Analyzer, "report")
 }
 
+// TestASTFlowInsensitiveLimit pins the AST engine's flow-insensitive false
+// positive (testdata/src/limitsast). The SSA engine does not have it.
+func TestASTFlowInsensitiveLimit(t *testing.T) {
+	if os.Getenv("EFFECTGO_TEST_ENGINE") == "ssa" {
+		t.Skip("the AST engine's limit; the SSA engine has no such false positive")
+	}
+	setFlag(t, "report", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "limitsast")
+}
+
 // TestKnownLimitations pins behaviour that the analyzer does not handle
-// precisely: flow-insensitivity, interface calls, fields and func values.
+// precisely: interface calls, fields and func values.
 func TestKnownLimitations(t *testing.T) {
 	setFlag(t, "report", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "limits")

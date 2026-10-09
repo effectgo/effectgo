@@ -105,6 +105,11 @@ func (f *ssaFn) iterate() bool {
 				continue
 			}
 		}
+		for v := range env {
+			if defBlockOf(v) == b {
+				delete(env, v) // a value that b defines is never narrowed on entry
+			}
+		}
 		if !f.done[b] || !sameEnv(f.env[b], env) {
 			changed = true
 		}
@@ -178,16 +183,15 @@ func (f *ssaFn) edgeEnv(p, b *ssa.BasicBlock) map[ssa.Value]errSet {
 	return e
 }
 
-// effective is the set of v as seen at the end of block b, given the
-// environment env of that point. A value defined in b is its own set.
-func (f *ssaFn) effective(v ssa.Value, b *ssa.BasicBlock, env map[ssa.Value]errSet) errSet {
+// effective is the set of v at a point, given the environment env of that
+// point: the entry environment of a block for a use in it, or the edge
+// environment for the end of a predecessor (which narrows the values that
+// the predecessor defines too). Without an entry, v keeps its own set.
+func (f *ssaFn) effective(v ssa.Value, env map[ssa.Value]errSet) errSet {
 	if c, ok := v.(*ssa.Const); ok && c.IsNil() {
 		return errSet{}
 	}
 	base := f.defSet(v)
-	if defBlockOf(v) == b {
-		return base
-	}
 	if s, ok := env[v]; ok {
 		return intersectSet(s, base)
 	}
@@ -281,7 +285,7 @@ func (f *ssaFn) transfer(v ssa.Value, b *ssa.BasicBlock) errSet {
 	if !implementsError(v.Type()) {
 		switch x := v.(type) {
 		case *ssa.ChangeInterface:
-			return f.effective(x.X, b, env)
+			return f.effective(x.X, env)
 		case *ssa.MakeInterface:
 			if n := namedErrorType(x.X.Type()); n != nil {
 				return setOf(f.u.p.typeVariant(n))
@@ -299,7 +303,7 @@ func (f *ssaFn) transfer(v ssa.Value, b *ssa.BasicBlock) errSet {
 			if !f.reach[p] || !f.done[p] {
 				continue
 			}
-			out.putAll(f.effective(e, p, f.edgeEnv(p, b)))
+			out.putAll(f.effective(e, f.edgeEnv(p, b)))
 		}
 		return out
 	case *ssa.Call:
@@ -338,9 +342,9 @@ func (f *ssaFn) transfer(v ssa.Value, b *ssa.BasicBlock) errSet {
 		}
 		return setOf(opaqueVariant())
 	case *ssa.ChangeInterface:
-		return f.effective(x.X, b, env)
+		return f.effective(x.X, env)
 	case *ssa.ChangeType:
-		return f.effective(x.X, b, env)
+		return f.effective(x.X, env)
 	case *ssa.TypeAssert:
 		return f.typeAssertSet(x.AssertedType)
 	}
@@ -371,7 +375,7 @@ func (f *ssaFn) returnSet() errSet {
 		if !ok || len(r.Results) <= f.errIdx {
 			continue
 		}
-		out.putAll(f.effective(r.Results[f.errIdx], b, f.env[b]))
+		out.putAll(f.effective(r.Results[f.errIdx], f.env[b]))
 	}
 	return out
 }
@@ -422,7 +426,7 @@ func (u *ssaUnit) solve() bool {
 					if root == nil {
 						continue
 					}
-					s := f.effective(st.Val, b, f.env[b])
+					s := f.effective(st.Val, f.env[b])
 					cur := u.allocs[root]
 					if cur == nil {
 						cur = errSet{}
@@ -621,7 +625,7 @@ func (f *ssaFn) errorfSet(cc *ssa.CallCommon, b *ssa.BasicBlock, env map[ssa.Val
 		if i >= len(vals) {
 			return fail
 		}
-		out.putAll(f.effective(vals[i], b, env))
+		out.putAll(f.effective(vals[i], env))
 	}
 	return out
 }
@@ -637,7 +641,7 @@ func (f *ssaFn) joinSet(cc *ssa.CallCommon, b *ssa.BasicBlock, env map[ssa.Value
 	}
 	out := errSet{}
 	for _, v := range vals {
-		out.putAll(f.effective(v, b, env))
+		out.putAll(f.effective(v, env))
 	}
 	return out
 }
