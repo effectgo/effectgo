@@ -1,5 +1,5 @@
 ---
-title: P1: stub configuration, determinism and vet cache identity
+title: "P1: stub configuration, determinism and vet cache identity"
 description: The determinism report, the zero-configuration stub discovery, and the fix that makes go vet notice stub edits.
 ---
 

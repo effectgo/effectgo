@@ -1,5 +1,5 @@
 ---
-title: P1: integration and merge
+title: "P1: integration and merge"
 description: The merge of the P0 and P1 branches, the commands and results, and the vet cache proof.
 ---
 

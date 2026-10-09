@@ -1,6 +1,6 @@
 ---
-title: P2: Gin adapter
-description: The Gin response check: sinks, mappers, leaks, the results per project and the manual verification of its findings.
+title: "P2: Gin adapter"
+description: "The Gin response check: sinks, mappers, leaks, the results per project and the manual verification of its findings."
 ---
 
 ## HTTP responses: Gin (adapter)

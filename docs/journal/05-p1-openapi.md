@@ -1,6 +1,6 @@
 ---
-title: P1: OpenAPI error documentation
-description: The OpenAPI error responses milestone: status inference, route discovery, the openapi subcommand, the Fuego drift check, and the 500 fix.
+title: "P1: OpenAPI error documentation"
+description: "The OpenAPI error responses milestone: status inference, route discovery, the openapi subcommand, the Fuego drift check, and the 500 fix."
 ---
 
 ## OpenAPI

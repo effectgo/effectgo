@@ -1,6 +1,6 @@
 ---
-title: P4: integration of must-use, exhaustive and the editor plugin
-description: The integration of the P4a and P4b branches: conflicts, wiring, corpus and sanity results.
+title: "P4: integration of must-use, exhaustive and the editor plugin"
+description: "The integration of the P4a and P4b branches: conflicts, wiring, corpus and sanity results."
 ---
 
 ### Integration (P4: mustuse/exhaustive + editor)

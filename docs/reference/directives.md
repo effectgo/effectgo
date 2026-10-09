@@ -1,6 +1,6 @@
 ---
 title: Directives
-description: Every //effectgo: directive, where it may appear, what it checks, and the diagnostics it produces.
+description: "Every //effectgo: directive, where it may appear, what it checks, and the diagnostics it produces."
 ---
 
 A directive is a comment that starts with `//effectgo:` (no space after the slashes). Directives are read by the analyzers in the same binary; each analyzer reads its own keywords and skips the others'. An unknown keyword is reported by each analyzer that reads the prefix, so in the combined binary a typo can appear twice.

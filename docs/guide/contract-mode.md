@@ -1,6 +1,6 @@
 ---
 title: Contract mode
-description: How to write new Go code with effectgo contracts: the workflow, worked examples from the example modules, the zero-false-positives promise, and what discipline means.
+description: "How to write new Go code with effectgo contracts: the workflow, worked examples from the example modules, the zero-false-positives promise, and what discipline means."
 ---
 
 Contract mode is writing new code with effectgo contracts in place from the start. A contract is a directive that states what a function may do, a package, an interface, or a handler may produce. effectgo infers what the code actually does and reports every place where the two differ.

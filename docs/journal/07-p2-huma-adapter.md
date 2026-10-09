@@ -1,6 +1,6 @@
 ---
-title: P2: Huma adapter
-description: The Huma v2 route check: carried statuses, the default errmap, mapping evidence, the kuzma-wms measurements and the manual verification.
+title: "P2: Huma adapter"
+description: "The Huma v2 route check: carried statuses, the default errmap, mapping evidence, the kuzma-wms measurements and the manual verification."
 ---
 
 ### Huma adapter

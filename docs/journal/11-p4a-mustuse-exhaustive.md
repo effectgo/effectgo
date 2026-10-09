@@ -1,5 +1,5 @@
 ---
-title: P4a: must-use and exhaustive matching
+title: "P4a: must-use and exhaustive matching"
 description: The mustuse and exhaustive analyzers, ported from the rustvet prototype, with their defects and their corpus results.
 ---
 

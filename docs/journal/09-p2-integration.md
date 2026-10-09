@@ -1,5 +1,5 @@
 ---
-title: P2: integration of Huma and Gin
+title: "P2: integration of Huma and Gin"
 description: The integration of the Huma and Gin adapters and the shared HTTP schema.
 ---
 

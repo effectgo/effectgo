@@ -1,6 +1,6 @@
 ---
-title: P3: flow-sensitive error sets
-description: The SSA-based flow-sensitive error-set engine: design, guard narrowing, corpus, oracle, output changes, metrics and performance.
+title: "P3: flow-sensitive error sets"
+description: "The SSA-based flow-sensitive error-set engine: design, guard narrowing, corpus, oracle, output changes, metrics and performance."
 ---
 
 ### Flow-sensitive error sets (P3)

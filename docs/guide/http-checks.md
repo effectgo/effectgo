@@ -1,6 +1,6 @@
 ---
 title: HTTP checks
-description: A showcase of what error-set inference enables at the HTTP boundary: OpenAPI error documentation for Fuego, and checks of Huma and Gin handlers against the errors they can return.
+description: "A showcase of what error-set inference enables at the HTTP boundary: OpenAPI error documentation for Fuego, and checks of Huma and Gin handlers against the errors they can return."
 ---
 
 This page is a showcase, not the main line of effectgo. The main line is the error set of each function, which the [contract mode](contract-mode.md) uses. An HTTP handler is one place where the error set has a visible consequence: an error that the handler returns is turned into a response, and the response status depends on the error's type. If the set is known, the mapping can be checked, and the response documentation can be derived.

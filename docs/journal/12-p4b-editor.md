@@ -1,6 +1,6 @@
 ---
-title: P4b: editor integration
-description: The golangci-lint plugin and the editor recipes: mechanism, zero-configuration stubs, verification matrix and latency.
+title: "P4b: editor integration"
+description: "The golangci-lint plugin and the editor recipes: mechanism, zero-configuration stubs, verification matrix and latency."
 ---
 
 ## Editor and tooling

@@ -46,6 +46,11 @@ export default defineConfig({
     nimbus(nimbusConfig, {
       rules: {
         "nimbus/frontmatter-shape": "error",
+        // The docs contract requires a description on every page.
+        "nimbus/description-required": "error",
+        "nimbus/single-h1": "error",
+        "nimbus/heading-hierarchy": "error",
+        "nimbus/code-block-lang": "error",
         // Docs links are relative `.md` links, which the rule reports by
         // default. allowRelative skips them; docs-links.ts checks them at build.
         "nimbus/internal-link": ["error", { allowRelative: true }],

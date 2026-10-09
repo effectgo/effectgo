@@ -1,5 +1,5 @@
 ---
-title: P1: report tooling and error variants
+title: "P1: report tooling and error variants"
 description: Witness lines, test-file handling, fresh errors, foreign variant collapse and the decisions behind them.
 ---
 
