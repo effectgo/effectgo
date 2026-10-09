@@ -1,6 +1,7 @@
 package errset
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -131,4 +132,49 @@ func TestChainsStayOnOneLine(t *testing.T) {
 	if strings.Contains(via([]string{"a\nb"}), "\n") {
 		t.Errorf("via keeps a newline")
 	}
+}
+
+// TestShippedPgxStubsSurviveCollapse: the variants named by stubs/pgx.stubs are
+// foreign to an application module. Exported ones (pgx.ErrNoRows, the Tx errors)
+// stay matchable by name; an unexported driver internal that a stub or an
+// inferred set might name collapses to "?".
+func TestShippedPgxStubsSurviveCollapse(t *testing.T) {
+	rules, err := parseStubFile(absStubPath(t, "pgx.stubs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var in []Variant
+	for _, r := range rules {
+		for _, tok := range r.tokens {
+			if tok.kind != KindOpaque {
+				in = append(in, identityVariant(tok))
+			}
+		}
+	}
+	in = append(in, Variant{Key: "github.com/jackc/pgx/v5/pgconn.connLockError", Name: "pgconn.connLockError", Kind: KindType})
+	out := collapseForeign(in, testModule)
+	got := map[string]bool{}
+	for _, v := range out {
+		got[v.Name] = true
+	}
+	for _, want := range []string{"pgx.ErrNoRows", "pgx.ErrTxClosed", "pgx.ErrTxCommitRollback"} {
+		if !got[want] {
+			t.Errorf("exported %s was collapsed; variants: %s", want, variantNames(out))
+		}
+	}
+	if got["pgconn.connLockError"] {
+		t.Errorf("unexported driver internal was not collapsed: %s", variantNames(out))
+	}
+	if !got["?"] {
+		t.Errorf("expected a collapsed ? for the internal, got %s", variantNames(out))
+	}
+}
+
+func absStubPath(t *testing.T, name string) string {
+	t.Helper()
+	p, err := filepath.Abs(filepath.Join("..", "stubs", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }

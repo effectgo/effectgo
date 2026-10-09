@@ -242,11 +242,29 @@ func identityVariant(t stubToken) Variant {
 	}
 }
 
+// shortPkg is the package name a path usually declares: its last element, or
+// the element before a major-version suffix (".../pgx/v5" is "pgx"). It is the
+// name the resolved variants use (types.Package.Name), so the two agree.
 func shortPkg(path string) string {
-	if i := strings.LastIndexByte(path, '/'); i >= 0 {
-		return path[i+1:]
+	elems := strings.Split(path, "/")
+	last := elems[len(elems)-1]
+	if len(elems) > 1 && isMajorVersion(last) {
+		return elems[len(elems)-2]
 	}
-	return path
+	return last
+}
+
+// isMajorVersion reports whether a path element is a major-version suffix: v2, v10.
+func isMajorVersion(s string) bool {
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // targetKey is the stub key of a function or method (origin object).

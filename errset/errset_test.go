@@ -140,3 +140,12 @@ func TestWitnessFlag(t *testing.T) {
 	setFlag(t, "witness", "true")
 	analysistest.Run(t, testdata(t), errset.Analyzer, "witness")
 }
+
+// TestInteractImmediateLiteral: an immediately-invoked literal's returns are its
+// error set, and a fresh error it creates is keyed by the declared function that
+// runs it (new@interact.Immediate), not by the literal.
+func TestInteractImmediateLiteral(t *testing.T) {
+	setFlag(t, "report", "true")
+	setFlag(t, "witness", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "interact")
+}
