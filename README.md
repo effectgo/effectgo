@@ -120,9 +120,23 @@ status  (pkgpath.Type) <code>            #                 (read by errset)
 route   pkgpath.Func <METHOD> <pathArgIndex> <handlerArgIndex>  (read by openapi)
 ```
 
-Targets: `pkgpath.Func`, `(pkgpath.Type).Method`, `(*pkgpath.Type).Method`, `(pkgpath.Iface).Method`, `(error).Error`. A `status` target is a type. Variants: `pkgpath.Name` (sentinel), `type:pkgpath.Type`, `iface:pkgpath.Iface`, or `?`. Indexes are 0-based.
+Targets: `pkgpath.Func`, `(pkgpath.Type).Method`, `(*pkgpath.Type).Method`, `(pkgpath.Iface).Method`, `(error).Error`. Two more forms name a function value rather than a declared function: `(pkgpath.Type)`, a named func type (`effects (context.CancelFunc) pure` covers every call through a value of that type), and `pkgpath.Var`, a package-level variable of func type (`effects github.com/danielgtaylor/huma/v2.NewError pure`). A `status` target is a type. Variants: `pkgpath.Name` (sentinel), `type:pkgpath.Type`, `iface:pkgpath.Iface`, or `?`. Indexes are 0-based.
 
-Shipped files: `stubs/stdlib.stubs` (both verbs, with evidence comments) and `stubs/fuego.stubs` (the Fuego `Body()` rule, with source references). A malformed line is a hard error that names the file and line.
+Shipped files, and when to load them:
+
+| file | load it when |
+|---|---|
+| `stubs/stdlib.stubs` | always. Standard-library rules: `error.Error`, `fmt.Stringer`, io, `context` (`Err` errors, `CancelFunc`), database/sql `Row`/`Rows`/`Result` and their errors, `io/fs` getters, `http.ResponseWriter.Header`. |
+| `stubs/pgx.stubs` | the service uses pgx v5. Gives the pool, connection, `Tx`, `Rows` and `Row` methods the `db` effect, and their sentinel errors. |
+| `stubs/gin.stubs` | the service uses gin. Response writers and body readers are `net`; query, header and context-state methods are pure. Removes the false `panic` and `unknown` on every handler that calls `c.JSON`. |
+| `stubs/huma.stubs` | the service uses Huma v2. `huma.NewError` is pure (the default implementation). |
+| `stubs/fuego.stubs` | the service uses Fuego. The `Body()` rule, with source references. |
+
+`stubs/gin.stubs` and `stubs/huma.stubs` describe the default implementations. Each file's header gives the module version it was checked against and the file:line of every rule. Judgment calls are explained in the comments: for example, `sql.Result` is pure and `io.Closer.Close` stays `unknown`.
+
+Load several at once, comma-separated and absolute: `EFFECTGO_STUBS=/abs/stubs/stdlib.stubs,/abs/stubs/pgx.stubs,/abs/stubs/gin.stubs`. A malformed line is a hard error that names the file and line.
+
+Closure attribution is not a stub: a func literal is charged to the function that contains it only when that function runs it (called in place, deferred, started with `go`, or called through a local variable). A literal that is passed, stored or returned is charged only through the parameter it is passed to. See `NOTES.md`, "Driver stubs & closure attribution".
 
 ## OpenAPI error docs
 

@@ -1,0 +1,4 @@
+# Stubs for TestFuncValueStubs (test only). A named func type and a package-level
+# func variable; the first applies to every call through a context.CancelFunc.
+effects (context.CancelFunc) pure
+effects funcvals.Hook pure

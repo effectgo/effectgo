@@ -103,6 +103,19 @@ func TestMalformedStubIsHardError(t *testing.T) {
 	}
 }
 
+// TestClosureAttribution covers func literals: a literal is charged to the
+// declared function only when that function runs it (testdata/src/closure).
+func TestClosureAttribution(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "closure")
+}
+
+// TestFuncValueStubs covers stub rules for a named func type (applies to every
+// call through the type) and for a package-level func variable.
+func TestFuncValueStubs(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/funcvals.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "funcvals")
+}
+
 // setStubs sets the shared -stubs value (internal/stubs.Flag) for the test.
 func setStubs(t *testing.T, value string) {
 	t.Helper()

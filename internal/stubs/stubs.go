@@ -11,6 +11,10 @@
 // '#' starts a comment and fields are separated by whitespace. A target is
 // pkgpath.Func, (pkgpath.Type).Method, (*pkgpath.Type).Method, or
 // (pkgpath.Iface).Method; the predeclared error type is written (error).Error.
+// Two more target forms name a function value rather than a declared function:
+// pkgpath.Var (a package-level variable of func type), and (pkgpath.Type), a
+// named func type such as context.CancelFunc, which applies to every call
+// through a value of that type.
 // A status target is a type, (pkgpath.Type). A route target is a function.
 //
 // This package checks the syntax that all analyzers share: the verb, the field
@@ -79,10 +83,20 @@ type Target struct {
 	Name   string // function or method name
 	Method bool   // (pkg.T).M or (*pkg.T).M
 	Ptr    bool   // (*pkg.T).M
+	// TypeOnly is set for a named func type target (pkg.T): it names the
+	// type, and the rule applies to calls through values of that type.
+	TypeOnly bool
 }
 
 // String renders the target in stub syntax.
 func (t Target) String() string {
+	if t.TypeOnly {
+		q := t.Type
+		if t.Pkg != "" {
+			q = t.Pkg + "." + t.Type
+		}
+		return "(" + q + ")"
+	}
 	if !t.Method {
 		return t.Pkg + "." + t.Name
 	}
@@ -112,6 +126,19 @@ func ParseTarget(s string) (Target, error) {
 		return Target{}, fmt.Errorf("target %q: missing ')'", s)
 	}
 	rest := s[end+1:]
+	if rest == "" {
+		// (pkgpath.Type): a named func type. The predeclared error type is
+		// not a func type, so only a qualified name is accepted.
+		inner := s[1:end]
+		if strings.HasPrefix(inner, "*") || inner == "error" {
+			return Target{}, fmt.Errorf("target %q: want (pkgpath.Type) for a named func type", s)
+		}
+		pkg, typ, err := SplitQual(inner)
+		if err != nil {
+			return Target{}, fmt.Errorf("target %v", err)
+		}
+		return Target{Pkg: pkg, Type: typ, TypeOnly: true}, nil
+	}
 	if !strings.HasPrefix(rest, ".") || !token.IsIdentifier(rest[1:]) {
 		return Target{}, fmt.Errorf("target %q: want (pkgpath.Type).Method", s)
 	}
@@ -237,8 +264,8 @@ func Parse(name string, data []byte) ([]Rule, error) {
 				return nil, fail("status wants an HTTP status code (100-599), got %q", f[2])
 			}
 		case VerbRoute:
-			if r.Target.Method {
-				return nil, fail("route target %q must be a function, not a method", f[1])
+			if r.Target.Method || r.Target.TypeOnly {
+				return nil, fail("route target %q must be a function, not a method or a type", f[1])
 			}
 			if !routeMethods[f[2]] {
 				return nil, fail("route method %q (want GET, POST, PUT, PATCH or DELETE)", f[2])

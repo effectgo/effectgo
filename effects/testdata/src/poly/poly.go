@@ -35,7 +35,7 @@ func CallsNamedClock(id int) error { // want CallsNamedClock:`map\[time:` `Calls
 // belongs to this function.
 //
 //effectgo:pure
-func CallsLiteralClock(id int) error { // want CallsLiteralClock:`map\[time:` `CallsLiteralClock is declared //effectgo:pure but has effect time via CallsLiteralClock → time\.Now`
+func CallsLiteralClock(id int) error { // want CallsLiteralClock:`map\[time:` `CallsLiteralClock is declared //effectgo:pure but has effect time via CallsLiteralClock → polylib\.Modify → func literal \(poly\.go:39\) → time\.Now`
 	return polylib.Modify(id, func(t *polylib.T) error {
 		_ = time.Now()
 		return nil
@@ -113,6 +113,6 @@ func CallsMethodExpr(b Box) int { // want CallsMethodExpr:`map\[time:` `CallsMet
 // its parameter.
 //
 //effectgo:pure
-func CallsRepeatClock() { // want CallsRepeatClock:`map\[time:` `CallsRepeatClock is declared //effectgo:pure but has effect time via CallsRepeatClock → time\.Now`
+func CallsRepeatClock() { // want CallsRepeatClock:`map\[time:` `CallsRepeatClock is declared //effectgo:pure but has effect time via CallsRepeatClock → polylib\.Repeat → func literal \(poly\.go:117\) → time\.Now`
 	polylib.Repeat(2, func() { _ = time.Now() })
 }

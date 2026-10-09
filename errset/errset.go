@@ -743,6 +743,14 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 	if tv, ok := c.info.Types[call.Fun]; ok && tv.IsType() {
 		return setOf(opaqueVariant()) // conversion
 	}
+	if lit, ok := unparen(call.Fun).(*ast.FuncLit); ok {
+		// func() error {...}(): the literal runs here, so its own returns
+		// are the call's error set.
+		if sig, ok := c.info.TypeOf(lit).(*types.Signature); ok && errIndex(sig) >= 0 {
+			return c.returnsErr(sig, lit.Body)
+		}
+		return errSet{}
+	}
 	callee := typeutil.StaticCallee(c.info, call)
 	if callee == nil {
 		return c.dynamicCallSet(call)
@@ -785,6 +793,9 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 // or opaque) and calls of other func values (opaque).
 func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 	fun := unparen(call.Fun)
+	if s, label, ok := c.p.dynamicStubSet(c.info, call); ok {
+		return s.prefixed(label)
+	}
 	if id, ok := fun.(*ast.Ident); ok {
 		if v, ok := c.info.Uses[id].(*types.Var); ok {
 			if i, ok := c.ownParams[v]; ok {

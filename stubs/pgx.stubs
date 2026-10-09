@@ -1,0 +1,119 @@
+# Stub rules for github.com/jackc/pgx/v5 (the driver API and the pgxpool pool).
+#
+# pgx v5 has no database/sql-style taxonomy entry, so without these rules every
+# call on a pgx.Row, pgx.Rows, pgx.Tx, pgx.Conn or pgxpool.Pool is "unknown" and
+# no call is "db". The rules below were read in github.com/jackc/pgx/v5 v5.9.2
+# (line numbers). v5.7.6, the version of arcteryx-console, has the same method
+# set for every target here and the same sentinel variables (grep-checked).
+# Paths are relative to that module root. Load with
+#   -stubs=/abs/path/stubs/stdlib.stubs,/abs/path/stubs/pgx.stubs
+#
+# Effects. A method that sends a query, reads or writes the connection, or
+# closes it is db. A method that only returns a value already held in memory
+# is pure. Interface methods are written with the interface type, so a stub
+# applies to every implementation.
+
+## ---- effects rules -------------------------------------------------------
+
+# pgx.Row (rows.go:79-84) is the result of Conn.QueryRow. Its only implementation
+# connRow.Scan (rows.go:95-118) calls rows.Next, which reads the connection,
+# and rows.Close.
+effects (github.com/jackc/pgx/v5.Row).Scan db
+
+# pgx.Rows (rows.go:27-66). Next reads the next message (baseRows.Next,
+# rows.go:220). Scan and Values close the rows on a decoding error through
+# fatal (rows.go:235-323), and Close reads to the end of the result
+# (rows.go:151). Those three are db. Err (rows.go:205-207) returns the stored
+# error; CommandTag (rows.go:201-203), FieldDescriptions (rows.go:147-149),
+# RawValues (rows.go:335-337) and Conn (rows.go:339-341) return stored fields.
+effects (github.com/jackc/pgx/v5.Rows).Close db
+effects (github.com/jackc/pgx/v5.Rows).Next db
+effects (github.com/jackc/pgx/v5.Rows).Scan db
+effects (github.com/jackc/pgx/v5.Rows).Values db
+effects (github.com/jackc/pgx/v5.Rows).Err pure
+effects (github.com/jackc/pgx/v5.Rows).CommandTag pure
+effects (github.com/jackc/pgx/v5.Rows).FieldDescriptions pure
+effects (github.com/jackc/pgx/v5.Rows).RawValues pure
+effects (github.com/jackc/pgx/v5.Rows).Conn pure
+
+# pgx.Tx (tx.go:122-158). Every method that runs SQL or ends the transaction is
+# db. Conn returns the connection the transaction runs on (tx.go:283) and
+# LargeObjects builds a value that wraps the transaction (tx.go:279-281).
+effects (github.com/jackc/pgx/v5.Tx).Begin db
+effects (github.com/jackc/pgx/v5.Tx).Commit db
+effects (github.com/jackc/pgx/v5.Tx).Rollback db
+effects (github.com/jackc/pgx/v5.Tx).CopyFrom db
+effects (github.com/jackc/pgx/v5.Tx).SendBatch db
+effects (github.com/jackc/pgx/v5.Tx).Prepare db
+effects (github.com/jackc/pgx/v5.Tx).Exec db
+effects (github.com/jackc/pgx/v5.Tx).Query db
+effects (github.com/jackc/pgx/v5.Tx).QueryRow db
+effects (github.com/jackc/pgx/v5.Tx).Conn pure
+effects (github.com/jackc/pgx/v5.Tx).LargeObjects pure
+
+# pgx.BatchResults (batch.go:89-): reading or closing a batch result reads the
+# connection.
+effects (github.com/jackc/pgx/v5.BatchResults).Exec db
+effects (github.com/jackc/pgx/v5.BatchResults).Query db
+effects (github.com/jackc/pgx/v5.BatchResults).QueryRow db
+effects (github.com/jackc/pgx/v5.BatchResults).Close db
+
+# *pgx.Conn (conn.go, tx.go, copy_from.go): every method that sends a message.
+effects (*github.com/jackc/pgx/v5.Conn).Close db
+effects (*github.com/jackc/pgx/v5.Conn).Prepare db
+effects (*github.com/jackc/pgx/v5.Conn).Ping db
+effects (*github.com/jackc/pgx/v5.Conn).Exec db
+effects (*github.com/jackc/pgx/v5.Conn).Query db
+effects (*github.com/jackc/pgx/v5.Conn).QueryRow db
+effects (*github.com/jackc/pgx/v5.Conn).SendBatch db
+effects (*github.com/jackc/pgx/v5.Conn).CopyFrom db
+effects (*github.com/jackc/pgx/v5.Conn).Begin db
+effects (*github.com/jackc/pgx/v5.Conn).BeginTx db
+
+# *pgxpool.Pool (pgxpool/pool.go). Exec, Query, QueryRow, SendBatch, Begin,
+# BeginTx, CopyFrom and Ping call Acquire (pool.go:599), which takes or opens
+# a connection; Close (pool.go:458) and Reset (pool.go:698) close connections.
+# Config (pool.go:703) copies a configuration and Stat (pool.go:706) reads a
+# snapshot; both are pure.
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Acquire db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).AcquireFunc db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).AcquireAllIdle db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Close db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Reset db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Exec db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Query db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).QueryRow db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).SendBatch db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Begin db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).BeginTx db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).CopyFrom db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Ping db
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Config pure
+effects (*github.com/jackc/pgx/v5/pgxpool.Pool).Stat pure
+
+## ---- errors rules (errset) -----------------------------------------------
+
+# Row.Scan returns ErrNoRows when no row was found (rows.go:95-118, line 111),
+# rows.Err() (driver or connection errors, opaque), or the error of the
+# scan itself (opaque).
+errors (github.com/jackc/pgx/v5.Row).Scan github.com/jackc/pgx/v5.ErrNoRows,?
+
+# Tx.Commit and Rollback return ErrTxClosed when the transaction is already
+# closed (tx.go:85, documented on Commit at tx.go:131-133). Commit can also
+# return ErrTxCommitRollback (tx.go:90). Everything else is a driver error.
+errors (github.com/jackc/pgx/v5.Tx).Commit github.com/jackc/pgx/v5.ErrTxClosed,github.com/jackc/pgx/v5.ErrTxCommitRollback,?
+errors (github.com/jackc/pgx/v5.Tx).Rollback github.com/jackc/pgx/v5.ErrTxClosed,?
+
+# The other methods return driver and connection errors that pgx does not name
+# as sentinels, so they are opaque. Stating it stops the body of the concrete
+# methods from leaking pgconn and pgproto3 types into the sets of their callers.
+errors (*github.com/jackc/pgx/v5.Conn).Exec ?
+errors (*github.com/jackc/pgx/v5.Conn).Query ?
+errors (*github.com/jackc/pgx/v5.Conn).QueryRow ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).Acquire ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).Exec ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).Query ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).QueryRow ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).Begin ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).BeginTx ?
+errors (*github.com/jackc/pgx/v5/pgxpool.Pool).Ping ?
