@@ -7,3 +7,6 @@ site/dist/
 site/.astro/
 site/.nimbus/
 site/.lint-docs/
+
+# cf CLI caches account info here; never commit it.
+.cloudflare/
