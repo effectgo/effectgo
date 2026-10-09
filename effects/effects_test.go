@@ -191,3 +191,10 @@ func TestAllShippedStubFilesViaEnv(t *testing.T) {
 	}, ","))
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "shipped")
 }
+
+// TestShippedHTTPRules checks the net/http rules of stubs/stdlib.stubs
+// (testdata/src/httpw).
+func TestShippedHTTPRules(t *testing.T) {
+	setStubs(t, absPath(t, "../stubs/stdlib.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "httpw")
+}

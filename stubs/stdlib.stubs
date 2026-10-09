@@ -105,9 +105,40 @@ effects (io/fs.DirEntry).Type pure
 
 # http.ResponseWriter.Header returns the header map that WriteHeader will send
 # (net/http/server.go:111-117). It does not write to the connection, so it is
-# pure. Write and WriteHeader stay unknown: they write to the connection, and
-# the interface does not say which implementation is used.
+# pure.
 effects (net/http.ResponseWriter).Header pure
+
+# http.ResponseWriter.Write and WriteHeader send the response to the connection
+# (net/http/server.go:140 and 160, Go 1.26.9). The interface does not name the
+# implementation, but every implementation writes to the connection, so both are
+# net. A net/http handler that calls them is not pure.
+effects (net/http.ResponseWriter).Write net
+effects (net/http.ResponseWriter).WriteHeader net
+
+# http.Flusher.Flush (server.go:176) and http.Hijacker.Hijack (server.go:206)
+# operate on the connection of a response writer, so they are net.
+effects (net/http.Flusher).Flush net
+effects (net/http.Hijacker).Hijack net
+
+# http.Error writes the header and the message to w (server.go:2321-2339, via
+# w.Header, w.WriteHeader and fmt.Fprintln to w). NotFound calls Error with 404
+# (server.go:2342). Redirect writes the Location header and a body through w
+# (server.go:2387-2440). All three are net only: they do not open files.
+effects net/http.Error net
+effects net/http.NotFound net
+effects net/http.Redirect net
+
+# http.ServeFile opens the named file through Dir.Open, which calls os.Open
+# (fs.go:815-826, fs.go:78-92), and writes the response (fs). The file reader is
+# the file system's, so it is fs as well as net.
+effects net/http.ServeFile fs,net
+
+# http.ServeContent writes the response and copies from content, an io.ReadSeeker
+# argument (fs.go:246, io.CopyN at fs.go:430). The reader's effects belong to the
+# caller and are not known here, so they are unknown. ServeFileFS opens an fs.FS
+# (fs.go:849), an interface, so it is unknown as well.
+effects net/http.ServeContent net,unknown
+effects net/http.ServeFileFS net,unknown
 
 ## ---- errors rules (errset) -----------------------------------------------
 
