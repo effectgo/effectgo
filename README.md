@@ -414,5 +414,7 @@ The full list, with `[test]` and `[reading]` tags, is in `NOTES.md`. The main on
 | `examples/layers/` | effects demo (its own module) |
 | `examples/todo/` | errset realworld (its own module) |
 | `examples/run.sh` | builds the binary and runs it on both examples |
+| `docs/` | the documentation sources (Markdown, readable on GitHub as is) |
+| `site/` | the documentation site built from `docs/` with Nimbus (Astro, Node toolchain); see [site/README.md](site/README.md) |
 
 Run `go test ./...` at the root. `NOTES.md` has the design notes and the outputs of the merge.
