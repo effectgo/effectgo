@@ -49,6 +49,9 @@ func main() {
 		printIdentity()
 		return
 	}
+	if msg := noStubsWarning(os.Args, os.Getenv(stubs.Env)); msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "openapi" {
 		os.Exit(runOpenAPI(os.Args[2:]))
 	}
@@ -80,6 +83,49 @@ func withoutTests(args []string) []string {
 		}
 	}
 	return append([]string{args[0], testsFlag + "=false"}, args[1:]...)
+}
+
+// noStubsWarningText is printed once per run when no stub file is configured.
+const noStubsWarningText = "effectgo: warning: no stub files loaded (set EFFECTGO_STUBS or -stubs); results for stdlib/driver calls will be less precise"
+
+// noStubsWarning returns the warning when a standalone, sig or openapi run has no
+// stub files: neither a non-empty -stubs (or --stubs) argument nor a non-empty
+// env value (EFFECTGO_STUBS). It returns "" for go vet invocations (-flags,
+// -V=..., a .cfg file), which run once per package and must stay quiet.
+func noStubsWarning(args []string, env string) string {
+	for _, a := range args[min(1, len(args)):] {
+		if a == "-flags" || strings.HasPrefix(a, "-V") || strings.HasSuffix(a, ".cfg") {
+			return ""
+		}
+	}
+	if strings.TrimSpace(env) != "" || stubsArgGiven(args) {
+		return ""
+	}
+	return noStubsWarningText
+}
+
+// stubsArgGiven reports whether args name a non-empty -stubs value, in the
+// forms -stubs=v, --stubs=v, "-stubs v" and "--stubs v". It reads the raw
+// arguments because the flag is parsed inside multichecker.Main, after the
+// warning decision is needed.
+func stubsArgGiven(args []string) bool {
+	for i := 1; i < len(args); i++ {
+		a := args[i]
+		name := strings.TrimLeft(a, "-")
+		if !strings.HasPrefix(a, "-") {
+			continue
+		}
+		if v, ok := strings.CutPrefix(name, "stubs="); ok {
+			if strings.TrimSpace(v) != "" {
+				return true
+			}
+			continue
+		}
+		if name == "stubs" && i+1 < len(args) && strings.TrimSpace(args[i+1]) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // printIdentity answers "effectgo -V=full", which go vet runs to get a tool ID.
