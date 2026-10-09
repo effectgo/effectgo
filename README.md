@@ -63,6 +63,7 @@ effectgo ./...                                      # standalone: effects and er
 go vet -vettool=$(which effectgo) ./...             # the same checks through go vet
 effectgo sig ./...                                  # signatures only (see below)
 effectgo openapi [-merge|-check spec.json] ./...    # OpenAPI error responses (see below)
+effectgo http-huma [-json] [-all] ./...             # Huma routes: variants that reach HTTP 500 (see below)
 ```
 
 Standalone runs skip `_test.go` files by default (`-test=false`). Pass `-test=true` to analyze them too. `go vet` is different: it decides by itself which packages and test variants it passes to the tool, so `-test` has no effect there (see "Test files" below).
@@ -170,7 +171,7 @@ Shipped files, and when to load them:
 | `stubs/stdlib.stubs` | always. Standard-library rules: `error.Error`, `fmt.Stringer`, io, `context` (`Err` errors, `CancelFunc`), database/sql `Row`/`Rows`/`Result` and their errors, `io/fs` getters, `http.ResponseWriter.Header`. |
 | `stubs/pgx.stubs` | the service uses pgx v5. Gives the pool, connection, `Tx`, `Rows` and `Row` methods the `db` effect, and their sentinel errors. |
 | `stubs/gin.stubs` | the service uses gin. Response writers and body readers are `net`; query, header and context-state methods are pure. Removes the false `panic` and `unknown` on every handler that calls `c.JSON`. |
-| `stubs/huma.stubs` | the service uses Huma v2. `huma.NewError` is pure (the default implementation). |
+| `stubs/huma.stubs` | the service uses Huma v2. `huma.NewError` is pure; the 40 status constructors, `NewError` with a constant status, the route functions and the default errmap (see "HTTP check: Huma"). |
 | `stubs/fuego.stubs` | the service uses Fuego. The `Body()` rule, with source references. |
 
 `stubs/gin.stubs` and `stubs/huma.stubs` describe the default implementations. Each file's header gives the module version it was checked against and the file:line of every rule. Judgment calls are explained in the comments: for example, `sql.Result` is pure and `io.Closer.Close` stays `unknown`.
@@ -212,6 +213,46 @@ summary: 2 missing, 5 stale, 0 not in document, 10 unchecked
 ```
 
 Fuego's document has 400, 404 and 500 on every operation, not 404 only, so the stale lines are its generic 500s. `-merge` keeps everything except the 4xx, 5xx and `default` responses of the routes it knows, and references the `HTTPError` schema. The merged document of the example validates with kin-openapi, and a runtime test checks that the statuses observed for `PUT /v3/todos/{id}` are documented. NOTES.md, "OpenAPI", has the full outputs and the evidence.
+
+## HTTP check: Huma
+
+`effectgo http-huma` checks the routes of a Huma v2 service. It finds each route call (`huma.Get`, `Post`, `Put`, `Patch`, `Delete`, `Register`), resolves its handler's error set, maps that set through Huma's default error handling, and reports every variant that reaches the HTTP 500 fallback. No directive is needed in the code: the handlers are literals, and the default errmap is a stub rule.
+
+```
+$ cd service && effectgo http-huma ./...          # text, grouped by severity (info hidden)
+$ cd service && effectgo http-huma -json -all ./... # one JSON object per finding, all severities
+```
+
+Huma answers an error with the status it carries. An error that implements `huma.StatusError` (or wraps one with `%w`) keeps its status; any other error becomes 500 (`huma.go:1094-1106`). The stub file says so as the `errdefault` rule:
+
+```
+errdefault github.com/danielgtaylor/huma/v2 passthrough=iface:github.com/danielgtaylor/huma/v2.StatusError,fallback=500
+```
+
+The stub verbs that the Huma adapter reads (see `stubs/huma.stubs`, and NOTES.md "Huma adapter"):
+
+| verb | meaning |
+|---|---|
+| `route pkg.Func <METHOD\|@N.Field> <pathArg\|@N.Field> <handlerArg>` | a route call; `@N.Field` reads a field of the composite literal argument N, which is how `huma.Register(api, huma.Operation{Method, Path}, h)` is read |
+| `status pkg.Func <code\|arg:N>` | a call returns an error that carries that status (`huma.Error404NotFound`), or the status is argument N (`huma.NewError(409, …)`) |
+| `status (pkg.Type) <code>` | the existing type rule (Fuego's `StatusCode`); unchanged |
+| `errdefault <pkgpath> passthrough=iface:…,fallback=<code>` | the default errmap of the routes of a package |
+
+A route whose method or path is not a constant, or whose handler is not a literal or a resolvable function, is reported as unresolved with the reason. Nothing is guessed.
+
+Severity (`info` is hidden unless `-all`):
+
+| severity | a variant that reaches 500 |
+|---|---|
+| `high` | a named variant of the project's module (sentinel or typed error) that some other place in the project maps to a non-5xx status (a mapper, or a handler guard such as `if errors.Is(err, ErrNotFound) { return huma.Error404NotFound(…) }`) |
+| `medium` | a named project variant that nothing maps |
+| `info` | `?` (opaque), `new@` (fresh), and foreign named errors (`sql.ErrNoRows`, `context.Canceled`) |
+
+The JSON schema is shared with the other HTTP adapters: `{"severity","framework","route","handler","pos","variant","status","via","reason"}`. `pos` is the route call site and `handler` names the literal (`func literal (file:line)`).
+
+The result on the kuzma-wms backend (134 routes, static evidence only, see NOTES.md "Huma adapter"): 134 of 134 routes resolve; 543 variants, all with a known status; 355 reach the fallback 500 (65 high, 1 medium, 289 info). Most high findings are guard false positives: the same handler already maps the variant before the raw return. The manual check of a seeded sample of 21 rows found 19 false positives, 1 intended 500, and 1 medium false positive; the out-of-sample checks found 2 likely bugs. The table and the causes are in NOTES.md.
+
+Limitations: errset is flow-insensitive, so a guard that precedes a raw return, a variable that is reused for another call, and a guard inside a callee are not modelled; the analysis does not know that `Rows.Scan` never returns `sql.ErrNoRows`; a type that implements `GetStatus` (huma's other way to carry a status) is reported as unknown, not read.
 
 ## `effectgo sig`
 
