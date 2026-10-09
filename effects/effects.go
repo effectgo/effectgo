@@ -14,7 +14,6 @@ package effects
 import (
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/token"
 	"go/types"
 	"path/filepath"
@@ -27,6 +26,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
 
+	"github.com/faintghost/effectgo/internal/goroot"
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
@@ -1380,19 +1380,16 @@ func renderWitness(w Witness, cur string) string {
 	return strings.Join(parts, " → ")
 }
 
-// isStdlib reports whether the package is compiled from GOROOT/src.
+// isStdlib reports whether the package is compiled from a Go installation's
+// src tree. The check reads the file paths only (see internal/goroot).
 func isStdlib(pass *analysis.Pass) bool {
-	goroot := build.Default.GOROOT
-	if goroot == "" {
-		return false
-	}
-	prefix := filepath.Join(goroot, "src") + string(filepath.Separator)
+	names := make([]string, 0, len(pass.Files))
 	for _, f := range pass.Files {
-		if tf := pass.Fset.File(f.Pos()); tf != nil && strings.HasPrefix(tf.Name(), prefix) {
-			return true
+		if tf := pass.Fset.File(f.Pos()); tf != nil {
+			names = append(names, tf.Name())
 		}
 	}
-	return false
+	return goroot.FilesAreStd(pass.Pkg.Path(), names)
 }
 
 func sortedKeys[V any](m map[string]V) []string {

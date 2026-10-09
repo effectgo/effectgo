@@ -28,12 +28,9 @@ package errset
 
 import (
 	"go/ast"
-	"go/build"
 	"go/constant"
 	"go/token"
 	"go/types"
-	"os"
-	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -44,6 +41,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
+
+	"github.com/faintghost/effectgo/internal/goroot"
 )
 
 // Kinds of variant.
@@ -588,18 +587,18 @@ func isInterfaceMethod(f *types.Func) bool {
 	return recv != nil && types.IsInterface(recv.Type())
 }
 
+// stdCache maps a *types.Package to whether it is standard library.
 var stdCache sync.Map
 
-// isStd reports whether path is a standard library package, by looking for
-// its source directory under GOROOT. Facts exist for std packages too, so
-// std callees must be checked explicitly.
-func isStd(path string) bool {
-	if v, ok := stdCache.Load(path); ok {
+// isStd reports whether pkg is a standard library package, by the source
+// directory its objects were declared in (see internal/goroot). Facts exist for
+// std packages too, so std callees must be checked explicitly.
+func isStd(fset *token.FileSet, pkg *types.Package) bool {
+	if v, ok := stdCache.Load(pkg); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(build.Default.GOROOT, "src", filepath.FromSlash(path)))
-	std := err == nil && !strings.Contains(path, ".")
-	stdCache.Store(path, std)
+	std := !strings.Contains(pkg.Path(), ".") && goroot.PkgIsStd(fset, pkg)
+	stdCache.Store(pkg, std)
 	return std
 }
 
@@ -898,7 +897,7 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 	if pkg == nil {
 		return setOf(opaqueVariant(name))
 	}
-	if isStd(pkg.Path()) {
+	if isStd(c.p.pass.Fset, pkg) {
 		return setOf(opaqueVariant(pkg.Name() + "." + name))
 	}
 	if pkg == c.p.pass.Pkg {
@@ -1007,7 +1006,7 @@ func (c *flowCtx) namedFuncSet(fn *types.Func) errSet {
 	label := funcName(fn)
 	var src []Variant
 	switch {
-	case fn.Pkg() == nil || isStd(fn.Pkg().Path()):
+	case fn.Pkg() == nil || isStd(c.p.pass.Fset, fn.Pkg()):
 		return setOf(opaqueVariant(label))
 	case fn.Pkg() == c.p.pass.Pkg:
 		w, ok := c.p.work[fn]
