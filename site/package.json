@@ -8,7 +8,9 @@
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check",
-    "lint:docs": "node scripts/lint-docs.mjs"
+    "lint:docs": "node scripts/lint-docs.mjs",
+    "build:public": "DOCS_PUBLIC=1 pnpm build",
+    "check:public": "node scripts/check-public.mjs"
   },
   "dependencies": {
     "@cloudflare/nimbus-docs": "^0.17.0",

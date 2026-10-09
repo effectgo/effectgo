@@ -1,0 +1,11 @@
+{
+  "_comment": "Public mode (DOCS_PUBLIC=1) replaces these names in every published output: HTML, per-page Markdown, llms.txt, llms-full.txt, titles and the search index. Matching is case-insensitive and substring-based; the longest key wins at each position. To add a name, add a key. The check in scripts/check-public.mjs also denies every key.",
+  "arcteryx-order-management-system": "service A",
+  "order-mgmt": "service A",
+  "kuzma-wms": "service B",
+  "kuzma": "service B",
+  "arcteryx-console": "service C",
+  "arcteryx-jp": "service C",
+  "arcteryx": "service C",
+  "VectorSprint": "a private org"
+}

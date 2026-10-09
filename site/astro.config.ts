@@ -5,11 +5,13 @@ import nimbus, {
 } from "@cloudflare/nimbus-docs";
 import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 import { docsLinks } from "./src/markdown/docs-links.ts";
+import { PUBLIC_MODE, siteOrigin } from "./src/public-mode.ts";
 
 const nimbusConfig = defineNimbusConfig({
-  // Local build only: this is the origin the canonical and llms.txt links are
-  // written for. Replace it with the real origin before any deployment.
-  site: "http://localhost:4321",
+  // The origin the canonical links, sitemap and llms.txt are written for.
+  // Default builds use a localhost placeholder. Public builds (DOCS_PUBLIC=1)
+  // use SITE_URL, and fail without it. See public-mode.ts.
+  site: siteOrigin(),
   title: "effectgo",
   description: "Documentation for effectgo, which infers Effect-style signatures for Go.",
   locale: "en",
@@ -21,8 +23,8 @@ const nimbusConfig = defineNimbusConfig({
       { label: "Reference", autogenerate: { directory: "reference" } },
       { label: "Design", autogenerate: { directory: "design" } },
       // Last, and collapsed by default: journal entries are history, not the
-      // first thing a reader needs.
-      { label: "Journal", autogenerate: { directory: "journal" }, collapsed: true },
+      // first thing a reader needs. Public builds leave the journal out.
+      ...(PUBLIC_MODE ? [] : [{ label: "Journal", autogenerate: { directory: "journal" }, collapsed: true }]),
     ],
   },
 });
