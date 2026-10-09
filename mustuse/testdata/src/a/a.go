@@ -30,5 +30,5 @@ func Use() {
 	var r Result
 	_ = r
 	f := Pay
-	f() // want "result of f is discarded"
+	f() // want "result of a.Pay is discarded"
 }

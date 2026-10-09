@@ -69,6 +69,7 @@ var errorIface = types.Universe.Lookup("error").Type().Underlying().(*types.Inte
 
 func run(pass *analysis.Pass) (any, error) {
 	exportMarkedTypes(pass)
+	defs := singleDefs(pass)
 
 	allow := map[string]bool{}
 	for _, s := range strings.Split(allowFlag, ",") {
@@ -83,7 +84,7 @@ func run(pass *analysis.Pass) (any, error) {
 		if !ok {
 			return
 		}
-		fn, _ := typeutil.Callee(pass.TypesInfo, call).(*types.Func)
+		fn := calleeOf(pass, call, defs)
 		if fn != nil && isAllowed(fn, allow) {
 			return
 		}
@@ -92,11 +93,117 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 		name := types.ExprString(call.Fun)
 		if fn != nil {
-			name = fn.FullName()
+			name = fn.Origin().FullName()
 		}
 		pass.Reportf(call.Pos(), "result of %s is discarded; handle it or assign to _", name)
 	})
 	return nil, nil
+}
+
+// calleeOf returns the function that a call invokes: the static callee, or, for
+// a call through a local func variable, the function assigned to it when that is
+// resolvable (see singleDefs). It returns nil otherwise.
+func calleeOf(pass *analysis.Pass, call *ast.CallExpr, defs map[*types.Var]ast.Expr) *types.Func {
+	if fn, ok := typeutil.Callee(pass.TypesInfo, call).(*types.Func); ok {
+		return fn
+	}
+	id, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	return funcOfExpr(pass, ast.Expr(id), defs, 0)
+}
+
+// funcOfExpr resolves an expression that denotes a function: a function name, a
+// qualified function, a method value or method expression, or a local variable
+// whose single assignment is one of those. depth bounds a chain of variables.
+func funcOfExpr(pass *analysis.Pass, e ast.Expr, defs map[*types.Var]ast.Expr, depth int) *types.Func {
+	if depth > 8 {
+		return nil
+	}
+	switch e := ast.Unparen(e).(type) {
+	case *ast.Ident:
+		switch obj := pass.TypesInfo.Uses[e].(type) {
+		case *types.Func:
+			return obj
+		case *types.Var:
+			if rhs, ok := defs[obj]; ok {
+				return funcOfExpr(pass, rhs, defs, depth+1)
+			}
+		}
+	case *ast.SelectorExpr:
+		if sel, ok := pass.TypesInfo.Selections[e]; ok {
+			if fn, ok := sel.Obj().(*types.Func); ok {
+				return fn
+			}
+			return nil
+		}
+		if fn, ok := pass.TypesInfo.Uses[e.Sel].(*types.Func); ok {
+			return fn
+		}
+	}
+	return nil
+}
+
+// singleDefs maps each local variable of this package that is assigned exactly
+// once, by := or =, or declared with one initializer, to the expression assigned
+// to it. A variable whose address is taken is left out: it may change through a
+// pointer. Function parameters and variables assigned in a range are left out.
+func singleDefs(pass *analysis.Pass) map[*types.Var]ast.Expr {
+	count := map[*types.Var]int{}
+	rhs := map[*types.Var]ast.Expr{}
+	addrOf := map[*types.Var]bool{}
+	note := func(e ast.Expr, value ast.Expr) {
+		id, ok := ast.Unparen(e).(*ast.Ident)
+		if !ok || id.Name == "_" {
+			return
+		}
+		v, ok := pass.TypesInfo.ObjectOf(id).(*types.Var)
+		if !ok {
+			return
+		}
+		count[v]++
+		rhs[v] = value
+	}
+	for _, file := range pass.Files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.AssignStmt:
+				for i, lhs := range n.Lhs {
+					var value ast.Expr
+					if len(n.Lhs) == len(n.Rhs) {
+						value = n.Rhs[i]
+					}
+					note(lhs, value)
+				}
+			case *ast.ValueSpec:
+				for i, name := range n.Names {
+					var value ast.Expr
+					if len(n.Names) == len(n.Values) {
+						value = n.Values[i]
+					}
+					note(name, value)
+				}
+			case *ast.RangeStmt:
+				note(n.Key, nil)
+				note(n.Value, nil)
+			case *ast.UnaryExpr:
+				if id, ok := ast.Unparen(n.X).(*ast.Ident); ok && n.Op == token.AND {
+					if v, ok := pass.TypesInfo.ObjectOf(id).(*types.Var); ok {
+						addrOf[v] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	out := map[*types.Var]ast.Expr{}
+	for v, n := range count {
+		if n == 1 && !addrOf[v] && rhs[v] != nil {
+			out[v] = rhs[v]
+		}
+	}
+	return out
 }
 
 // exportMarkedTypes exports an isMustUse fact for every marked type declared
