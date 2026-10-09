@@ -407,7 +407,7 @@ The status of a variant's type (`Variant.Status`, `Variant.DynamicStatus`) comes
 2. a `status (pkg.Type) <code>` stub line (fallback only);
 3. otherwise the status is dynamic (the type has `StatusCode` but no constant), and it is unknown.
 
-A variant with no `StatusCode` and no stub is a plain error: Fuego sends it as 500. An unknown status (an `iface:` variant, `?`, an unresolved `param:i`, a dynamic status) is reported as `default`, never as a guessed code.
+A variant with no `StatusCode` and no stub is a plain error: Fuego sends it as 500. An opaque variant (`?`) is 500 as well, see "Fix: opaque errors → 500". An unknown status (an `iface:` variant, an unresolved `param:i`, a dynamic status) is reported as `default`, never as a guessed code.
 
 Fuego v0.20.0 evidence (module cache, `github.com/go-fuego/fuego@v0.20.0`):
 
@@ -420,10 +420,10 @@ Fuego v0.20.0 evidence (module cache, `github.com/go-fuego/fuego@v0.20.0`):
 
 Deviation: the task says an uncovered error maps to 500. That holds for plain errors. An uncovered error that implements `StatusCode` keeps its own status, which is what `ErrorHandler` does (`errors.go:237-239`). A sentinel (`errors.New`) is assumed plain; its initializer is not read. Recorded as a limitation.
 
-Tests: `errset/testdata/src/status` with `TestStatusInference`. It covers constant inference (`ConstErr` is 409 although the stub says 418), the stub fallback (`StubErr` is 422), `ErrNotFound` mapped to `HTTPErr{Status: 409}`, the literal without a status (`ErrDup`, default), an uncovered sentinel and type (500), a passthrough of an `iface:` variant (default), and `?` (default). The `-errset.statuses` flag prints the statuses per handler. For the todo example:
+Tests: `errset/testdata/src/status` with `TestStatusInference`. It covers constant inference (`ConstErr` is 409 although the stub says 418), the stub fallback (`StubErr` is 422), `ErrNotFound` mapped to `HTTPErr{Status: 409}`, the literal without a status (`ErrDup`, default), an uncovered sentinel and type (500), a passthrough of an `iface:` variant (default), and `?` (500, see the fix below; it was default before). The `-errset.statuses` flag prints the statuses per handler. For the todo example:
 
 ```
-api/v3.go:53:6: statuses of v3Update: 400 domain.ErrInvalid | 400 fuego.BadRequestError | 404 domain.ErrNotFound | 500 domain.ErrConflict | default fuego.HTTPError | default ?
+api/v3.go:53:6: statuses of v3Update: 400 domain.ErrInvalid | 400 fuego.BadRequestError | 404 domain.ErrNotFound | 500 domain.ErrConflict | 500 ? | default fuego.HTTPError
 ```
 
 ### Route discovery (`openapi/`)
@@ -453,16 +453,17 @@ Routes of v3, from `effectgo openapi -stubs=$S ./...`. The `PUT /v3/todos/{id}` 
 PUT /v3/todos/{id}  x-effectgo-handler: v3Update(...)
   400  Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via parseID)
   404  Not Found: domain.ErrNotFound (via Service.Update → Store.modify)
-  500  Internal Server Error: domain.ErrConflict (via Service.Update → Store.checkTitle)
-  default  Unknown status: ? (via (Context).Body [stub]); fuego.HTTPError (via (Context).Body [stub])
+  500  Internal Server Error: unclassified error (via (Context).Body [stub]); domain.ErrConflict (via Service.Update → Store.checkTitle); an unclassified error becomes 500 unless it carries its own status
+  default  Unknown status: fuego.HTTPError (via (Context).Body [stub])
 ```
 
 - 400: `checkTitle` returns `ErrInvalid` (400 by the errmap), and `parseID` returns `fuego.BadRequestError` (its constant 400).
 - 404: `Store.modify` returns `ErrNotFound`.
 - 500: `ErrConflict` is not mapped by `httpres.ToHTTPError`, so it is 500.
-- `default`: the body's `?` (its origin is opaque, so the status is unknown and is not guessed), and `fuego.HTTPError` from the body's validation. `HTTPError`'s status is dynamic.
+- 500: the body's `?` (an unclassified error, 500 by the fix below) and `ErrConflict`.
+- `default`: `fuego.HTTPError` from the body's validation. Its status is dynamic.
 
-The other v3 routes, from the same run: `POST /v3/todos` has 400 (`ErrInvalid`, `BadRequestError`) and `default`. `GET /v3/todos/{id}` and `DELETE /v3/todos/{id}` have 400 (`BadRequestError` via `parseID`) and 404 (`ErrNotFound`). `GET /v3/todos` has no error response, and that is right: `v3List` returns `svc.List(), nil`.
+The other v3 routes, from the same run: `POST /v3/todos` has 400 (`ErrInvalid`, `BadRequestError`), 500 (the body's `?`) and `default` (`HTTPError`). `GET /v3/todos/{id}` and `DELETE /v3/todos/{id}` have 400 (`BadRequestError` via `parseID`) and 404 (`ErrNotFound`). `GET /v3/todos` has no error response, and that is right: `v3List` returns `svc.List(), nil`.
 
 v1 and v2 are undocumented, with the reason from the run (stderr):
 
@@ -487,19 +488,19 @@ GET /v3/todos:
   stale 404: documented, but no variant produces it
   stale 500: documented, but no variant produces it
 POST /v3/todos:
-  missing default: ?, fuego.HTTPError
+  missing default: fuego.HTTPError
 DELETE /v3/todos/{id}:
   stale 500: documented, but no variant produces it
 GET /v3/todos/{id}:
   stale 500: documented, but no variant produces it
 PUT /v3/todos/{id}:
-  missing default: ?, fuego.HTTPError
+  missing default: fuego.HTTPError
 (v1 and v2 lines: unchecked, with reasons, as above)
 summary: 2 missing, 5 stale, 0 not in document, 10 unchecked
 exit 1
 ```
 
-The 2 missing codes are the `default` responses of `POST /v3/todos` and `PUT /v3/todos/{id}`: the code has responses of unknown status, and the document has no `default`. The stale codes are Fuego's generic 500 on routes that cannot return one, and the 400 and 404 of `GET /v3/todos`, which takes no input and cannot fail.
+The 2 missing codes are the `default` responses of `POST /v3/todos` and `PUT /v3/todos/{id}`: the code has responses of unknown status (`fuego.HTTPError`), and the document has no `default`. The `?` of those routes is 500 now, so the code's 500 is produced by the `?` as well as by `ErrConflict` (on PUT); the document has 500 (Fuego's generic default), so there is no missing 500. The stale codes are Fuego's generic 500 on routes that cannot return one, and the 400 and 404 of `GET /v3/todos`, which takes no input and cannot fail.
 
 `-merge` of the same document: `effectgo openapi -stubs=$S -merge testdata/openapi/fuego.json ./...` prints the merged document. The v3 `PUT` then has `400`, `404`, `500` and `default`. Each inserted response references `HTTPError`. `GET /v3/todos` keeps only its `200`. The v1 and v2 operations are unchanged (they are undocumented). There are no merge notes.
 
@@ -521,7 +522,7 @@ Validation: `api/openapi_validate_test.go` loads the merged document with kin-op
     --- PASS: .../malformed_form_body   (observed 500)
 ```
 
-The 500 of the malformed form body is covered by the explicit 500 of `ErrConflict`. The body's `?` is documented as `default` (the other key the body path could produce). The test asserts the explicit key, which is the stronger claim.
+Since the fix below, each case also asserts attribution: the documented response of the observed status must list the variant that produces it (`x-effectgo-errors`). The 400 lists `domain.ErrInvalid`, the 404 lists `domain.ErrNotFound`, the duplicate title's 500 lists `domain.ErrConflict`, and the malformed form body's 500 lists `?`. Before the fix, the malformed form body's 500 was matched only by the key, which `ErrConflict` provided; it is now attributed to `?` on its own.
 
 ### Verification
 
@@ -534,10 +535,53 @@ Go test: 35 passed in 7 packages
 == examples/run.sh (bash): exit 0; the layers and todo outputs are unchanged from the Merge section
 ```
 
+### Fix: opaque errors → 500
+
+**The bug.** The opaque variant `?` (an error whose origin cannot be classified, e.g. `(Context).Body [stub]`) was reported as `default`, because `ownStatus` returned an unknown status for it. Fuego sends any error that does not carry its own status as 500 (`serialization.go:210-216`, and `ErrorHandler` returns a plain error unchanged, `errors.go:208`). So `?` is 500, and `default` documented it wrongly.
+
+The runtime cross-check did not catch this. Its `malformed_form_body` case (`title=%zz` returns 500) passed only because `ErrConflict` (500) gave the 500 key. Had `ErrConflict` been mapped to 409, that subtest would have failed, although the code still returns 500.
+
+**The fix.**
+
+- `errset/status.go`, `ownStatus`: an opaque variant is 500 (with the reason in the comment). Param and iface variants, and a dynamic status, stay unknown (`default`).
+- `openapi/report.go`: a 500 response that holds an opaque variant says "unclassified error" for it and adds "an unclassified error becomes 500 unless it carries its own status". `RouteError.Opaque` carries the variant kind to the report.
+- The `plain error → 500` fallback stays hardcoded, not a `fallback` stub line. Fuego's rule is the server's error handler (`serialization.go:210-216`), not a property of a type. A stub keyed by a package would have to say which server handles a route, and the errset facts do not carry that. A stub would also need the status to reach `ErrmapFact.StatusOf`, which runs without a pass. That is more machinery than one constant, so the constant stays and this section is the record of it.
+
+**Before** (`effectgo openapi`, `PUT /v3/todos/{id}`):
+
+```
+PUT /v3/todos/{id}  x-effectgo-handler: v3Update(...)
+  400  Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via parseID)
+  404  Not Found: domain.ErrNotFound (via Service.Update → Store.modify)
+  500  Internal Server Error: domain.ErrConflict (via Service.Update → Store.checkTitle)
+  default  Unknown status: ? (via (Context).Body [stub]); fuego.HTTPError (via (Context).Body [stub])
+```
+
+**After:**
+
+```
+PUT /v3/todos/{id}  x-effectgo-handler: v3Update(...)
+  400  Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via parseID)
+  404  Not Found: domain.ErrNotFound (via Service.Update → Store.modify)
+  500  Internal Server Error: unclassified error (via (Context).Body [stub]); domain.ErrConflict (via Service.Update → Store.checkTitle); an unclassified error becomes 500 unless it carries its own status
+  default  Unknown status: fuego.HTTPError (via (Context).Body [stub])
+```
+
+`-errset.statuses`, before: `… | 500 domain.ErrConflict | default fuego.HTTPError | default ?`; after: `… | 500 domain.ErrConflict | 500 ? | default fuego.HTTPError`.
+
+**Drift.** `-check` against Fuego's document: the `default` lines of `POST /v3/todos` and `PUT /v3/todos/{id}` now name only `fuego.HTTPError`. Before they named `?` too. The counts are unchanged (2 missing, 5 stale). The 500 of `?` is not reported as missing, because Fuego's document already has 500 on every operation. Against the regenerated `effectgo-merged.json`, `-check` reports `ok` on all five v3 operations, and the 500 response of PUT lists `?`.
+
+**Tests.**
+
+- `errset/testdata/src/status`: `HUnclassified` is now 500 (it was default).
+- `openapi/testdata/src/opaque` with `openapi/opaque_test.go`: `/opaque` (only `?`, 500, complete), `/dynamic` (only a dynamic status, default), `/conflict-and-opaque` (the coincidence case below), `/mixed` (conflict 409, `?` 500 and a dynamic status as default).
+- The coincidence case: the errmap maps `ErrConflict` to 409, and the handler can also return `?`. The docs must still have 500 attributed to `?` and 409 attributed to `ErrConflict`, with no default. `TestConflictAndOpaqueDocs` checks both, and the 500 description.
+- `examples/todo/api/openapi_crosscheck_test.go`: each case asserts the variant that its status must list (see "Runtime cross-check").
+
 ### Deviations
 
 1. Fuego documents 400, 404 and 500 on each operation, not 404 only. The check reports that as it is.
-2. The `?` from the body is `default`, not 500. The rules forbid a guessed code. The runtime 500 is checked by the cross-check.
+2. The `?` is 500, not `default`: an unclassified error is sent as 500 (see the fix below). The `default` responses are only the dynamic statuses.
 3. Uncovered errors that implement `StatusCode` keep their own status (see "Status inference").
 4. The Delete routes return the named type `deleted` (an example change, needed for validation; the JSON body is unchanged).
 5. The v1 and v2 routes are undocumented, not documented: no directives were added (see above).
@@ -547,6 +591,7 @@ Go test: 35 passed in 7 packages
 
 - Sentinels are assumed plain (their values are not inspected); a sentinel of an error type with a status is reported as 500.
 - A `fuego.HTTPError` literal without a `Status` field is `default` (its `StatusCode` would give 500, but the analysis does not infer it).
+- An opaque variant (`?`) is 500 even if its dynamic type could carry a status: the type is not visible, so the analysis cannot show that it does. Fuego would send a status-carrying error with that status.
 - Errmap rules are read from the top level of the errmap body, and assignments before them are not tracked (flow-insensitive, as elsewhere). A rule that returns in more than one way with different statuses is unknown.
 - A func literal handler is never documented (it has no directive).
 - Routes are found only at static calls to the route functions. Route registration through a table, a wrapper or a variable is not seen (no guess, and no report either).

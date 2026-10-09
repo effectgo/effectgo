@@ -100,6 +100,6 @@ func HPlain() func() (int, error) { return func() (int, error) { return 0, Plain
 func HOpaque() func() (int, error) { return func() (int, error) { return 0, Opaque() } } // want HOpaque:"." "statuses of HOpaque: default some status.StatusError"
 
 //effectgo:handler ToStatus
-func HUnclassified() func() (int, error) { // want HUnclassified:"." "unclassified error" "statuses of HUnclassified: default"
+func HUnclassified() func() (int, error) { // want HUnclassified:"." "unclassified error" "statuses of HUnclassified: 500"
 	return func() (int, error) { return 0, fmt.Errorf("x %v", 1) }
 }

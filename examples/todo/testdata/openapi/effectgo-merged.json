@@ -1044,6 +1044,22 @@
               }
             ]
           },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPError"
+                }
+              }
+            },
+            "description": "Internal Server Error: unclassified error (via (Context).Body [stub]); an unclassified error becomes 500 unless it carries its own status",
+            "x-effectgo-errors": [
+              {
+                "variant": "?",
+                "via": "(Context).Body [stub]"
+              }
+            ]
+          },
           "default": {
             "content": {
               "application/json": {
@@ -1052,12 +1068,8 @@
                 }
               }
             },
-            "description": "Unknown status: ? (via (Context).Body [stub]); fuego.HTTPError (via (Context).Body [stub])",
+            "description": "Unknown status: fuego.HTTPError (via (Context).Body [stub])",
             "x-effectgo-errors": [
-              {
-                "variant": "?",
-                "via": "(Context).Body [stub]"
-              },
               {
                 "variant": "fuego.HTTPError",
                 "via": "(Context).Body [stub]"
@@ -1305,8 +1317,12 @@
                 }
               }
             },
-            "description": "Internal Server Error: domain.ErrConflict (via Service.Update → Store.checkTitle)",
+            "description": "Internal Server Error: unclassified error (via (Context).Body [stub]); domain.ErrConflict (via Service.Update → Store.checkTitle); an unclassified error becomes 500 unless it carries its own status",
             "x-effectgo-errors": [
+              {
+                "variant": "?",
+                "via": "(Context).Body [stub]"
+              },
               {
                 "variant": "domain.ErrConflict",
                 "via": "Service.Update → Store.checkTitle"
@@ -1321,12 +1337,8 @@
                 }
               }
             },
-            "description": "Unknown status: ? (via (Context).Body [stub]); fuego.HTTPError (via (Context).Body [stub])",
+            "description": "Unknown status: fuego.HTTPError (via (Context).Body [stub])",
             "x-effectgo-errors": [
-              {
-                "variant": "?",
-                "via": "(Context).Body [stub]"
-              },
               {
                 "variant": "fuego.HTTPError",
                 "via": "(Context).Body [stub]"

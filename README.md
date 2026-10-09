@@ -76,7 +76,14 @@ Flags (the same spelling standalone and under `go vet`):
 
 `go vet` forwards only the flags that the tool advertises with `-flags`. `-stubs` is advertised, so it works through `go vet -vettool`. The prototypes had per-analyzer `-effects.stubs` and `-errset.stubs`; those are gone, in favour of the single shared flag.
 
-Results are cached by `go vet` under the tool's identity. effectgo puts a hash of its own executable and of every stub file named in `$EFFECTGO_STUBS` into that identity, so editing a stub invalidates the cache. A file named only by `-stubs` is not part of the identity: name it in `$EFFECTGO_STUBS` too, or run `go vet -a`. See `NOTES.md`, "Vet cache identity".
+Results are cached by `go vet` under the tool's identity. effectgo puts a hash of its own executable and of every stub file named in `$EFFECTGO_STUBS` into that identity, so editing a stub invalidates the cache. This covers the stub files named in `$EFFECTGO_STUBS` only. `go vet` asks the tool for its identity (`-V=full`) without any flags, so a stub file passed only through `-stubs` is not in the identity, and an edit to it can leave a stale cached vet result. For `go vet` use, put every stub file in `$EFFECTGO_STUBS` (as well as, or instead of, `-stubs`), or run `go vet -a` after editing a stub. The standalone run has no cache and is not affected. See `NOTES.md`, "Vet cache identity".
+
+Recommended for `go vet`:
+
+```
+export EFFECTGO_STUBS=/abs/path/stubs/stdlib.stubs,/abs/path/stubs/fuego.stubs
+go vet -vettool=$(which effectgo) ./...
+```
 
 ## Directive reference
 
@@ -126,13 +133,13 @@ $ cd examples/todo && effectgo openapi -stubs=$STUBS ./...    # a fragment; undo
 PUT /v3/todos/{id}  (x-effectgo-handler: v3Update(...))
   400  Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via parseID)
   404  Not Found: domain.ErrNotFound (via Service.Update → Store.modify)
-  500  Internal Server Error: domain.ErrConflict (via Service.Update → Store.checkTitle)
-  default  Unknown status: ? (via (Context).Body [stub]); fuego.HTTPError (via (Context).Body [stub])
+  500  Internal Server Error: unclassified error (via (Context).Body [stub]); domain.ErrConflict (via Service.Update → Store.checkTitle); an unclassified error becomes 500 unless it carries its own status
+  default  Unknown status: fuego.HTTPError (via (Context).Body [stub])
 ```
 
 In the examples below, `STUBS` is the comma-separated absolute paths of `stubs/stdlib.stubs` and `stubs/fuego.stubs`.
 
-The fragment has `paths.<path>.<method>.responses.<code>`. Each response has a `description` and an `x-effectgo-errors` list. A variant whose status is unknown goes under `default`, and it is never given a guessed code. v1 and v2 of the example are undocumented: v1 has no errmap directive, and v2 wraps its handlers in `httpres.NoBody` and `WithBody`. The reasons are printed.
+The fragment has `paths.<path>.<method>.responses.<code>`. Each response has a `description` and an `x-effectgo-errors` list. A variant whose status is unknown goes under `default`, and it is never given a guessed code. An unclassified error (`?`) is 500: Fuego sends any error that does not carry its own status as 500, so it goes under `500` with that explanation, not under `default`. v1 and v2 of the example are undocumented: v1 has no errmap directive, and v2 wraps its handlers in `httpres.NoBody` and `WithBody`. The reasons are printed.
 
 ```
 effectgo openapi -stubs=$STUBS -check spec.json ./...   # drift; exit 1 when a code is missing from spec.json
@@ -142,8 +149,10 @@ effectgo openapi -stubs=$STUBS -merge spec.json ./...   # the document with the 
 `-check` reports `missing` codes (the code can produce them, the document does not; these exit 1), `stale` codes (documented, but no variant produces them; only for complete routes), and `unchecked` routes. Against Fuego's own document for the todo server, it reports:
 
 ```
+POST /v3/todos:
+  missing default: fuego.HTTPError
 PUT /v3/todos/{id}:
-  missing default: ?, fuego.HTTPError
+  missing default: fuego.HTTPError
 summary: 2 missing, 5 stale, 0 not in document, 10 unchecked
 ```
 

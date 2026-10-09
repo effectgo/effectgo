@@ -15,7 +15,8 @@ package errset
 //     code for it; the OpenAPI output uses the "default" response.
 //
 // A variant with no StatusCode method and no stub is a plain error: Fuego sends
-// it as 500 (serialization.go, SendJSONError).
+// it as 500 (serialization.go, SendJSONError). An opaque variant (?) is treated
+// the same way, see ownStatus.
 
 import (
 	"fmt"
@@ -83,9 +84,18 @@ func (b Branch) matches(v Variant) bool {
 // error handler returns an error that implements ErrorWithStatus with that
 // status (errors.go:198-209 and 237-239, serialization.go SendJSONError), and
 // sends any other error as 500. An unknown status is reported as ok=false.
+//
+// An opaque variant (?) is 500: its type is not visible, so it cannot be shown
+// to carry a status of its own, and an error without one is sent as 500. The
+// status is fixed here rather than read from a stub, because Fuego's rule is the
+// server's error handler (serialization.go:210-216), not a property of a type,
+// and the errset facts do not say which server handles a handler. The unknown
+// cases are the param and iface variants, and a dynamic status.
 func ownStatus(v Variant) (int, bool) {
 	switch {
-	case v.Kind == KindOpaque, v.Kind == KindParam, v.Kind == KindIface:
+	case v.Kind == KindOpaque:
+		return 500, true
+	case v.Kind == KindParam, v.Kind == KindIface:
 		return 0, false
 	case v.Status > 0:
 		return v.Status, true

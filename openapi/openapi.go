@@ -54,6 +54,9 @@ type RouteError struct {
 	Status  int      // the HTTP status; 0 when unknown (the "default" response)
 	Variant string   // display name, e.g. "domain.ErrNotFound"
 	Via     []string // witness chain from the handler down to the origin of the variant
+	// Opaque is true for an unclassified error (the "?" variant). Its status is
+	// 500 unless the errmap maps it, see errset.ownStatus.
+	Opaque bool
 }
 
 // Result is the ResultType: the routes of the package, in source order.
@@ -234,7 +237,7 @@ func (st *state) route(call *ast.CallExpr, rule routeRule) Route {
 		if !ok {
 			r.Complete = false
 		}
-		r.Errors = append(r.Errors, RouteError{Status: code, Variant: v.Name, Via: v.Chain})
+		r.Errors = append(r.Errors, RouteError{Status: code, Variant: v.Name, Via: v.Chain, Opaque: v.Kind == errset.KindOpaque})
 	}
 	return r
 }

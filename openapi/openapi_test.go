@@ -20,11 +20,17 @@ func testdata(t *testing.T) string {
 // its routes.
 func routesOf(t *testing.T) openapi.Result {
 	t.Helper()
+	return routesOfPkg(t, "api")
+}
+
+// routesOfPkg runs the analyzer on one package with the route stubs.
+func routesOfPkg(t *testing.T, pkg string) openapi.Result {
+	t.Helper()
 	old := stubs.Flag
 	stubs.Flag = filepath.Join(testdata(t), "stubs", "routes.stubs")
 	t.Cleanup(func() { stubs.Flag = old })
 
-	results := analysistest.Run(t, testdata(t), openapi.Analyzer, "api")
+	results := analysistest.Run(t, testdata(t), openapi.Analyzer, pkg)
 	if len(results) != 1 {
 		t.Fatalf("want one result, got %d", len(results))
 	}
@@ -33,6 +39,18 @@ func routesOf(t *testing.T) openapi.Result {
 		t.Fatalf("result has type %T, want openapi.Result", results[0].Result)
 	}
 	return res
+}
+
+// defaultOf returns the variants of r that have an unknown status (the
+// "default" response).
+func defaultOf(r openapi.Route) []string {
+	var out []string
+	for _, e := range r.Errors {
+		if e.Status == 0 {
+			out = append(out, e.Variant)
+		}
+	}
+	return out
 }
 
 // find returns the route with the given method and path.

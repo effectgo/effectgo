@@ -76,8 +76,13 @@ func codesOf(op *Op) (codes map[int]bool, hasDefault bool) {
 func responseFor(status int, errs []RouteError) map[string]any {
 	var descs []string
 	var list []any
+	opaque := false
 	for _, e := range errs {
 		d := e.Variant
+		if e.Opaque {
+			d = "unclassified error"
+			opaque = true
+		}
 		if len(e.Via) > 0 {
 			d += " (via " + strings.Join(e.Via, " → ") + ")"
 		}
@@ -91,11 +96,18 @@ func responseFor(status int, errs []RouteError) map[string]any {
 			label = "HTTP " + strconv.Itoa(status)
 		}
 	}
+	desc := label + ": " + strings.Join(descs, "; ")
+	if opaque && status == http.StatusInternalServerError {
+		desc += "; " + opaqueNote
+	}
 	return map[string]any{
-		"description": label + ": " + strings.Join(descs, "; "),
+		"description": desc,
 		ExtErrors:     list,
 	}
 }
+
+// opaqueNote explains the 500 of an unclassified error (see errset.ownStatus).
+const opaqueNote = "an unclassified error becomes 500 unless it carries its own status"
 
 // responsesOf builds the error responses of an operation. The status 0 is the
 // "default" key.
