@@ -21,10 +21,14 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/errset"
+	"github.com/faintghost/effectgo/internal/dirparse"
 )
 
 // Directive marks a named type as must-use.
 const Directive = "//effectgo:mustuse"
+
+// keyword is the directive keyword of Directive.
+const keyword = "mustuse"
 
 // isMustUse is exported as an object fact on the *types.TypeName of a marked
 // type, so that packages importing the defining package can see the mark.
@@ -246,13 +250,19 @@ func exportMarkedTypes(pass *analysis.Pass) {
 			}
 			for _, spec := range gd.Specs {
 				ts := spec.(*ast.TypeSpec)
-				marked := hasDirective(ts.Doc) || (len(gd.Specs) == 1 && hasDirective(gd.Doc))
-				if !marked {
+				marks := markComments(ts.Doc)
+				if len(gd.Specs) == 1 {
+					marks = append(marks, markComments(gd.Doc)...)
+				}
+				if len(marks) == 0 {
 					continue
 				}
 				obj, _ := pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
 				if obj == nil {
 					continue
+				}
+				for _, c := range marks {
+					reportArgs(pass, c)
 				}
 				if obj.IsAlias() {
 					pass.Reportf(ts.Name.Pos(), "%s: %s applies to a defined type, not an alias; put it on the type the alias names", ts.Name.Name, Directive)
@@ -273,7 +283,7 @@ func checkFuncDirectives(pass *analysis.Pass) {
 	for _, file := range pass.Files {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
-			if !ok || !hasDirective(fd.Doc) {
+			if !ok || len(markComments(fd.Doc)) == 0 {
 				continue
 			}
 			name := declName(fd)
@@ -305,16 +315,27 @@ func declName(fd *ast.FuncDecl) string {
 	return fd.Name.Name
 }
 
-func hasDirective(cg *ast.CommentGroup) bool {
+// markComments returns the comments of cg that carry the mustuse keyword. The keyword
+// is read as dirparse reads it, so a trailing // comment after it is not an argument.
+func markComments(cg *ast.CommentGroup) []*ast.Comment {
 	if cg == nil {
-		return false
+		return nil
 	}
+	var out []*ast.Comment
 	for _, c := range cg.List {
-		if strings.TrimSpace(c.Text) == Directive {
-			return true
+		if kw, _, ok := dirparse.Parse(c.Text); ok && kw == keyword {
+			out = append(out, c)
 		}
 	}
-	return false
+	return out
+}
+
+// reportArgs reports a mark with arguments, such as "//effectgo:mustuse extra". The
+// mark still applies: the argument is an error, as it is for pure in effects.
+func reportArgs(pass *analysis.Pass, c *ast.Comment) {
+	if _, args, _ := dirparse.Parse(c.Text); len(args) > 0 {
+		pass.Reportf(c.Pos(), "%s takes no arguments", Directive)
+	}
 }
 
 func isAllowed(fn *types.Func, allow map[string]bool) bool {
