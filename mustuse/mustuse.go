@@ -18,8 +18,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/analysis/passes/inspect"
-	"golang.org/x/tools/go/ast/inspector"
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/errset"
@@ -45,7 +43,7 @@ var allowFlag string
 var Analyzer = &analysis.Analyzer{
 	Name:      "mustuse",
 	Doc:       "report discarded error results and results of //effectgo:mustuse types",
-	Requires:  []*analysis.Analyzer{inspect.Analyzer, errset.Analyzer},
+	Requires:  []*analysis.Analyzer{errset.Analyzer},
 	FactTypes: []analysis.Fact{new(isMustUse), new(errorFree)},
 	Run:       run,
 }
@@ -83,36 +81,50 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
-	ins := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	ins.Preorder([]ast.Node{(*ast.ExprStmt)(nil)}, func(n ast.Node) {
-		call, ok := ast.Unparen(n.(*ast.ExprStmt).X).(*ast.CallExpr)
-		if !ok {
-			return
-		}
-		fn := calleeOf(pass, call, defs)
-		if fn != nil && isAllowed(fn, allow) {
-			return
-		}
-		t := pass.TypesInfo.TypeOf(call)
-		marked := markedResult(pass, t)
-		if !marked {
-			// Only an error can be discarded here. A callee whose error set is
-			// provably empty returns no error that matters.
-			if !hasErrorResult(t) || provablyNoError(pass, res, fn) {
-				return
+	// The statements are visited as ast.Inspect visits the files, the order that the
+	// inspector gave. The inspector is not required: the checker keeps the result of
+	// every action of a dependency alive, and one inspector per package was a large
+	// part of the standalone run's memory (see docs/journal/17-p7b-body-fields-memory.md).
+	for _, f := range pass.Files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			if s, ok := n.(*ast.ExprStmt); ok {
+				checkDiscarded(pass, res, defs, allow, s)
 			}
-		}
-		name := types.ExprString(call.Fun)
-		if fn != nil {
-			name = fn.Origin().FullName()
-		}
-		if marked {
-			pass.Reportf(call.Pos(), "result of %s is discarded: %s is //effectgo:mustuse; handle it or assign to _", name, markedType(pass, t))
+			return true
+		})
+	}
+	return nil, nil
+}
+
+// checkDiscarded reports a call statement whose result is an error or a must-use
+// value that is discarded.
+func checkDiscarded(pass *analysis.Pass, res errset.Result, defs map[*types.Var]ast.Expr, allow map[string]bool, stmt *ast.ExprStmt) {
+	call, ok := ast.Unparen(stmt.X).(*ast.CallExpr)
+	if !ok {
+		return
+	}
+	fn := calleeOf(pass, call, defs)
+	if fn != nil && isAllowed(fn, allow) {
+		return
+	}
+	t := pass.TypesInfo.TypeOf(call)
+	marked := markedResult(pass, t)
+	if !marked {
+		// Only an error can be discarded here. A callee whose error set is
+		// provably empty returns no error that matters.
+		if !hasErrorResult(t) || provablyNoError(pass, res, fn) {
 			return
 		}
-		pass.Reportf(call.Pos(), "result of %s is discarded; handle it or assign to _", name)
-	})
-	return nil, nil
+	}
+	name := types.ExprString(call.Fun)
+	if fn != nil {
+		name = fn.Origin().FullName()
+	}
+	if marked {
+		pass.Reportf(call.Pos(), "result of %s is discarded: %s is //effectgo:mustuse; handle it or assign to _", name, markedType(pass, t))
+		return
+	}
+	pass.Reportf(call.Pos(), "result of %s is discarded; handle it or assign to _", name)
 }
 
 // calleeOf returns the function that a call invokes: the static callee, or, for

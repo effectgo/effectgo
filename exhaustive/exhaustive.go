@@ -26,8 +26,6 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/analysis/passes/inspect"
-	"golang.org/x/tools/go/ast/inspector"
 )
 
 // Directive marks an interface or an enum type as sealed.
@@ -73,7 +71,6 @@ func (f *enumFact) String() string {
 var Analyzer = &analysis.Analyzer{
 	Name:      "exhaustive",
 	Doc:       "report non-exhaustive type switches on sealed interfaces and expression switches on sealed enums",
-	Requires:  []*analysis.Analyzer{inspect.Analyzer},
 	FactTypes: []analysis.Fact{new(sealedFact), new(enumFact)},
 	Run:       run,
 }
@@ -81,15 +78,21 @@ var Analyzer = &analysis.Analyzer{
 func run(pass *analysis.Pass) (any, error) {
 	exportSealed(pass)
 
-	ins := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	ins.Preorder([]ast.Node{(*ast.TypeSwitchStmt)(nil), (*ast.SwitchStmt)(nil)}, func(n ast.Node) {
-		switch n := n.(type) {
-		case *ast.TypeSwitchStmt:
-			checkTypeSwitch(pass, n)
-		case *ast.SwitchStmt:
-			checkEnumSwitch(pass, n)
-		}
-	})
+	// The switches are visited as ast.Inspect visits the files. The inspector is
+	// not required: the checker keeps the result of every action of a dependency
+	// alive, and one inspector per package was a large part of the standalone
+	// run's memory (see docs/journal/17-p7b-body-fields-memory.md).
+	for _, f := range pass.Files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.TypeSwitchStmt:
+				checkTypeSwitch(pass, n)
+			case *ast.SwitchStmt:
+				checkEnumSwitch(pass, n)
+			}
+			return true
+		})
+	}
 	return nil, nil
 }
 
