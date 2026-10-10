@@ -27,6 +27,8 @@ The text is moved from the former `NOTES.md`, lightly edited for readability. No
 | [14-p5-dogfood-fixes.md](14-p5-dogfood-fixes.md) | P5 | the fixes from the reservations dogfood run: named results and defers, test files and package defaults, net/http stubs, stub duplicates |
 | [15-p6-output-contract.md](15-p6-output-contract.md) | P6 | the output contract: root-only reporting of contract violations, test files in the standalone run, the summary line |
 | [16-p7-writer-effects.md](16-p7-writer-effects.md) | P7 | writer and reader effects: stub via items, stored values resolved from their constructor, the page on what effectgo does not check |
+| [17-p7b-body-fields-memory.md](17-p7b-body-fields-memory.md) | P7b | the memory of the standalone run (the inspector requirement removed), and field sources for HTTP bodies |
+| [18-p8-no-silent-directives.md](18-p8-no-silent-directives.md) | P8 | the directive analyzer for placements and spacing, one keyword rule for trailing comments and arguments, type-level contracts without methods, B4 closed |
 
 ## Where the former NOTES.md sections went
 
