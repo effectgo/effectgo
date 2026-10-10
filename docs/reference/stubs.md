@@ -74,6 +74,33 @@ effectgo.stubs:3: duplicate effects rule for time.Now, first defined at /repo/ef
 
 A rule from a project file (or an explicit `-stubs` file) for a target that a shipped rule also has **replaces** the shipped rule. The project file wins, so a project can state a different effect for a function that the shipped set covers. The replacement is the same as the `errors` verb, where a later rule already replaces an earlier one. Two shipped rules for one target are an error as well.
 
+### Field sources
+
+A field source rule gives the fixed effects of a struct field. It is for a value that the code loads from a field, and that the analysis cannot see into, such as the body of an HTTP message:
+
+```text
+effects field:(net/http.Request).Body net     # net/http/request.go:174-188
+effects field:(net/http.Response).Body net    # net/http/response.go:55-72
+```
+
+The target is `field:(pkgpath.Type).Field`, a named struct type, not a pointer and not the predeclared `error`. The value is `pure`, or a list of effect names: a via or stores item is an error, since the field's value is the source. A rule for a field of another type is a different rule: `Other.Body` is not `Request.Body`.
+
+The rule applies where the field is loaded and then used, in three places:
+
+| Use of the field | The effects |
+|---|---|
+| a method called on it: `r.Body.Read(p)` | the rule's effects, instead of the interface contract or `unknown` |
+| an argument of a via item: `io.ReadAll(r.Body)`, or the stored value of a constructor: `json.NewDecoder(r.Body).Decode(v)` | the rule's effects, instead of the argument's own type |
+| the same, through a local variable: `body := r.Body; json.NewDecoder(body)` | the same, when the variable has exactly one assignment, from the field load, is not address-taken, and has an interface or pointer type |
+
+The field may be promoted through an embedded struct: `w.Body` where `w` embeds a `*http.Request` is the field of `Request`. Any other value of the same type, such as a reader passed in as a parameter, a field of another type, or a local that is reassigned or whose address is taken, is evaluated as before, which is usually `unknown`.
+
+Writes to the field are not tracked: a body that the same function assigns to `r.Body` and then reads is still charged with the rule, which over-approximates an in-memory reader. The rule is the source's claim about what the field holds; the analysis does not check it.
+
+The shipped rules are the two in `stubs/stdlib.stubs`. The request body is the network data for a server request, which the Server closes (net/http/request.go:174-188); a client request's body may be an in-memory reader, which the rule over-approximates. The response body is the stream read from the network (net/http/response.go:55-72). A handler that decodes `r.Body` is therefore `net`, and no longer `unknown`.
+
+Malformed field targets are errors that name the file and line: `field:(net/http.Request)` (no field), `field:(*net/http.Request).Body` (a pointer), `field:(error).Error`, `field:net/http.Request.Body` (no parentheses), a field target on a verb other than `effects` (for example `errors`), and a via or stores item on a field target.
+
 ### `errors`
 
 ```text
@@ -151,6 +178,7 @@ sink github.com/example/app/internal/httpapi.Detail status=1 body=2
 | `(error).Error` | `(error).Error` | the predeclared `error` interface |
 | `(pkgpath.Type)` | `(context.CancelFunc)` | a named func type: applies to every call through a value of that type |
 | `pkgpath.Var` | `github.com/danielgtaylor/huma/v2.NewError` | a package-level variable of func type: applies to calls through it |
+| `field:(pkgpath.Type).Field` | `field:(net/http.Request).Body` | a field of a struct type: the effects of the value loaded from it (effects only; see [Field sources](#field-sources)) |
 
 A bare `(pkgpath.Type)` target is only valid for `effects`, `errors` and `status`. Generic functions are keyed by their origin.
 

@@ -247,7 +247,7 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 ## `stdlib.stubs`
 
-137 rules, grouped under 22 package heading(s).
+139 rules, grouped under 22 package heading(s).
 
 ### `bufio`
 
@@ -280,10 +280,10 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(*bytes.Buffer).Write` | `errors` | `none` | 336 |
-| `(*bytes.Buffer).WriteString` | `errors` | `none` | 337 |
-| `(*bytes.Buffer).WriteByte` | `errors` | `none` | 338 |
-| `(*bytes.Buffer).WriteRune` | `errors` | `none` | 339 |
+| `(*bytes.Buffer).Write` | `errors` | `none` | 347 |
+| `(*bytes.Buffer).WriteString` | `errors` | `none` | 348 |
+| `(*bytes.Buffer).WriteByte` | `errors` | `none` | 349 |
+| `(*bytes.Buffer).WriteRune` | `errors` | `none` | 350 |
 
 ### `context`
 
@@ -294,8 +294,8 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 | `(context.Context).Err` | `effects` | `pure` | 202 |
 | `(context.Context).Value` | `effects` | `pure` | 203 |
 | `(context.CancelFunc)` | `effects` | `pure` | 209 |
-| `(context.Context).Err` | `errors` | `context.Canceled,context.DeadlineExceeded` | 303 |
-| `context.Cause` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 309 |
+| `(context.Context).Err` | `errors` | `context.Canceled,context.DeadlineExceeded` | 314 |
+| `context.Cause` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 320 |
 
 ### `database/sql`
 
@@ -309,10 +309,10 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 | `(*database/sql.Rows).Scan` | `effects` | `db` | 228 |
 | `(*database/sql.Rows).Close` | `effects` | `db` | 229 |
 | `(*database/sql.Rows).Err` | `effects` | `pure` | 230 |
-| `(*database/sql.Row).Scan` | `errors` | `database/sql.ErrNoRows,?` | 314 |
-| `(*database/sql.Rows).Err` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 321 |
-| `(*database/sql.Tx).Commit` | `errors` | `database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?` | 325 |
-| `(*database/sql.Tx).Rollback` | `errors` | `database/sql.ErrTxDone,?` | 326 |
+| `(*database/sql.Row).Scan` | `errors` | `database/sql.ErrNoRows,?` | 325 |
+| `(*database/sql.Rows).Err` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 332 |
+| `(*database/sql.Tx).Commit` | `errors` | `database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?` | 336 |
+| `(*database/sql.Tx).Rollback` | `errors` | `database/sql.ErrTxDone,?` | 337 |
 
 ### `encoding/binary`
 
@@ -387,7 +387,7 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(hash.Hash).Write` | `errors` | `none` | 353 |
+| `(hash.Hash).Write` | `errors` | `none` | 364 |
 
 ### `html/template`
 
@@ -445,18 +445,20 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 | `(net/http.ResponseWriter).WriteHeader` | `effects` | `net` | 256 |
 | `(net/http.Flusher).Flush` | `effects` | `net` | 260 |
 | `(net/http.Hijacker).Hijack` | `effects` | `net` | 261 |
-| `net/http.Error` | `effects` | `net` | 267 |
-| `net/http.NotFound` | `effects` | `net` | 268 |
-| `net/http.Redirect` | `effects` | `net` | 269 |
-| `net/http.ServeFile` | `effects` | `fs,net` | 274 |
-| `net/http.ServeContent` | `effects` | `net,unknown` | 280 |
-| `net/http.ServeFileFS` | `effects` | `net,unknown` | 281 |
+| `field:(net/http.Request).Body` | `effects` | `net` | 271 |
+| `field:(net/http.Response).Body` | `effects` | `net` | 272 |
+| `net/http.Error` | `effects` | `net` | 278 |
+| `net/http.NotFound` | `effects` | `net` | 279 |
+| `net/http.Redirect` | `effects` | `net` | 280 |
+| `net/http.ServeFile` | `effects` | `fs,net` | 285 |
+| `net/http.ServeContent` | `effects` | `net,unknown` | 291 |
+| `net/http.ServeFileFS` | `effects` | `net,unknown` | 292 |
 
 ### `net/url`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `net/url.Parse` | `errors` | `type:net/url.Error` | 299 |
+| `net/url.Parse` | `errors` | `type:net/url.Error` | 310 |
 
 ### `predeclared (error)`
 
@@ -468,19 +470,19 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `strconv.Atoi` | `errors` | `type:strconv.NumError` | 294 |
-| `strconv.ParseInt` | `errors` | `type:strconv.NumError` | 295 |
-| `strconv.ParseUint` | `errors` | `type:strconv.NumError` | 296 |
-| `strconv.ParseBool` | `errors` | `type:strconv.NumError` | 297 |
+| `strconv.Atoi` | `errors` | `type:strconv.NumError` | 305 |
+| `strconv.ParseInt` | `errors` | `type:strconv.NumError` | 306 |
+| `strconv.ParseUint` | `errors` | `type:strconv.NumError` | 307 |
+| `strconv.ParseBool` | `errors` | `type:strconv.NumError` | 308 |
 
 ### `strings`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(*strings.Builder).Write` | `errors` | `none` | 345 |
-| `(*strings.Builder).WriteString` | `errors` | `none` | 346 |
-| `(*strings.Builder).WriteByte` | `errors` | `none` | 347 |
-| `(*strings.Builder).WriteRune` | `errors` | `none` | 348 |
+| `(*strings.Builder).Write` | `errors` | `none` | 356 |
+| `(*strings.Builder).WriteString` | `errors` | `none` | 357 |
+| `(*strings.Builder).WriteByte` | `errors` | `none` | 358 |
+| `(*strings.Builder).WriteRune` | `errors` | `none` | 359 |
 
 ### `text/tabwriter`
 
