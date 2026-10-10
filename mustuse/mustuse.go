@@ -66,6 +66,7 @@ func (f *errorFree) String() string { return "errorfree(" + f.Name + ")" }
 
 func run(pass *analysis.Pass) (any, error) {
 	exportMarkedTypes(pass)
+	checkFuncDirectives(pass)
 	res, _ := pass.ResultOf[errset.Analyzer].(errset.Result)
 	for fn := range res.NoErrors {
 		if fn.Pkg() == pass.Pkg && !errset.IsStd(pass.Fset, pass.Pkg) && hasErrorResult(fn.Type().(*types.Signature).Results()) {
@@ -263,6 +264,45 @@ func exportMarkedTypes(pass *analysis.Pass) {
 			}
 		}
 	}
+}
+
+// checkFuncDirectives reports the directive on a function declaration. It marks a
+// named type, and no analyzer reads it on a function, so on a function it checks
+// nothing.
+func checkFuncDirectives(pass *analysis.Pass) {
+	for _, file := range pass.Files {
+		for _, decl := range file.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || !hasDirective(fd.Doc) {
+				continue
+			}
+			name := declName(fd)
+			if fd.Type.Results.NumFields() == 0 {
+				pass.Reportf(fd.Name.Pos(), "effectgo:mustuse on %s checks nothing: it has no results; %s marks a named type", name, Directive)
+				continue
+			}
+			pass.Reportf(fd.Name.Pos(), "effectgo:mustuse on %s checks nothing: %s marks a named type, not a function; put it on the named type that %s returns", name, Directive, name)
+		}
+	}
+}
+
+// declName names a function declaration as the diagnostics show it: F, or T.M for
+// a method of T.
+func declName(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) != 1 {
+		return fd.Name.Name
+	}
+	t := fd.Recv.List[0].Type
+	if star, ok := t.(*ast.StarExpr); ok {
+		t = star.X
+	}
+	if ix, ok := t.(*ast.IndexExpr); ok {
+		t = ix.X
+	}
+	if id, ok := t.(*ast.Ident); ok {
+		return id.Name + "." + fd.Name.Name
+	}
+	return fd.Name.Name
 }
 
 func hasDirective(cg *ast.CommentGroup) bool {
