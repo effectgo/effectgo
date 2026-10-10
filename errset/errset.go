@@ -45,6 +45,7 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
 
+	"github.com/faintghost/effectgo/internal/dirparse"
 	"github.com/faintghost/effectgo/internal/goroot"
 	"github.com/faintghost/effectgo/internal/hidden"
 	"github.com/faintghost/effectgo/internal/stubs"
@@ -1553,15 +1554,11 @@ func directivesOf(cg *ast.CommentGroup) []directive {
 	}
 	var out []directive
 	for _, c := range cg.List {
-		if !strings.HasPrefix(c.Text, "//effectgo:") {
+		kind, args, ok := dirparse.Parse(c.Text)
+		if !ok {
 			continue
 		}
-		body := strings.TrimPrefix(c.Text, "//effectgo:")
-		kind, arg, _ := strings.Cut(body, " ")
-		if i := strings.Index(arg, "//"); i >= 0 {
-			arg = arg[:i]
-		}
-		out = append(out, directive{kind: strings.TrimSpace(kind), arg: strings.TrimSpace(arg), pos: c.Pos()})
+		out = append(out, directive{kind: kind, arg: strings.Join(args, " "), pos: c.Pos()})
 	}
 	return out
 }

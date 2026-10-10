@@ -26,6 +26,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
 
+	"github.com/faintghost/effectgo/internal/dirparse"
 	"github.com/faintghost/effectgo/internal/goroot"
 	"github.com/faintghost/effectgo/internal/hidden"
 	"github.com/faintghost/effectgo/internal/stubs"
@@ -186,13 +187,7 @@ func parseDirective(c *ast.Comment, inPkgDoc bool) (bool, *contract, []string) {
 	if !ok {
 		return false, nil, nil
 	}
-	var toks []string
-	for _, f := range strings.Fields(body) {
-		if strings.HasPrefix(f, "//") {
-			break
-		}
-		toks = append(toks, f)
-	}
+	toks := dirparse.Words(body)
 	if len(toks) == 0 {
 		return false, nil, []string{"empty //effectgo: directive"}
 	}
