@@ -7,8 +7,8 @@ One binary, `effectgo`, runs in four ways:
 
 | Way | Command | What runs |
 |---|---|---|
-| standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive; test files analyzed by default; ends with a summary line |
-| go vet | `go vet -vettool=$(which effectgo) ./...` | the same four analyzers, through `go vet` |
+| standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive, directive; test files analyzed by default; ends with a summary line |
+| go vet | `go vet -vettool=$(which effectgo) ./...` | the same five analyzers, through `go vet` |
 | sig | `effectgo sig ./...` | signatures only |
 | subcommands | `effectgo openapi`, `http-gin`, `http-huma`, `http` | the OpenAPI and HTTP checks |
 
@@ -20,7 +20,7 @@ Build the binary from a clone with `go build -o bin/effectgo ./cmd/effectgo` (Go
 
 | Command | Purpose | Output |
 |---|---|---|
-| `effectgo ./...` | diagnostics of the four analyzers | the driver's diagnostics |
+| `effectgo ./...` | diagnostics of the five analyzers | the driver's diagnostics |
 | `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any (exit 3 is success here, see [Exit codes](#exit-codes)) |
 | `effectgo openapi [-merge spec.json \| -check spec.json] ./...` | error responses of each route | a fragment (JSON), a merged document (JSON), or a drift report (text) |
 | `effectgo http-gin [-json] [-all] [-mappers] ./...` | Gin responses against their error sets | text, or one JSON object per finding |
@@ -56,7 +56,7 @@ Each `-errset.engine` value is accepted by the subcommands too.
 
 The multichecker adds its own flags, for example `-json` (the driver's JSON diagnostics, not the HTTP schema), `-c`, `-fix` and `-diff`. effectgo does not implement fixes: `-fix` has nothing to apply.
 
-The analyzer enable flags (`-effects`, `-errset`, `-mustuse`, `-exhaustive`) are the driver's. `-signature` enables the signature analyzer in the standalone binary; under `sig` it is already the only one.
+The analyzer enable flags (`-effects`, `-errset`, `-mustuse`, `-exhaustive`, `-directive`) are the driver's. `-signature` enables the signature analyzer in the standalone binary; under `sig` it is already the only one.
 
 The standalone run is not the multichecker, so it accepts a smaller set of driver flags: `-test`, `-json` (the diagnostics as JSON on stdout), `-c` (lines of context), and the analyzer flags. `-fix`, `-diff`, `-debug`, `-cpuprofile`, `-memprofile` and `-trace` are not accepted there (exit 2). They still work under `go vet`, which runs the multichecker.
 
@@ -143,7 +143,7 @@ It is printed by the standalone run only. It is not printed under `go vet` (the 
 | Caching | none | go vet caches under the tool identity (below) | golangci-lint's cache, which does not see stub edits |
 | Subcommands | yes | no | no |
 
-The plugin exposes `effects`, `errset`, `mustuse` and `exhaustive` under the linter name `effectgo`, with the settings `stubs`, `ignoreOpaque` and `mustuseAllow`. Details are in [Editor integration](../guide/editor.md).
+The plugin exposes `effects`, `errset`, `mustuse`, `exhaustive` and `directive` under the linter name `effectgo`, with the settings `stubs`, `ignoreOpaque` and `mustuseAllow`. Details are in [Editor integration](../guide/editor.md).
 
 ## Environment
 

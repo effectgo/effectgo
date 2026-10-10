@@ -1,9 +1,9 @@
 ---
 title: Analyzers and diagnostics
-description: What each analyzer (effects, errset, mustuse, exhaustive, signature) reports, with the exact message formats, and when each one is silent.
+description: What each analyzer (effects, errset, mustuse, exhaustive, directive, signature) reports, with the exact message formats, and when each one is silent.
 ---
 
-The binary contains five analyzers. Four report diagnostics in the normal run; `signature` prints signatures and runs only under `effectgo sig`.
+The binary contains six analyzers. Five report diagnostics in the normal run; `signature` prints signatures and runs only under `effectgo sig`.
 
 | Analyzer | Enabled by | Reports | Reads |
 |---|---|---|---|
@@ -11,6 +11,7 @@ The binary contains five analyzers. Four report diagnostics in the normal run; `
 | `errset` | default | error contract violations, handler coverage, directive errors; with flags, error sets and witnesses | `//effectgo:errors`, `errmap`, `handler`; `errors`, `status`, `sink` (Gin), `route` stub rules |
 | `mustuse` | default | discarded errors and discarded `//effectgo:mustuse` values | `//effectgo:mustuse`; errset's "never fails" evidence |
 | `exhaustive` | default | switches on sealed types that miss a variant | `//effectgo:sealed` |
+| `directive` | default | a directive where no analyzer reads it; a comment with a space after `//` that names a directive keyword | every `//effectgo:` comment, by its placement |
 | `signature` | `effectgo sig` only | one `Effect<A, E, R>` line per function | the other three, as dependencies |
 
 A diagnostic is reported only when the code is provably at risk. A rule that cannot be proved is silent. Each analyzer is deterministic: the same input gives the same output (see [Determinism](../journal/03-p1-determinism-vet-identity.md)).
@@ -86,6 +87,8 @@ Effect names and their roots are in [Effects](effects.md).
 | `handler <F> may return fresh error <new@…><via>, which errmap <M> does not map (errors.Is and errors.As cannot match it) → HTTP 500` | the same, for a fresh `new@` variant (silenced by `-errset.ignoreopaque`) |
 | `handler <F> may return an unresolved <param:i> error<via>, which errmap <M> does not map → HTTP 500` | a handler returns the error of an unresolved parameter |
 | `effectgo:errors: cannot resolve "<name>" in <owner>` | an item of an errors directive does not resolve |
+| `effectgo:errors on <F> checks nothing: it has no error result` | an errors directive on a function with no error set: no error result, and no returned func literal with one |
+| `effectgo:handler on <F> checks nothing: it has no error result; put the directive on the inner function that returns error (see docs/guide/http-checks.md#nethttp-handlers)` | a handler directive on a function with no error set, such as a `func(w, r)` handler |
 | `effectgo:errmap: <F> must have signature func(error) error` | an errmap has the wrong signature |
 | `effectgo:handler: cannot resolve "<name>"` / `… is not a function` / `… is not a //effectgo:errmap function` | a handler directive names something else |
 | `unknown directive //effectgo:<kw>` | a keyword the errset analyzer does not know (also `… on an interface method or type`) |
@@ -111,6 +114,8 @@ domain/service.go:42:19: witness of Service.Update: domain.ErrNotFound via Store
 |---|---|
 | `result of <callee> is discarded; handle it or assign to _` | a call statement discards an error result |
 | `result of <callee> is discarded: <T> is //effectgo:mustuse; handle it or assign to _` | a call statement discards a value of a `//effectgo:mustuse` type; `<T>` is the type, for example `*a.Charge` |
+| `effectgo:mustuse on <F> checks nothing: it has no results; //effectgo:mustuse marks a named type` | the directive is on a function with no results |
+| `effectgo:mustuse on <F> checks nothing: //effectgo:mustuse marks a named type, not a function; put it on the named type that <F> returns` | the directive is on a function with results |
 | `<Name>: //effectgo:mustuse applies to a defined type, not an alias; put it on the type the alias names` | the directive is on an alias |
 
 Rules:
@@ -148,6 +153,41 @@ Rules:
 - There is no implicit enum rule. A named integer type without the directive is not checked.
 
 Message examples: `missing cases in type switch on Shape: Square, Triangle` and `missing cases in switch on Status: Archived`.
+
+## directive
+
+The directive analyzer reports a `//effectgo:` directive that no analyzer reads where it is written, and a comment that has the form of a directive but a space after the slashes. Each analyzer reads its keywords only at the placements listed in [Directives](directives.md#placement-rules-that-are-easy-to-miss). The analyzer keeps a table of those placements, and it reports a directive only where no analyzer reads or reports it, so each misplaced directive is printed once.
+
+| Message | When |
+|---|---|
+| `//effectgo:<kw> is not attached to a function, interface or type declaration and is not read` | a directive on a `var` or `const`, in a function body, on a function literal, on a struct field, on an embedded interface, or in a comment that a blank line separates from its declaration |
+| `//effectgo:<kw> on function <F> is not read: <kw> applies to <what>` | `sealed` on a function; `errors`, `errmap` or `handler` on a function without a body, where the message reads `<F> has no body, and only functions with a body are checked` |
+| `//effectgo:<kw> on method <T>.<M> is not read: <kw> applies to <what>` | `sealed` or `mustuse` on a named method of an interface |
+| `//effectgo:<kw> on type <T> is not read: <kw> applies to <what>` | `pure`, `allow`, `errors`, `errmap` or `handler` on a type that is not an interface |
+| `//effectgo:<kw> is in the doc comment of a group of several types and is not read: put it on each type` | a keyword on the doc comment of a `type` group that declares several types, where no analyzer reads it |
+| `//effectgo:<kw> is in the doc comment of a type group, and the type has a doc comment of its own: put it on the type's doc comment` | a keyword on the doc comment of a one-type group whose type has a doc comment of its own, for a keyword that reads only the type's own doc comment |
+| `//effectgo:sealed is not read in a _test.go file: sealed types are checked only in non-test files` | `sealed` on a type or interface declared in a `_test.go` file |
+| `//effectgo:<kw> is not read in a package doc comment: only //effectgo:package is valid there` | `errors`, `errmap`, `handler`, `mustuse` or `sealed` in a package doc comment; effects reports `pure`, `allow` and unknown keywords there itself |
+| `//effectgo:package is only valid in a package doc comment` | `package` wherever no analyzer reports it: a var, a const, a body, a struct field, a type that is not an interface, a group |
+| `unknown effectgo directive "<kw>" is not read here` | an unknown keyword on a type declaration or a type group |
+| `empty //effectgo: directive is not read here` | `//effectgo:` with no keyword on a type declaration or a type group |
+| `// effectgo:<kw> is not a directive: remove the space after //` | a comment with a space after the slashes, when the word after `effectgo:` is a directive keyword; any position |
+
+`<what>` is `functions, interfaces and interface methods` for `pure`, `allow` and `errors`; `functions` for `errmap` and `handler`; `named type declarations` for `mustuse`; and `interfaces and named integer or string types` for `sealed`.
+
+Rules:
+
+- A directive that an analyzer reads at its place is silent. So is a directive that another analyzer reports itself (`package` on a function, `pure` in a package doc comment, `errmap` on an interface): that analyzer's message is the only one.
+- The spacing check reads every comment in the file, whatever it sits on. It needs a directive keyword right after `effectgo:`; prose that mentions `effectgo:` is not reported.
+- The analyzer has no flags. It runs in the standalone run, under `go vet`, and in the golangci-lint plugin.
+
+Message examples, from the probe of the inert placements (its file is `p.go`):
+
+```text
+p.go:41:1: //effectgo:pure is not attached to a function, interface or type declaration and is not read
+p.go:57:1: // effectgo:pure is not a directive: remove the space after //
+p.go:78:7: //effectgo:pure is not attached to a function, interface or type declaration and is not read
+```
 
 ## signature
 

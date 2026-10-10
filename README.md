@@ -37,7 +37,7 @@ GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/
 
 ## Use it
 
-- `effectgo ./...` runs the four analyzers (effects, errset, mustuse, exhaustive) with no configuration.
+- `effectgo ./...` runs the five analyzers (effects, errset, mustuse, exhaustive, directive) with no configuration.
 - `go vet -vettool=$(which effectgo) ./...` runs the same analyzers through `go vet`.
 - `effectgo sig ./...` prints `Effect<A, E, R>` for each function.
 - `effectgo openapi`, `http-gin`, `http-huma` and `http` check HTTP error responses against the error sets.

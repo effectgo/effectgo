@@ -23,7 +23,7 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 
 ### How to run it
 
-- `effectgo ./...`: the four analyzers, zero configuration. Exit 3 means diagnostics.
+- `effectgo ./...`: the five analyzers, zero configuration. Exit 3 means diagnostics.
 - `go vet -vettool=$(which effectgo) ./...`: the same through go vet. Exit 1 means diagnostics.
 - `effectgo sig ./...`: one `Effect<A, E, R>` line per function (exit 3 when printed; the lines go to stderr).
 - Report flags: `-effects.report`, `-effects.witness`, `-errset.report`, `-errset.witness`, `-errset.statuses`. They print information, not diagnostics. `-effects.all` and `-errset.all` print the violations that the root rule hides.
@@ -37,6 +37,7 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 - `F may return X (via …), not in its //effectgo:errors contract`: an error variant the contract does not allow.
 - A function whose violation is only the consequence of a callee's violation is not reported: the callee is, and fixing it fixes the caller. The summary line counts the hidden ones; `-effects.all` and `-errset.all` print them. See [the root rule](docs/reference/analyzers.md#root-rule).
 - `handler H may return X (via …), which errmap M does not map → HTTP 500`: the errmap has no case for `X`, so the response is 500.
+- `//effectgo:K is not attached to a function, interface or type declaration and is not read`, `effectgo:K on F checks nothing: …`: the directive is where no analyzer reads it, so it has no effect. Move it to the declaration it describes. See [Placement rules](docs/reference/directives.md#placement-rules-that-are-easy-to-miss).
 - effectgo does not check data races, goroutine leaks, deadlocks, cancellation or timing; use `go test -race` and tests for those. See [What effectgo does not check](docs/guide/what-it-does-not-check.md).
 - In error sets: `?` is an error of unknown origin; `new@pkg.F` is a fresh error created in `F` (not matchable by `errors.Is`); `param:i` is the error of the function's parameter `i`; `unknown` in effects is a call the analysis cannot resolve.
 - `(none)` in an error set means no error can be returned.
@@ -56,7 +57,7 @@ Do not add a directive only to silence output. A contract that is never checked 
 Each lesson is a mistake a first-time user made with effectgo, and the page that answers it.
 
 - **Put the contract on the interface you call.** An uncontracted interface call is `unknown`, and `unknown` breaks `pure` and any `allow` list that does not name it. Declare the contract at package level, next to the interface. See [Directives](docs/reference/directives.md#unknown-and-the-contracts).
-- **In net/http, check an inner method that returns an error.** A `func(w, r)` handler has no error result, so a directive on it checks nothing. Put `//effectgo:handler` on the method that returns the error, and let a thin adapter write the response. See [HTTP checks](docs/guide/http-checks.md#nethttp-handlers).
+- **In net/http, check an inner method that returns an error.** A `func(w, r)` handler has no error result, so a directive on it checks nothing, and effectgo reports it. Put `//effectgo:handler` on the method that returns the error, and let a thin adapter write the response. See [HTTP checks](docs/guide/http-checks.md#nethttp-handlers).
 - **Mark enums and sealed sets explicitly.** A named integer is not an enum unless it has `//effectgo:sealed`, and an interface is sealed by an unexported marker method, not by the directive alone. See [Directives](docs/reference/directives.md#when-an-interface-needs-effectgosealed).
 - **Read the chain, then the origin.** The first words name the function that breaks the contract; the last witness step is the call that introduced the effect. A run of `cannot resolve` lines is one bad name repeated, and a `?` or `new@` in an error set is an error that `errors.Is` cannot match. See [Analyzers](docs/reference/analyzers.md#errset) and [Error sets](docs/reference/errors.md#variants).
 - **Confirm the package was analysed.** A clean standalone run prints only the summary line, which counts the packages it analysed. Use `effectgo sig` to see the signatures of a package. See [Getting started](docs/guide/getting-started.md#a-clean-run-is-not-a-full-run).
@@ -133,7 +134,7 @@ Architecture: [docs/design/architecture.md](docs/design/architecture.md).
 
 ### Adding a directive
 
-Read it in the analyzer's directive parser. An analyzer must skip keywords it does not own, and report unknown keywords. Update [docs/reference/directives.md](docs/reference/directives.md) and add a `testdata/` case for the diagnostic.
+Read it in the analyzer's directive parser. An analyzer must skip keywords it does not own, and report unknown keywords. A keyword is read only at the placements its analyzer uses. The placement table is `placed` in `directive/directive.go`, and it mirrors the readers: a new reader, or a new placement for a keyword, changes that table. Update [docs/reference/directives.md](docs/reference/directives.md) and add a `testdata/` case for the diagnostic. `cmd/effectgo/inert_test.go` pins one diagnostic per misplaced probe line, so a change that adds or repeats one fails there.
 
 ### Documentation rules
 

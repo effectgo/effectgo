@@ -39,7 +39,7 @@ effectgo needs no configuration to start. With no flags and no environment varia
 effectgo ./...
 ```
 
-Two ways to run it, with the same four analyzers:
+Two ways to run it, with the same five analyzers:
 
 | Command | Exit status when there are diagnostics |
 |---|---|
