@@ -8,7 +8,9 @@ import (
 
 func A() error { return domain.ErrNotFound } // want "errors of A: domain.ErrNotFound" A:"."
 
-func B() error { return fmt.Errorf("x %v", domain.ErrInvalid) } // want "errors of B: \\?" B:"."
+func B() error { return fmt.Errorf("x %v", domain.ErrInvalid) } // want "errors of B: new@report.B" B:"."
+
+func W() error { return fmt.Errorf("x: %w", domain.ErrInvalid) } // want "errors of W: domain.ErrInvalid" W:"."
 
 func C() int { return 0 } // want C:"."
 

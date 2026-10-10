@@ -56,7 +56,7 @@ func run(pass *analysis.Pass) (any, error) {
 			if !strings.HasSuffix(pass.Fset.Position(fd.Name.Pos()).Filename, ".go") {
 				continue
 			}
-			errs := errRes[obj]
+			errs := errRes.Funcs[obj]
 			a := aType(pass, fd, obj, errs.Handler)
 			e := eType(pass, errs.Variants)
 			r := rType(effRes[obj])

@@ -16,28 +16,38 @@
 // non-interface types implementing error), abstract interface variants
 // ("iface:pkg.I": some error whose type implements I), "param:i" (an error
 // produced by calling the function's own func parameter i, substituted at
-// call sites) and "?" (opaque: origin unknown).
+// call sites), "new@pkg.F" (a fresh error created in F without wrapping: an
+// errors.New or a constant-format fmt.Errorf without %w, which no errors.Is
+// or errors.As can match) and "?" (opaque: origin unknown). A variant whose
+// identifier is unexported and declared outside the analyzed module is shown
+// as "?" (see collapseForeign).
 //
 // Stub files (see stubs.go) can state the error set of a function or
 // method; they take precedence over contracts and inference.
 package errset
 
 import (
+	"fmt"
 	"go/ast"
-	"go/build"
 	"go/constant"
 	"go/token"
 	"go/types"
-	"os"
-	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
+
+	"github.com/faintghost/effectgo/internal/goroot"
+	"github.com/faintghost/effectgo/internal/hidden"
+	"github.com/faintghost/effectgo/internal/stubs"
 )
 
 // Kinds of variant.
@@ -47,21 +57,48 @@ const (
 	KindIface    = "iface"
 	KindParam    = "param"
 	KindOpaque   = "opaque"
+	KindFresh    = "fresh"
 )
 
 const (
 	opaqueKey   = "?"
 	ifacePrefix = "iface:"
 	paramPrefix = "param:"
+	freshPrefix = "new@"
+	// freshContract is the //effectgo:errors name that allows fresh variants.
+	freshContract = "new"
 )
 
 // Variant is one error that a function may return.
 type Variant struct {
-	Key     string   // "pkgpath.Name" for sentinels and types; "iface:pkgpath.I"; "param:i"; "?" for opaque
-	Name    string   // display name: "domain.ErrNotFound", "domain.ValidationError", "some fuego.ErrorWithStatus", "param:1", "?"
+	Key     string   // "pkgpath.Name" for sentinels and types; "iface:pkgpath.I"; "param:i"; "new:pkgpath.F" for fresh; "?" for opaque
+	Name    string   // display name: "domain.ErrNotFound", "domain.ValidationError", "some fuego.ErrorWithStatus", "new@domain.F", "param:1", "?"
 	Kind    string   // one of the Kind constants
 	Methods []string // method set as "Name(params)(results)"; used to match interface As targets
 	Chain   []string // witness: callee names from the reporting function down to the origin function
+	// Via is the full name of the first callee of Chain when that callee is a
+	// declared function (its name in a same-package or imported ErrFact); "" when
+	// the first step is a stub, a contract, an opaque callee or an argument.
+	// The root rule reads it (see suppressedVariant).
+	Via string
+	// Status is the HTTP status that Fuego gives this error when no errmap maps
+	// it, from the StatusCode method of its type (or a stub). 0 when unknown.
+	Status int
+	// DynamicStatus is true for a type whose StatusCode is not a constant (its
+	// status depends on the value); such a variant has no known status.
+	DynamicStatus bool
+	// Pkg and Ident identify a fresh variant's creating function: its package
+	// path and the function's own (last) name. For the other kinds they are
+	// derived from Key (see origin).
+	Pkg   string
+	Ident string
+	// Orig is the original display name of a foreign unexported variant that
+	// was collapsed to "?" (see collapseForeign). It is shown in witness lines only.
+	Orig string
+	// Carried is true for an error that a status rule names as carrying its own
+	// status (huma.Error404NotFound): Status is the status the value carries, and
+	// a passthrough errmap branch keeps it (see carried.go).
+	Carried bool
 }
 
 // ErrFact is exported on every function with a body in a analyzed package.
@@ -69,6 +106,10 @@ type ErrFact struct {
 	Errors     []Variant // error result set (may contain param:i)
 	HasHandler bool      // the function returns at least one func literal with an error result
 	Handler    []Variant // union of the error sets of those returned literals
+	// Violated lists the keys of the variants that the function's own
+	// //effectgo:errors contract does not allow. A caller that gets such a
+	// variant only through this function is not reported (see suppressedVariant).
+	Violated []string
 }
 
 // AFact marks ErrFact as an analysis fact.
@@ -100,8 +141,9 @@ type Iface struct {
 
 // ErrmapFact is exported on //effectgo:errmap functions.
 type ErrmapFact struct {
-	Mapped []string // variant keys matched by errors.Is, == / case, errors.As on a concrete type
-	Ifaces []Iface  // interface targets of errors.As / type switches
+	Mapped   []string // variant keys matched by errors.Is, == / case, errors.As on a concrete type
+	Ifaces   []Iface  // interface targets of errors.As / type switches
+	Branches []Branch // the rules in the order they are tried; they give the HTTP status (see status.go)
 }
 
 // AFact marks ErrmapFact as an analysis fact.
@@ -115,9 +157,28 @@ func (f *ErrmapFact) String() string {
 	return "errset-errmap: mapped=" + strings.Join(f.Mapped, ",") + " " + strings.Join(names, ",")
 }
 
-// Result is the ResultType of the errset analyzer: for every function of the
-// package with a body, its error set. The signature analyzer reads it.
-type Result map[*types.Func]FuncErrors
+// Result is the ResultType of the errset analyzer. The signature and openapi
+// analyzers read it. Facts are not shared between analyzers, so the result is
+// the only way to read this package's errmaps and literals from another
+// analyzer.
+type Result struct {
+	Funcs    map[*types.Func]FuncErrors  // every function with a body
+	Literals map[*ast.FuncLit]FuncErrors // every func literal with an error result, in this package
+	Errmaps  map[*types.Func]*ErrmapFact // every valid //effectgo:errmap function of this package
+	// Flows is the error flow of every declared function with a body (see Flow).
+	// The gin adapter reads the sets of a handler's local error variables here.
+	Flows map[*ast.FuncDecl]Flow
+	// Mappers holds the branches of every func(error) error of this package,
+	// with or without a directive: the evidence that a mapper maps a variant to
+	// a status (see MappingsOf). Unlike Errmaps, it is not a claim of coverage.
+	Mappers map[*types.Func]*ErrmapFact
+	// NoErrors holds the functions whose error set is provably empty. It has
+	// every function of this package with an empty set, and every function
+	// that this package names (calls it, or uses it as a value) when a stub
+	// rule states "errors <target> none" for it (see stubSetVia). mustuse reads
+	// it to tell a discarded error that can occur from one that cannot.
+	NoErrors map[*types.Func]bool
+}
 
 // FuncErrors is the error set of one function. When the function returns
 // handler literals (Handler is true), Variants is the handler set, which is
@@ -125,6 +186,12 @@ type Result map[*types.Func]FuncErrors
 type FuncErrors struct {
 	Variants []Variant
 	Handler  bool
+	// HandlerDirective is the argument of the //effectgo:handler directive as
+	// written ("httpres.ToHTTPError"), or "" when there is none.
+	HandlerDirective string
+	// Errmap is the errmap function that the directive names, or nil when there
+	// is no directive or it does not resolve to a function.
+	Errmap *types.Func
 }
 
 // Analyzer is the errset analyzer.
@@ -132,7 +199,7 @@ var Analyzer = &analysis.Analyzer{
 	Name:       "errset",
 	Doc:        "infers error sets of Go functions, checks //effectgo:errors contracts and //effectgo:handler coverage by //effectgo:errmap",
 	Run:        run,
-	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact)},
+	FactTypes:  []analysis.Fact{new(ErrFact), new(ErrmapFact), new(ContractFact), new(StatusFact), new(TestFact)},
 	ResultType: reflect.TypeOf(Result{}),
 }
 
@@ -140,16 +207,27 @@ var Analyzer = &analysis.Analyzer{
 // analyzers read the //effectgo: prefix; each skips the other's keywords.
 var effectsKinds = map[string]bool{"pure": true, "allow": true, "package": true}
 
+// otherKinds are the directive keywords of the mustuse and exhaustive analyzers.
+var otherKinds = map[string]bool{"mustuse": true, "sealed": true}
+
 // Flags of the errset analyzer. The stub files are shared (-stubs, see
 // internal/stubs), so there is no errset.stubs flag.
 var (
 	reportFlag       bool
+	witnessFlag      bool
 	ignoreOpaqueFlag bool
+	statusesFlag     bool
+	allFlag          bool // -all: report the callers too (see suppressedVariant)
+	engineFlag       string
 )
 
 func init() {
 	Analyzer.Flags.BoolVar(&reportFlag, "report", false, "print the inferred error set of every function with an error result")
-	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") errors in handler checks")
+	Analyzer.Flags.BoolVar(&witnessFlag, "witness", false, "print one \"witness of <F>: <variant> via <chain>\" line per variant of the error sets")
+	Analyzer.Flags.BoolVar(&ignoreOpaqueFlag, "ignoreopaque", false, "do not report opaque (\"?\") and fresh (new@) errors in handler checks")
+	Analyzer.Flags.BoolVar(&statusesFlag, "statuses", false, "print the HTTP status of every variant of each //effectgo:handler function")
+	Analyzer.Flags.BoolVar(&allFlag, "all", false, "report every //effectgo:errors violation, including the callers whose root is another function's violation (see docs/reference/analyzers.md)")
+	Analyzer.Flags.StringVar(&engineFlag, "engine", engineSSA, "error-set engine: ssa (flow-sensitive, SSA values; the default) or ast (flow-insensitive, the P2 engine)")
 }
 
 var (
@@ -188,6 +266,7 @@ func (s errSet) prefixed(name string) errSet {
 	out := errSet{}
 	for _, v := range s {
 		v.Chain = append([]string{name}, v.Chain...)
+		v.Via = ""
 		out.put(v)
 	}
 	return out
@@ -248,12 +327,19 @@ func displayOrder(vs []Variant) []Variant {
 	return out
 }
 
+// variantNames renders a set for the report: display names in order, each
+// name once (several collapsed foreign variants all show as "?").
 func variantNames(vs []Variant) string {
 	if len(vs) == 0 {
 		return "(none)"
 	}
-	names := make([]string, 0, len(vs))
+	seen := map[string]bool{}
+	var names []string
 	for _, v := range displayOrder(vs) {
+		if seen[v.Name] {
+			continue
+		}
+		seen[v.Name] = true
 		names = append(names, v.Name)
 	}
 	return strings.Join(names, " | ")
@@ -263,7 +349,104 @@ func via(chain []string) string {
 	if len(chain) == 0 {
 		return ""
 	}
-	return " (via " + strings.Join(chain, " → ") + ")"
+	return " (via " + joinChain(chain) + ")"
+}
+
+// oneLine makes a chain element fit on one line: whitespace runs, including
+// the newlines of a multi-line call such as tx.QueryRow(ctx, `SELECT …`).Scan,
+// become one space, and an element longer than 80 characters is cut. The
+// witness lines are grepped by line, so an element must not break one.
+func oneLine(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 80 {
+		s = string(r[:77]) + "..."
+	}
+	return s
+}
+
+// joinChain renders a witness chain with " → " between one-line elements.
+func joinChain(chain []string) string {
+	parts := make([]string, len(chain))
+	for i, c := range chain {
+		parts[i] = oneLine(c)
+	}
+	return strings.Join(parts, " → ")
+}
+
+// witnessName is the name of a variant in a witness line. A collapsed foreign
+// variant keeps its original name there: "? (pgconn.connLockError)".
+func (v Variant) witnessName() string {
+	if v.Orig != "" {
+		return "? (" + v.Orig + ")"
+	}
+	return v.Name
+}
+
+// chainText renders a witness chain for a witness line; the reporting
+// function itself is not part of the chain.
+func chainText(chain []string) string {
+	if len(chain) == 0 {
+		return "(direct)"
+	}
+	return joinChain(chain)
+}
+
+// origin returns the package path and the identifier of the object that a
+// variant names. Opaque and param variants have none (ok is false).
+func origin(v Variant) (pkg, ident string, ok bool) {
+	switch v.Kind {
+	case KindFresh:
+		return v.Pkg, v.Ident, v.Pkg != ""
+	case KindSentinel, KindType, KindIface:
+		key := strings.TrimPrefix(v.Key, ifacePrefix)
+		i := strings.LastIndex(key, ".")
+		if i < 0 {
+			return "", "", false
+		}
+		return key[:i], key[i+1:], true
+	}
+	return "", "", false
+}
+
+// collapseForeign returns the variants as user code can see them. A sentinel,
+// type or interface variant whose identifier is unexported and whose package
+// lies outside module can never be named, matched or asserted by the analyzed
+// code, so it is shown as the opaque "?". A fresh variant created by a function
+// of a foreign package is collapsed whatever the creator's name: a fresh error
+// is never matchable, so the creator names only dependency internals (for
+// example new@pgconn.Pipeline.Flush). The original name is kept in Orig for
+// witness lines. The status of a known type is kept. An empty module disables
+// the collapse. Exported foreign sentinels and types (pgx.ErrNoRows,
+// context.Canceled, *url.Error) are kept.
+func collapseForeign(vs []Variant, module string) []Variant {
+	if module == "" {
+		return vs
+	}
+	out := make([]Variant, 0, len(vs))
+	for _, v := range vs {
+		pkg, ident, ok := origin(v)
+		foreign := ok && !inModule(pkg, module)
+		if !foreign || (v.Kind != KindFresh && isExported(ident)) {
+			out = append(out, v)
+			continue
+		}
+		out = append(out, Variant{
+			Key: opaqueKey + " " + v.Key, Name: "?", Kind: KindOpaque, Chain: v.Chain, Via: v.Via,
+			Status: v.Status, DynamicStatus: v.DynamicStatus, Orig: v.Name,
+		})
+	}
+	return out
+}
+
+// isExported reports whether the identifier is exported.
+func isExported(ident string) bool {
+	r, _ := utf8.DecodeRuneInString(ident)
+	return unicode.IsUpper(r)
+}
+
+// inModule reports whether the package path belongs to the module path.
+func inModule(pkg, module string) bool {
+	return pkg == module || strings.HasPrefix(pkg, module+"/")
 }
 
 // ---- type helpers ----
@@ -272,8 +455,17 @@ func implementsError(t types.Type) bool {
 	if t == nil {
 		return false
 	}
-	return types.Implements(t, errorIface) || types.Implements(types.NewPointer(t), errorIface)
+	if v, ok := implCache.Load(t); ok {
+		return v.(bool)
+	}
+	ok := types.Implements(t, errorIface) || types.Implements(types.NewPointer(t), errorIface)
+	implCache.Store(t, ok)
+	return ok
 }
+
+// implCache memoizes implementsError by type: the SSA engine asks it for
+// every value, and types.Implements is the most expensive step of the test.
+var implCache sync.Map
 
 // namedErrorType returns the named non-interface type T for T or *T when T implements error.
 func namedErrorType(t types.Type) *types.Named {
@@ -352,8 +544,11 @@ func sigKey(name string, sig *types.Signature) string {
 	return b.String()
 }
 
-func typeVariant(n *types.Named) Variant {
-	return Variant{Key: objKey(n.Obj()), Name: objDisplay(n.Obj()), Kind: KindType, Methods: methodsOf(n)}
+// typeVariant is the variant of a named error type, with its HTTP status.
+func (p *pkgState) typeVariant(n *types.Named) Variant {
+	v := Variant{Key: objKey(n.Obj()), Name: objDisplay(n.Obj()), Kind: KindType, Methods: methodsOf(n)}
+	v.Status, v.DynamicStatus = p.typeStatus(n)
+	return v
 }
 
 // ifaceVariant is the abstract variant "some pkg.I" for a named interface.
@@ -363,7 +558,7 @@ func ifaceVariant(n *types.Named) Variant {
 
 // variantFromObject turns a package-level object into a variant of the given
 // kind. It reports false when the object does not have that kind.
-func variantFromObject(obj types.Object, kind string) (Variant, bool) {
+func (p *pkgState) variantFromObject(obj types.Object, kind string) (Variant, bool) {
 	switch kind {
 	case KindSentinel:
 		v, ok := sentinelKey(obj)
@@ -380,7 +575,7 @@ func variantFromObject(obj types.Object, kind string) (Variant, bool) {
 		if n == nil {
 			return Variant{}, false
 		}
-		return typeVariant(n), true
+		return p.typeVariant(n), true
 	case KindIface:
 		tn, ok := obj.(*types.TypeName)
 		if !ok {
@@ -435,23 +630,63 @@ func recvTypeName(f *types.Func) string {
 	return ""
 }
 
+// noErrors computes Result.NoErrors (see there).
+func (p *pkgState) noErrors() map[*types.Func]bool {
+	out := map[*types.Func]bool{}
+	for _, u := range p.units {
+		if w := p.work[u.obj]; w != nil && len(w.errs.list()) == 0 {
+			out[u.obj] = true
+		}
+	}
+	note := func(fn *types.Func, recv types.Type) {
+		if s, ok := p.stubSetVia(fn, recv); ok && len(s) == 0 {
+			out[fn.Origin()] = true
+		}
+	}
+	for _, f := range p.pass.Files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.Ident:
+				if fn, ok := p.pass.TypesInfo.Uses[n].(*types.Func); ok {
+					note(fn, nil)
+				}
+			case *ast.SelectorExpr:
+				if sel, ok := p.pass.TypesInfo.Selections[n]; ok {
+					if fn, ok := sel.Obj().(*types.Func); ok {
+						note(fn, sel.Recv())
+					}
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
 func isInterfaceMethod(f *types.Func) bool {
 	recv := f.Type().(*types.Signature).Recv()
 	return recv != nil && types.IsInterface(recv.Type())
 }
 
+// stdCache maps a *types.Package to whether it is standard library.
 var stdCache sync.Map
 
-// isStd reports whether path is a standard library package, by looking for
-// its source directory under GOROOT. Facts exist for std packages too, so
-// std callees must be checked explicitly.
-func isStd(path string) bool {
-	if v, ok := stdCache.Load(path); ok {
+// isStd reports whether pkg is a standard library package, by the source
+// directory its objects were declared in (see internal/goroot). Facts exist for
+// std packages too, so std callees must be checked explicitly.
+// IsStd reports whether pkg is a standard library package. errset treats a call
+// into such a package as opaque unless a stub rule names it, so a fact derived
+// from its source does not count (mustuse follows the same rule).
+func IsStd(fset *token.FileSet, pkg *types.Package) bool {
+	return isStd(fset, pkg)
+}
+
+func isStd(fset *token.FileSet, pkg *types.Package) bool {
+	if v, ok := stdCache.Load(pkg); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(build.Default.GOROOT, "src", filepath.FromSlash(path)))
-	std := err == nil && !strings.Contains(path, ".")
-	stdCache.Store(path, std)
+	std := !strings.Contains(pkg.Path(), ".") && goroot.PkgIsStd(fset, pkg)
+	stdCache.Store(pkg, std)
 	return std
 }
 
@@ -540,18 +775,18 @@ type flowRec struct {
 type flowCtx struct {
 	p         *pkgState
 	info      *types.Info
+	owner     string // name of the declared function being analyzed; "" if none (fresh errors need it)
 	recs      []flowRec
 	flow      map[*types.Var]errSet // error set of each local error variable, flow-insensitive
 	params    map[*types.Var]bool   // every parameter of the unit and of nested literals
 	ownParams map[*types.Var]int    // parameters of the declared function only
 }
 
-func (p *pkgState) newFlow(recv *ast.FieldList, ft *ast.FuncType, body *ast.BlockStmt, own bool) *flowCtx {
-	c := &flowCtx{p: p, info: p.pass.TypesInfo, flow: map[*types.Var]errSet{}, params: map[*types.Var]bool{}}
+func (p *pkgState) newFlow(u *fnUnit) *flowCtx {
+	recv, ft, body := u.decl.Recv, u.decl.Type, u.decl.Body
+	c := &flowCtx{p: p, info: p.pass.TypesInfo, owner: funcName(u.obj), flow: map[*types.Var]errSet{}, params: map[*types.Var]bool{}}
 	paramVars(c.info, recv, ft, c.params)
-	if own {
-		c.ownParams = ownParamIndex(c.info, ft)
-	}
+	c.ownParams = ownParamIndex(c.info, ft)
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.FuncLit:
@@ -648,7 +883,7 @@ func (c *flowCtx) solve() {
 
 func (c *flowCtx) typeSet(t types.Type) errSet {
 	if n := namedErrorType(t); n != nil {
-		return setOf(typeVariant(n))
+		return setOf(c.p.typeVariant(n))
 	}
 	return setOf(opaqueVariant())
 }
@@ -719,11 +954,22 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 	if tv, ok := c.info.Types[call.Fun]; ok && tv.IsType() {
 		return setOf(opaqueVariant()) // conversion
 	}
+	if lit, ok := unparen(call.Fun).(*ast.FuncLit); ok {
+		// func() error {...}(): the literal runs here, so its own returns
+		// are the call's error set.
+		if sig, ok := c.info.TypeOf(lit).(*types.Signature); ok && errIndex(sig) >= 0 {
+			return c.returnsErr(sig, lit.Body)
+		}
+		return errSet{}
+	}
 	callee := typeutil.StaticCallee(c.info, call)
 	if callee == nil {
 		return c.dynamicCallSet(call)
 	}
 	callee = callee.Origin()
+	if v, ok := c.p.carriedOfCall(callee, call); ok {
+		return setOf(v)
+	}
 	if s, ok := c.p.stubSet(callee); ok {
 		return s.prefixed(stubLabel(callee))
 	}
@@ -735,23 +981,25 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 			return c.errorfSet(call)
 		case pkg.Path() == "errors" && callee.Name() == "Join":
 			return c.joinSet(call)
+		case pkg.Path() == "errors" && callee.Name() == "New":
+			return c.freshSet("errors.New")
 		}
 	}
 	if pkg == nil {
 		return setOf(opaqueVariant(name))
 	}
-	if isStd(pkg.Path()) {
+	if isStd(c.p.pass.Fset, pkg) {
 		return setOf(opaqueVariant(pkg.Name() + "." + name))
 	}
 	if pkg == c.p.pass.Pkg {
 		if w, ok := c.p.work[callee]; ok {
-			return c.bind(w.errs, call, name)
+			return c.bind(w.errs, call, name, callee)
 		}
 		return setOf(opaqueVariant(name))
 	}
 	var f ErrFact
 	if c.p.pass.ImportObjectFact(callee, &f) {
-		return c.bind(setOf(f.Errors...), call, name)
+		return c.bind(setOf(f.Errors...), call, name, callee)
 	}
 	return setOf(opaqueVariant(pkg.Name() + "." + name))
 }
@@ -761,6 +1009,12 @@ func (c *flowCtx) callSet(call *ast.CallExpr) errSet {
 // or opaque) and calls of other func values (opaque).
 func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 	fun := unparen(call.Fun)
+	if v, ok := c.p.carriedOfVarCall(call); ok {
+		return setOf(v)
+	}
+	if s, label, ok := c.p.dynamicStubSet(c.info, call); ok {
+		return s.prefixed(label)
+	}
 	if id, ok := fun.(*ast.Ident); ok {
 		if v, ok := c.info.Uses[id].(*types.Var); ok {
 			if i, ok := c.ownParams[v]; ok {
@@ -771,7 +1025,7 @@ func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 	if sel, ok := fun.(*ast.SelectorExpr); ok {
 		if m, ok := c.info.Uses[sel.Sel].(*types.Func); ok && isInterfaceMethod(m) {
 			m = m.Origin()
-			if s, ok := c.p.stubSet(m); ok {
+			if s, ok := c.p.stubSetVia(m, c.info.TypeOf(sel.X)); ok {
 				return s.prefixed(stubLabel(m))
 			}
 			if allowed, ok := c.p.contractOf(m); ok {
@@ -791,11 +1045,12 @@ func (c *flowCtx) dynamicCallSet(call *ast.CallExpr) errSet {
 // bind substitutes the param:i variants of a callee's error set with the
 // error sets of the call's arguments, and prefixes every witness with the
 // callee name. An argument that cannot be followed gives "?".
-func (c *flowCtx) bind(s errSet, call *ast.CallExpr, name string) errSet {
+func (c *flowCtx) bind(s errSet, call *ast.CallExpr, name string, callee *types.Func) errSet {
 	out := errSet{}
 	for _, v := range s {
 		if v.Kind != KindParam {
 			v.Chain = append([]string{name}, v.Chain...)
+			v.Via = callee.FullName()
 			out.put(v)
 			continue
 		}
@@ -840,23 +1095,30 @@ func (c *flowCtx) argSet(arg ast.Expr) errSet {
 // namedFuncSet is the error set of a named function or method used as a value.
 // Its own unresolved parameters cannot be bound here, so they become "?".
 func (c *flowCtx) namedFuncSet(fn *types.Func) errSet {
-	if s, ok := c.p.stubSet(fn); ok {
+	return c.p.namedFuncSet(fn)
+}
+
+// namedFuncSet is the error set of a named function used as a value (see
+// flowCtx.namedFuncSet). It is shared by both engines.
+func (p *pkgState) namedFuncSet(fn *types.Func) errSet {
+	if s, ok := p.stubSet(fn); ok {
 		return s.prefixed(stubLabel(fn))
 	}
 	label := funcName(fn)
 	var src []Variant
 	switch {
-	case fn.Pkg() == nil || isStd(fn.Pkg().Path()):
+	case fn.Pkg() == nil || isStd(p.pass.Fset, fn.Pkg()):
 		return setOf(opaqueVariant(label))
-	case fn.Pkg() == c.p.pass.Pkg:
-		w, ok := c.p.work[fn]
+	case fn.Pkg() == p.pass.Pkg:
+		p.dep(fn)
+		w, ok := p.work[fn]
 		if !ok {
 			return setOf(opaqueVariant(label))
 		}
 		src = w.errs.list()
 	default:
 		var f ErrFact
-		if !c.p.pass.ImportObjectFact(fn, &f) {
+		if !p.pass.ImportObjectFact(fn, &f) {
 			return setOf(opaqueVariant(label))
 		}
 		src = f.Errors
@@ -868,16 +1130,34 @@ func (c *flowCtx) namedFuncSet(fn *types.Func) errSet {
 			continue
 		}
 		v.Chain = append([]string{label}, v.Chain...)
+		v.Via = "" // the first hop of v is the callee's, not one of the caller's
 		out.put(v)
 	}
 	return out
 }
 
-// errorfSet: fmt.Errorf is the union of its %w arguments. Without a constant
-// format, or with no %w verb, the result is opaque.
+// freshSet is the error set of an error created in place by the declared
+// function being analyzed (errors.New, or fmt.Errorf with a constant format and
+// no %w). It is one variant per creating function: "new@pkg.F". Outside a
+// declared function (no owner) it is opaque, as before.
+func (c *flowCtx) freshSet(origin string) errSet {
+	if c.owner == "" {
+		return setOf(opaqueVariant(origin))
+	}
+	return setOf(c.p.freshVariant(c.owner))
+}
+
+// lastComponent returns the part of a function display name after the last dot.
+func lastComponent(name string) string {
+	return name[strings.LastIndex(name, ".")+1:]
+}
+
+// errorfSet: fmt.Errorf is the union of its %w arguments. A constant format
+// with no %w verb creates a fresh error. Without a constant format (or one
+// with explicit argument indexes) the result is opaque.
 func (c *flowCtx) errorfSet(call *ast.CallExpr) errSet {
 	fail := setOf(opaqueVariant("fmt.Errorf"))
-	if call.Ellipsis.IsValid() || len(call.Args) == 0 {
+	if len(call.Args) == 0 {
 		return fail
 	}
 	tv := c.info.Types[call.Args[0]]
@@ -885,7 +1165,13 @@ func (c *flowCtx) errorfSet(call *ast.CallExpr) errSet {
 		return fail
 	}
 	idxs, ok := wrapVerbArgs(constant.StringVal(tv.Value))
-	if !ok || len(idxs) == 0 {
+	if !ok {
+		return fail
+	}
+	if len(idxs) == 0 {
+		return c.freshSet("fmt.Errorf")
+	}
+	if call.Ellipsis.IsValid() {
 		return fail
 	}
 	out := errSet{}
@@ -1003,6 +1289,9 @@ type work struct {
 	errs       errSet
 	handler    errSet
 	hasHandler bool
+	// ver counts the changes of the sets (see solve); the SSA engine reads it
+	// to know whether a unit's callees changed since the unit was evaluated.
+	ver int
 }
 
 // effective is the handler set when the function has one, otherwise its error set.
@@ -1020,10 +1309,44 @@ type pkgState struct {
 	contracts map[*types.Func][]Variant // interface method contracts declared in this package
 	stubs     map[string]errSet         // stub rules by target key
 	pkgIndex  map[string]*types.Package // transitive import graph by path
+	// statusDecls holds the constant StatusCode methods of this package.
+	statusDecls map[*types.Func]int
+	// statusStubs holds the "status" stub rules by canonical type key.
+	statusStubs map[string]int
+	// errmaps holds the errmap facts of this package, by function.
+	errmaps map[*types.Func]*ErrmapFact
+	// statusFuncs holds the status rules that name a function or variable, by
+	// pkgpath.Name (see carried.go).
+	statusFuncs map[string]stubs.StatusValue
+	// The SSA engine (see ssa.go): useSSA is set when the package was lowered,
+	// ssaProg holds it, callAt maps a call's opening parenthesis to its AST
+	// call, and litSets holds the literal sets that the SSA engine computed.
+	useSSA  bool
+	ssaProg *ssa.Program
+	callAt  map[token.Pos]*ast.CallExpr
+	litSets map[*ast.FuncLit]FuncErrors
+	// ssaUnits holds the converged SSA state of each unit (the last round's),
+	// which Flow.Of reads after the analysis.
+	ssaUnits map[*fnUnit]*ssaUnit
+	// curDeps records the same-package callees that the unit being evaluated
+	// reads (see ssaUnit.deps); nil outside computeSSA.
+	curDeps map[*types.Func]int
+	// tests holds the TestFact of each predicate of this package (see guards.go).
+	tests map[*types.Func]TestFact
+	// violated holds, for each unit, the variants its contract does not allow
+	// (see contractBad); the reports and the ErrFacts read it.
+	violated map[*types.Func][]Variant
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}}
+	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}, litSets: map[*ast.FuncLit]FuncErrors{}, ssaUnits: map[*fnUnit]*ssaUnit{}}
+	switch engineFlag {
+	case engineAST:
+	case engineSSA:
+		p.useSSA = p.buildSSA()
+	default:
+		return nil, fmt.Errorf("errset: unknown -errset.engine %q (want ast or ssa)", engineFlag)
+	}
 	for _, f := range pass.Files {
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
@@ -1038,50 +1361,105 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 
+	if p.useSSA {
+		p.exportTests(p.units)
+	}
+	p.collectStatus()
 	if err := p.loadStubs(); err != nil {
 		return nil, err
 	}
 	p.collectInterfaceContracts()
 	p.solve()
+	// The contract violations are computed before any fact is exported: a
+	// fact says which variants its function violates (see suppressedVariant).
+	p.violated = map[*types.Func][]Variant{}
+	for _, u := range p.units {
+		p.violated[u.obj] = p.contractBad(u)
+	}
 	for _, u := range p.units {
 		w := p.work[u.obj]
+		var violated []string
+		for _, v := range p.violated[u.obj] {
+			violated = append(violated, v.Key)
+		}
 		pass.ExportObjectFact(u.obj, &ErrFact{
 			Errors:     w.errs.list(),
 			HasHandler: w.hasHandler,
 			Handler:    w.handler.list(),
+			Violated:   violated,
 		})
 	}
 
 	for _, u := range p.units {
 		for _, d := range directivesOf(u.decl.Doc) {
 			if d.kind == "errmap" {
-				p.exportErrmap(u)
+				if f := p.exportErrmap(u); f != nil {
+					p.errmaps[u.obj] = f
+				}
 			}
 		}
 	}
 
 	for _, u := range p.units {
 		p.checkDirectives(u)
+		for _, v := range p.violated[u.obj] {
+			if !allFlag && p.suppressedVariant(u, v) {
+				hidden.Add("errset", pass.Pkg, fmt.Sprintf("%s|%s|%s", pass.Fset.Position(u.decl.Name.Pos()), funcName(u.obj), v.Key))
+				continue
+			}
+			pass.Reportf(u.decl.Name.Pos(), "%s may return %s%s, not in its //effectgo:errors contract", funcName(u.obj), v.Name, via(v.Chain))
+		}
 	}
 	p.checkConformance()
+
+	if statusesFlag {
+		for _, u := range p.units {
+			if d, ok := handlerOf(u); ok {
+				p.reportStatuses(u, d)
+			}
+		}
+	}
 
 	if reportFlag {
 		for _, u := range p.units {
 			w := p.work[u.obj]
 			if errIndex(u.sig) >= 0 {
-				pass.Reportf(u.decl.Name.Pos(), "errors of %s: %s", funcName(u.obj), variantNames(w.errs.list()))
+				pass.Reportf(u.decl.Name.Pos(), "errors of %s: %s", funcName(u.obj), variantNames(p.visible(w.errs.list())))
 			}
 			if w.hasHandler {
-				pass.Reportf(u.decl.Name.Pos(), "handler errors of %s: %s", funcName(u.obj), variantNames(w.handler.list()))
+				pass.Reportf(u.decl.Name.Pos(), "handler errors of %s: %s", funcName(u.obj), variantNames(p.visible(w.handler.list())))
 			}
 		}
 	}
 
-	res := Result{}
+	if witnessFlag {
+		for _, u := range p.units {
+			w := p.work[u.obj]
+			if errIndex(u.sig) >= 0 {
+				p.reportWitnesses(u, funcName(u.obj), w.errs)
+			}
+			if w.hasHandler {
+				p.reportWitnesses(u, funcName(u.obj)+" [handler]", w.handler)
+			}
+		}
+	}
+
+	flows := map[*ast.FuncDecl]Flow{}
+	for _, u := range p.units {
+		if un := p.ssaUnits[u]; un != nil {
+			flows[u.decl] = Flow{p: p, table: un.flowTable()}
+			continue
+		}
+		flows[u.decl] = Flow{p: p, c: p.newFlow(u)}
+	}
+	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows, Mappers: p.mappers(), NoErrors: p.noErrors()}
 	for _, u := range p.units {
 		w := p.work[u.obj]
-		res[u.obj] = FuncErrors{Variants: w.effective().list(), Handler: w.hasHandler}
+		arg, errmap := p.handlerRef(u)
+		res.Funcs[u.obj] = FuncErrors{Variants: p.visible(w.effective().list()), Handler: w.hasHandler, HandlerDirective: arg, Errmap: errmap}
 	}
+	// The SSA program is not needed after the pass: the flow tables hold the answers.
+	p.ssaProg, p.ssaUnits, p.callAt = nil, nil, nil
 	return res, nil
 }
 
@@ -1105,13 +1483,16 @@ func (p *pkgState) solve() {
 			w := p.work[u.obj]
 			if w.errs.putAll(errs) {
 				changed = true
+				w.ver++
 			}
 			if w.handler.putAll(handler) {
 				changed = true
+				w.ver++
 			}
 			if has && !w.hasHandler {
 				w.hasHandler = true
 				changed = true
+				w.ver++
 			}
 		}
 	}
@@ -1119,7 +1500,12 @@ func (p *pkgState) solve() {
 
 // compute evaluates one function against the current sets of its callees.
 func (p *pkgState) compute(u *fnUnit) (errs, handler errSet, hasHandler bool) {
-	c := p.newFlow(u.decl.Recv, u.decl.Type, u.decl.Body, true)
+	if p.useSSA {
+		if e, h, has, ok := p.computeSSA(u); ok {
+			return e, h, has
+		}
+	}
+	c := p.newFlow(u)
 	errs = c.returnsErr(u.sig, u.decl.Body)
 	handler = errSet{}
 	walkOwn(u.decl.Body, func(n ast.Node) {
@@ -1141,6 +1527,16 @@ func (p *pkgState) compute(u *fnUnit) (errs, handler errSet, hasHandler bool) {
 		}
 	})
 	return errs, handler, hasHandler
+}
+
+// reportWitnesses prints one witness line per variant of a set, for the
+// -witness flag: "witness of <label>: <variant> via <chain>". The chain does
+// not include the function itself; "(direct)" means the variant is created in
+// the function.
+func (p *pkgState) reportWitnesses(u *fnUnit, label string, set errSet) {
+	for _, v := range displayOrder(p.visible(set.list())) {
+		p.pass.Reportf(u.decl.Name.Pos(), "witness of %s: %s via %s", label, v.witnessName(), chainText(v.Chain))
+	}
 }
 
 // ---- directives ----
@@ -1227,20 +1623,28 @@ func (p *pkgState) contractVariant(name string, pos token.Pos) (Variant, bool) {
 	if name == opaqueKey {
 		return opaqueVariant(), true
 	}
+	if name == freshContract {
+		return Variant{Key: freshContract, Name: freshContract, Kind: KindFresh}, true
+	}
 	if rest, ok := strings.CutPrefix(name, ifacePrefix); ok {
-		return variantFromObject(p.resolve(rest, pos), KindIface)
+		return p.variantFromObject(p.resolve(rest, pos), KindIface)
 	}
 	obj := p.resolve(name, pos)
-	if v, ok := variantFromObject(obj, KindSentinel); ok {
+	if v, ok := p.variantFromObject(obj, KindSentinel); ok {
 		return v, true
 	}
-	return variantFromObject(obj, KindType)
+	return p.variantFromObject(obj, KindType)
 }
 
 // resolveContract resolves the names of the //effectgo:errors directives in
-// dirs. Unresolvable names are reported at pos.
-func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string) []Variant {
-	allowed := []Variant{}
+// dirs. Unresolvable names are reported at pos. usable is false when no name
+// resolved and some did not: the contract is then empty only because of the
+// failed names, and a check against it would report every real variant as a
+// violation, so the caller skips the check and the unresolved names are the
+// only report. A partly resolved contract is still checked.
+func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string) (allowed []Variant, usable bool) {
+	allowed = []Variant{}
+	unresolved := 0
 	for _, d := range dirs {
 		if d.kind != "errors" {
 			continue
@@ -1249,17 +1653,20 @@ func (p *pkgState) resolveContract(dirs []directive, pos token.Pos, owner string
 			v, ok := p.contractVariant(name, pos)
 			if !ok {
 				p.pass.Reportf(pos, "effectgo:errors: cannot resolve %q in %s", name, owner)
+				unresolved++
 				continue
 			}
 			allowed = append(allowed, v)
 		}
 	}
-	return allowed
+	return allowed, len(allowed) > 0 || unresolved == 0
 }
 
 // allowedBy reports whether variant v is permitted by a contract. Unresolved
-// parameters are always allowed. An abstract iface:J contract allows a
-// variant whose method set includes J's methods.
+// parameters are always allowed. The contract "?" allows every opaque variant
+// (including collapsed foreign ones) and "new" allows every fresh variant; the
+// two do not allow each other. An abstract iface:J contract allows a variant
+// whose method set includes J's methods; fresh and opaque variants have none.
 func allowedBy(v Variant, allowed []Variant) bool {
 	if v.Kind == KindParam {
 		return true
@@ -1268,11 +1675,116 @@ func allowedBy(v Variant, allowed []Variant) bool {
 		if a.Key == v.Key {
 			return true
 		}
-		if a.Kind == KindIface && v.Kind != KindOpaque && implementsAll(v.Methods, a.Methods) && len(v.Methods) > 0 {
+		if a.Kind == KindOpaque && v.Kind == KindOpaque {
+			return true
+		}
+		if a.Kind == KindFresh && v.Kind == KindFresh {
+			return true
+		}
+		if a.Kind == KindIface && v.Kind != KindOpaque && v.Kind != KindFresh && implementsAll(v.Methods, a.Methods) && len(v.Methods) > 0 {
 			return true
 		}
 	}
 	return false
+}
+
+// visible returns the variants of a set as the report, the contracts and the
+// handler check show them: see collapseForeign. The module is the one of the
+// package being analyzed (pass.Module); without it nothing is collapsed.
+func (p *pkgState) visible(vs []Variant) []Variant {
+	module := ""
+	if p.pass.Module != nil {
+		module = p.pass.Module.Path
+	}
+	return collapseForeign(vs, module)
+}
+
+// contractBad returns the variants of u's effective set that its
+// //effectgo:errors contract does not allow, in display order. It resolves the
+// contract (and reports its unresolvable names) once per function; nil when the
+// function has no contract, or when none of its names resolves.
+func (p *pkgState) contractBad(u *fnUnit) []Variant {
+	var dirs []directive
+	for _, d := range directivesOf(u.decl.Doc) {
+		if d.kind == "errors" {
+			dirs = append(dirs, d)
+		}
+	}
+	if len(dirs) == 0 {
+		return nil
+	}
+	allowed, usable := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
+	if !usable {
+		return nil
+	}
+	var bad []Variant
+	for _, v := range displayOrder(p.visible(p.work[u.obj].effective().list())) {
+		if !allowedBy(v, allowed) {
+			bad = append(bad, v)
+		}
+	}
+	return bad
+}
+
+// violatesKey reports whether fn violates its own contract for the variant
+// key. A function that is not analyzed (no fact) does not.
+func (p *pkgState) violatesKey(fn *types.Func, key string) bool {
+	if _, ok := p.work[fn]; ok {
+		for _, v := range p.violated[fn] {
+			if v.Key == key {
+				return true
+			}
+		}
+		return false
+	}
+	var f ErrFact
+	return p.pass.ImportObjectFact(fn, &f) && slices.Contains(f.Violated, key)
+}
+
+// suppressedVariant reports whether the contract violation v of u is only the
+// consequence of a violation in a callee, so that it is not reported. That is
+// the case when v reaches u through a declared callee G (v.Via) that violates
+// its own contract for v, and every other call of u that may return v is a
+// declared callee that violates too. A stub, an interface call, a call through
+// a func value or an argument, a directly created error, or a handler function
+// keeps the report. The rule is the errset analogue of the effects rule (see
+// docs/reference/analyzers.md).
+func (p *pkgState) suppressedVariant(u *fnUnit, v Variant) bool {
+	if v.Via == "" || len(v.Chain) == 0 || p.work[u.obj].hasHandler {
+		return false
+	}
+	c := p.newFlow(u)
+	hop, blocked := false, false
+	ast.Inspect(u.decl.Body, func(n ast.Node) bool {
+		if blocked {
+			return false
+		}
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if tv, ok := c.info.Types[call.Fun]; ok && tv.IsType() {
+			return true
+		}
+		var callee *types.Func
+		if f := typeutil.StaticCallee(c.info, call); f != nil {
+			callee = f.Origin()
+		}
+		if callee != nil && callee.FullName() == v.Via && p.violatesKey(callee, v.Key) {
+			hop = true
+			return true
+		}
+		mayReturn := slices.ContainsFunc(p.visible(c.callSet(call).list()), func(w Variant) bool { return w.Key == v.Key })
+		if !mayReturn {
+			return true
+		}
+		if callee != nil && p.violatesKey(callee, v.Key) {
+			return true
+		}
+		blocked = true
+		return false
+	})
+	return hop && !blocked
 }
 
 func (p *pkgState) checkDirectives(u *fnUnit) {
@@ -1281,26 +1793,10 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 		switch {
 		case d.kind == "errors" || d.kind == "errmap" || d.kind == "handler":
 			dirs = append(dirs, d)
-		case effectsKinds[d.kind]:
-			// a contract of the effects analyzer, which checks it
+		case effectsKinds[d.kind], otherKinds[d.kind]:
+			// a contract of the effects analyzer, or a keyword of mustuse or exhaustive
 		default:
 			p.pass.Reportf(u.decl.Name.Pos(), "unknown directive //effectgo:%s", d.kind)
-		}
-	}
-
-	hasContract := false
-	for _, d := range dirs {
-		if d.kind == "errors" {
-			hasContract = true
-		}
-	}
-	if hasContract {
-		allowed := p.resolveContract(dirs, u.decl.Name.Pos(), u.obj.Name())
-		for _, v := range displayOrder(p.work[u.obj].effective().list()) {
-			if allowedBy(v, allowed) {
-				continue
-			}
-			p.pass.Reportf(u.decl.Name.Pos(), "%s may return %s%s, not in its //effectgo:errors contract", funcName(u.obj), v.Name, via(v.Chain))
 		}
 	}
 
@@ -1312,14 +1808,24 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 }
 
 // exportErrmap validates an errmap function and exports its ErrmapFact.
-func (p *pkgState) exportErrmap(u *fnUnit) {
+// It returns the fact, or nil when the signature is wrong.
+func (p *pkgState) exportErrmap(u *fnUnit) *ErrmapFact {
 	sig := u.sig
 	if sig.Params().Len() != 1 || sig.Results().Len() != 1 ||
 		!types.Identical(sig.Params().At(0).Type(), errorType) ||
 		!types.Identical(sig.Results().At(0).Type(), errorType) {
 		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:errmap: %s must have signature func(error) error", funcName(u.obj))
-		return
+		return nil
 	}
+	fact := p.buildErrmap(u)
+	p.pass.ExportObjectFact(u.obj, fact)
+	return fact
+}
+
+// buildErrmap reads the mapping rules of a func(error) error: the variants it
+// matches, the interfaces it targets, and its branches with their statuses. It
+// reports nothing and exports nothing; exportErrmap does both for a directive.
+func (p *pkgState) buildErrmap(u *fnUnit) *ErrmapFact {
 	mapped := map[string]bool{}
 	ifaces := map[string]Iface{}
 	addType := func(t types.Type) {
@@ -1403,7 +1909,7 @@ func (p *pkgState) exportErrmap(u *fnUnit) {
 		return true
 	})
 
-	fact := &ErrmapFact{}
+	fact := &ErrmapFact{Branches: p.errmapBranches(u)}
 	for k := range mapped {
 		fact.Mapped = append(fact.Mapped, k)
 	}
@@ -1416,13 +1922,52 @@ func (p *pkgState) exportErrmap(u *fnUnit) {
 	for _, k := range keys {
 		fact.Ifaces = append(fact.Ifaces, ifaces[k])
 	}
-	p.pass.ExportObjectFact(u.obj, fact)
+	return fact
 }
 
-// covered reports whether errmap m maps variant v. Opaque and unresolved
-// parameter variants are never covered.
+// handlerRef returns the argument of the //effectgo:handler directive of u
+// and the errmap function it names (nil when it does not resolve).
+func (p *pkgState) handlerRef(u *fnUnit) (string, *types.Func) {
+	d, ok := handlerOf(u)
+	if !ok {
+		return "", nil
+	}
+	f, _ := p.resolve(d.arg, u.decl.Pos()).(*types.Func)
+	return d.arg, f
+}
+
+// literalSets returns the error set of every func literal with an error result
+// in the package. A literal's returns are read in the flow context of the
+// declared function that encloses it, so its locals are the enclosing ones.
+func (p *pkgState) literalSets() map[*ast.FuncLit]FuncErrors {
+	out := map[*ast.FuncLit]FuncErrors{}
+	defer func() {
+		// The SSA engine's literal sets replace the AST ones where it ran.
+		for lit, fe := range p.litSets {
+			out[lit] = fe
+		}
+	}()
+	for _, u := range p.units {
+		c := p.newFlow(u)
+		ast.Inspect(u.decl.Body, func(n ast.Node) bool {
+			lit, ok := n.(*ast.FuncLit)
+			if !ok {
+				return true
+			}
+			ls, ok := c.info.TypeOf(lit).(*types.Signature)
+			if ok && errIndex(ls) >= 0 {
+				out[lit] = FuncErrors{Variants: p.visible(c.returnsErr(ls, lit.Body).list())}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// covered reports whether errmap m maps variant v. Opaque, fresh and unresolved
+// parameter variants are never covered: no errors.Is or errors.As matches them.
 func covered(v Variant, m *ErrmapFact) bool {
-	if v.Kind == KindOpaque || v.Kind == KindParam {
+	if v.Kind == KindOpaque || v.Kind == KindParam || v.Kind == KindFresh {
 		return false
 	}
 	for _, k := range m.Mapped {
@@ -1471,7 +2016,7 @@ func (p *pkgState) checkHandler(u *fnUnit, d directive) {
 		return
 	}
 	mname := objDisplay(f)
-	for _, v := range displayOrder(p.work[u.obj].effective().list()) {
+	for _, v := range displayOrder(p.visible(p.work[u.obj].effective().list())) {
 		if covered(v, &m) {
 			continue
 		}
@@ -1481,6 +2026,11 @@ func (p *pkgState) checkHandler(u *fnUnit, d directive) {
 				continue
 			}
 			p.pass.Reportf(u.decl.Name.Pos(), "handler %s may return an unclassified error%s, which errmap %s does not map → HTTP 500", funcName(u.obj), via(v.Chain), mname)
+		case KindFresh:
+			if ignoreOpaqueFlag {
+				continue
+			}
+			p.pass.Reportf(u.decl.Name.Pos(), "handler %s may return fresh error %s%s, which errmap %s does not map (errors.Is and errors.As cannot match it) → HTTP 500", funcName(u.obj), v.Name, via(v.Chain), mname)
 		case KindParam:
 			if ignoreOpaqueFlag {
 				continue

@@ -2,11 +2,13 @@ module github.com/faintghost/effectgo/examples/todo
 
 go 1.26.5
 
-require github.com/go-fuego/fuego v0.20.0
+require (
+	github.com/getkin/kin-openapi v0.142.0
+	github.com/go-fuego/fuego v0.20.0
+)
 
 require (
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
-	github.com/getkin/kin-openapi v0.142.0 // indirect
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect

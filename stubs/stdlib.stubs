@@ -28,14 +28,35 @@ effects (fmt.Stringer).String pure
 # unknown, which is the honest answer, and a caller can use a contract with
 # allow unknown or name a concrete type.
 #
-# Functions in io that call those interface methods are unknown for the same
-# reason. Declaring them unknown explicitly documents the fact and is what the
-# analyzer would say anyway, so these lines mainly make the boundary visible.
-effects io.Copy unknown
-effects io.CopyN unknown
-effects io.ReadAll unknown
-effects io.ReadFull unknown
-effects io.WriteString unknown
+# The io functions below call methods of their arguments. The stdlib body is not
+# analyzed, so each rule names the methods that the body may call, as via items
+# (docs/reference/stubs.md#effects). The effects of each method are evaluated at
+# the call site from the static type of the argument: an io.Writer argument is
+# unknown (or its interface contract), a *bytes.Buffer is pure, an *os.File is fs,
+# and so on. Each rule lists every method the body may call, since the body
+# chooses at run time between an optional interface and the basic method.
+
+# io.WriteString calls w.WriteString when w is a StringWriter, else w.Write
+# (io/io.go:314-318).
+effects io.WriteString via:0.Write,via:0.WriteString
+
+# io.Copy, CopyN and CopyBuffer call src.WriteTo(dst) when src is a WriterTo and
+# dst.ReadFrom(src) when dst is a ReaderFrom; otherwise they read src.Read and
+# write dst.Write (io/io.go:387, 363, 398; the assertions and the loop are in
+# copyBuffer, io/io.go:407-431).
+effects io.Copy via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo
+effects io.CopyN via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo
+effects io.CopyBuffer via:0.Write,via:1.Read,via:0.ReadFrom,via:1.WriteTo
+
+# io.ReadAll, ReadFull and ReadAtLeast call r.Read (io/io.go:709 for ReadAll,
+# 353 for ReadFull, 329 for ReadAtLeast; the reads are in their loops).
+effects io.ReadAll via:0.Read
+effects io.ReadFull via:0.Read
+effects io.ReadAtLeast via:0.Read
+
+# io.Discard is a Writer whose writes do nothing. An item whose argument is
+# io.Discard contributes nothing; that case is handled at the call site
+# (effects/via.go), since io.Discard is a variable of interface type.
 
 # io constructors only build a value that wraps their arguments. They do no
 # I/O until the wrapper is used, so they are pure.
@@ -45,6 +66,230 @@ effects io.MultiWriter pure
 effects io.TeeReader pure
 effects io.NopCloser pure
 effects io.Pipe pure
+
+# fmt.Fprint, Fprintf and Fprintln write their operands to w through w.Write
+# (fmt/print.go:260, 222, 303). Only the Print forms are in the taxonomy, so the
+# writer is the only source of their effects here.
+effects fmt.Fprint via:0.Write
+effects fmt.Fprintf via:0.Write
+effects fmt.Fprintln via:0.Write
+
+# fmt.Fscan, Fscanln and Fscanf read from r (fmt/scan.go:121, 130, 141). The
+# reader is wrapped in readRune, which calls r.Read (fmt/scan.go:314, 388).
+effects fmt.Fscan via:0.Read
+effects fmt.Fscanln via:0.Read
+effects fmt.Fscanf via:0.Read
+
+# bufio: the constructors store their reader or writer (bufio/bufio.go:62, 50,
+# 607, 589; bufio/scan.go:89 for NewScanner). The methods act through the stored
+# value: stored.Read for a reader, stored.Write for a writer, with the via:0 or
+# via:stored items of their own argument where they take one. The stored value is
+# evaluated at the call site, from its static type, when the receiver comes from
+# its constructor in the same function (effects/via.go). Reader.Reset and
+# Writer.Reset re-point the stored value; a variable that they are called on is
+# not trusted, so its methods are unknown.
+effects bufio.NewReader stores:0
+effects bufio.NewReaderSize stores:0
+effects bufio.NewWriter stores:0
+effects bufio.NewWriterSize stores:0
+effects bufio.NewScanner stores:0
+effects (*bufio.Reader).Read via:stored.Read              # bufio/bufio.go:216
+effects (*bufio.Reader).ReadByte via:stored.Read          # bufio/bufio.go:267
+effects (*bufio.Reader).ReadRune via:stored.Read          # bufio/bufio.go:306
+effects (*bufio.Reader).ReadSlice via:stored.Read         # bufio/bufio.go:348
+effects (*bufio.Reader).ReadLine via:stored.Read          # bufio/bufio.go:405
+effects (*bufio.Reader).ReadBytes via:stored.Read         # bufio/bufio.go:478
+effects (*bufio.Reader).ReadString via:stored.Read        # bufio/bufio.go:498
+effects (*bufio.Reader).Peek via:stored.Read              # bufio/bufio.go:143
+effects (*bufio.Reader).Discard via:stored.Read           # bufio/bufio.go:177
+effects (*bufio.Reader).WriteTo via:0.Write,via:stored.Read # bufio/bufio.go:515 writes to its argument
+effects (*bufio.Writer).Write via:stored.Write            # bufio/bufio.go:676
+effects (*bufio.Writer).WriteString via:stored.Write      # bufio/bufio.go:747
+effects (*bufio.Writer).WriteByte via:stored.Write        # bufio/bufio.go:701
+effects (*bufio.Writer).WriteRune via:stored.Write        # bufio/bufio.go:715
+effects (*bufio.Writer).Flush via:stored.Write            # bufio/bufio.go:635
+effects (*bufio.Writer).ReadFrom via:0.Read,via:stored.Write # bufio/bufio.go:784 reads its argument
+# bufio.Scanner reads its reader in Scan (bufio/scan.go:139, the read at 219).
+effects (*bufio.Scanner).Scan via:stored.Read
+
+# encoding/json: NewEncoder(w) and NewDecoder(r) (encoding/json/stream.go:194, 33)
+# store the writer or reader. Encode writes to the stored writer (stream.go:204);
+# Decode, Token and More read the stored reader (stream.go:51, 370, 485; the refill
+# at 167). json has no method that re-points the stored value.
+effects encoding/json.NewEncoder stores:0
+effects encoding/json.NewDecoder stores:0
+effects (*encoding/json.Encoder).Encode via:stored.Write
+effects (*encoding/json.Decoder).Decode via:stored.Read
+effects (*encoding/json.Decoder).Token via:stored.Read
+effects (*encoding/json.Decoder).More via:stored.Read
+
+# encoding/csv: NewReader and NewWriter store their reader or writer
+# (encoding/csv/reader.go:181, writer.go:39). Writer.Write, WriteAll and Flush write
+# it (writer.go:50, 138, 125-126); Reader.Read and ReadAll read it (reader.go:197,
+# 238). csv has no method that re-points the stored value.
+effects encoding/csv.NewReader stores:0
+effects encoding/csv.NewWriter stores:0
+effects (*encoding/csv.Writer).Write via:stored.Write
+effects (*encoding/csv.Writer).WriteAll via:stored.Write
+effects (*encoding/csv.Writer).Flush via:stored.Write
+effects (*encoding/csv.Reader).Read via:stored.Read
+effects (*encoding/csv.Reader).ReadAll via:stored.Read
+
+# encoding/gob and encoding/xml store their writer or reader as encoding/json
+# does (gob/encoder.go:34, gob/decoder.go:45, xml/marshal.go:151, xml/xml.go:222).
+# The encoders write the stored writer (gob/encoder.go:175 and 218; xml/marshal.go:
+# 171, 186, 212, 309 and 316) and the decoders read the stored reader (gob/decoder.go:
+# 195 and 215; xml/read.go:139, 147 and 773; xml/xml.go:275).
+effects encoding/gob.NewEncoder stores:0
+effects encoding/gob.NewDecoder stores:0
+effects (*encoding/gob.Encoder).Encode via:stored.Write
+effects (*encoding/gob.Encoder).EncodeValue via:stored.Write
+effects (*encoding/gob.Decoder).Decode via:stored.Read
+effects (*encoding/gob.Decoder).DecodeValue via:stored.Read
+effects encoding/xml.NewEncoder stores:0
+effects encoding/xml.NewDecoder stores:0
+effects (*encoding/xml.Encoder).Encode via:stored.Write
+effects (*encoding/xml.Encoder).EncodeElement via:stored.Write
+effects (*encoding/xml.Encoder).EncodeToken via:stored.Write
+effects (*encoding/xml.Encoder).Flush via:stored.Write
+effects (*encoding/xml.Encoder).Close via:stored.Write
+effects (*encoding/xml.Decoder).Decode via:stored.Read
+effects (*encoding/xml.Decoder).DecodeElement via:stored.Read
+effects (*encoding/xml.Decoder).Token via:stored.Read
+effects (*encoding/xml.Decoder).Skip via:stored.Read
+
+# text/tabwriter: Writer.Init stores a new writer, and a value can be re-pointed
+# by it without a constructor in sight, so the writer is not tracked. Write and
+# Flush write the writer the value holds (tabwriter.go:523 and 488): unknown.
+effects (*text/tabwriter.Writer).Write unknown
+effects (*text/tabwriter.Writer).Flush unknown
+
+# text/template and html/template: Execute and ExecuteTemplate write the result to
+# wr (text/template/exec.go:206 and 188; html/template/template.go:120 and 134).
+# Functions that a template calls are not followed (see effects.md).
+effects (*text/template.Template).Execute via:0.Write
+effects (*text/template.Template).ExecuteTemplate via:0.Write
+effects (*html/template.Template).Execute via:0.Write
+effects (*html/template.Template).ExecuteTemplate via:0.Write
+
+# encoding/binary: Write writes to w (binary.go:410) and Read reads from r
+# (binary.go:258).
+effects encoding/binary.Write via:0.Write
+effects encoding/binary.Read via:0.Read
+
+# log: every function and method of log is stdio in the taxonomy, which covers
+# the writes of a Logger whatever its writer. The rules below charge the writer
+# that a function binds, so that a connection or a file is not hidden behind the
+# stdio label. log.New (log/log.go:71), log.SetOutput (log/log.go:364) and
+# (*Logger).SetOutput (log/log.go:80) store the writer and do not write.
+effects log.New via:0.Write
+effects log.SetOutput via:0.Write
+effects (*log.Logger).SetOutput via:0.Write
+
+# io.Closer.Close and io.Reader/Writer stay unknown, as above. Close is the
+# clearest case: an *os.File closes a descriptor (fs), a net.Conn closes a
+# socket (net), and a bytes.Buffer-backed closer does nothing. No single effect
+# is true of the interface, so it is not stubbed.
+
+# context.Context (context/context.go:71-115). Deadline, Done and Value return
+# values that the context already holds; the channel returned by Done is
+# created on demand in memory (cancelCtx.Done, context.go:448). Err is pure too
+# (its contract is at context.go:110-115), and its errors are in the errors
+# section. Implementations other than those of package context are the
+# caller's responsibility.
+effects (context.Context).Deadline pure
+effects (context.Context).Done pure
+effects (context.Context).Err pure
+effects (context.Context).Value pure
+
+# context.CancelFunc is "type CancelFunc func()" (context/context.go:231). Calling
+# it cancels a context and closes its done channel: memory only, no I/O. This is a
+# named func type, so the rule applies to every call through a value of the type
+# (stub feature "named func type"), not to one declared function.
+effects (context.CancelFunc) pure
+
+# database/sql.Result (sql.go:3532-3543) is implemented by driverResult, whose
+# methods only call the driver's Result under a lock (sql.go:3546-3558). The
+# driver.Result contract (database/sql/driver/driver.go:316-325) describes the
+# values a finished query produced, so this is pure. Drivers that do I/O in
+# LastInsertId would break the contract, not the stub.
+effects (database/sql.Result).LastInsertId pure
+effects (database/sql.Result).RowsAffected pure
+
+# database/sql row and rows types. Row.Scan (sql.go:3486-3530) reads the next
+# row and closes the rows (defer r.rows.Close). Rows.Next reads from the
+# driver. Rows.Scan converts the current row's values, and Rows.Close releases
+# the connection. These touch the database, so they are db. Rows.Err
+# (sql.go:3136-3145) and Row.Err (sql.go:3527-3529) return stored errors and
+# are pure.
+effects (*database/sql.Row).Scan db
+effects (*database/sql.Row).Err pure
+effects (*database/sql.Rows).Next db
+effects (*database/sql.Rows).Scan db
+effects (*database/sql.Rows).Close db
+effects (*database/sql.Rows).Err pure
+
+# io/fs getters. FileInfo describes a file as of the Stat call (io/fs/fs.go:168-
+# 172), so its getters read memory. DirEntry.Name, IsDir and Type return values
+# fixed when the directory was read (fs/fs.go:103-124). DirEntry.Info is NOT
+# stubbed: it calls lstat again (fs.go:122), so its effect is fs.
+effects (io/fs.FileInfo).Name pure
+effects (io/fs.FileInfo).Size pure
+effects (io/fs.FileInfo).Mode pure
+effects (io/fs.FileInfo).ModTime pure
+effects (io/fs.FileInfo).IsDir pure
+effects (io/fs.FileInfo).Sys pure
+effects (io/fs.DirEntry).Name pure
+effects (io/fs.DirEntry).IsDir pure
+effects (io/fs.DirEntry).Type pure
+
+# http.ResponseWriter.Header returns the header map that WriteHeader will send
+# (net/http/server.go:111-117). It does not write to the connection, so it is
+# pure.
+effects (net/http.ResponseWriter).Header pure
+
+# http.ResponseWriter.Write and WriteHeader send the response to the connection
+# (net/http/server.go:140 and 160, Go 1.26.9). The interface does not name the
+# implementation, but every implementation writes to the connection, so both are
+# net. A net/http handler that calls them is not pure.
+effects (net/http.ResponseWriter).Write net
+effects (net/http.ResponseWriter).WriteHeader net
+
+# http.Flusher.Flush (server.go:176) and http.Hijacker.Hijack (server.go:206)
+# operate on the connection of a response writer, so they are net.
+effects (net/http.Flusher).Flush net
+effects (net/http.Hijacker).Hijack net
+
+# The bodies of net/http messages are the network data (Go 1.26.9). The
+# Request.Body field is the request's body: for server requests the connection,
+# which the Server closes (net/http/request.go:174-188); a client request's body
+# may be an in-memory reader, which is then over-approximated. The Response.Body
+# field is the response stream, read on demand from the network connection
+# (net/http/response.go:55-72). A method called on either field, and a reader
+# that is built from one (json.NewDecoder(r.Body)), is net; see
+# docs/reference/stubs.md#field-sources.
+effects field:(net/http.Request).Body net
+effects field:(net/http.Response).Body net
+
+# http.Error writes the header and the message to w (server.go:2321-2339, via
+# w.Header, w.WriteHeader and fmt.Fprintln to w). NotFound calls Error with 404
+# (server.go:2342). Redirect writes the Location header and a body through w
+# (server.go:2387-2440). All three are net only: they do not open files.
+effects net/http.Error net
+effects net/http.NotFound net
+effects net/http.Redirect net
+
+# http.ServeFile opens the named file through Dir.Open, which calls os.Open
+# (fs.go:815-826, fs.go:78-92), and writes the response (fs). The file reader is
+# the file system's, so it is fs as well as net.
+effects net/http.ServeFile fs,net
+
+# http.ServeContent writes the response and copies from content, an io.ReadSeeker
+# argument (fs.go:246, io.CopyN at fs.go:430). The reader's effects belong to the
+# caller and are not known here, so they are unknown. ServeFileFS opens an fs.FS
+# (fs.go:849), an interface, so it is unknown as well.
+effects net/http.ServeContent net,unknown
+effects net/http.ServeFileFS net,unknown
 
 ## ---- errors rules (errset) -----------------------------------------------
 
@@ -63,3 +308,57 @@ errors strconv.ParseUint type:strconv.NumError
 errors strconv.ParseBool type:strconv.NumError
 # net/url.Parse: url.go:399-411 wraps every failure in &Error{"parse", ...}.
 errors net/url.Parse type:net/url.Error
+
+# context.Context.Err: the two sentinels named in the interface contract
+# (context/context.go:110-115). Its errors are one of the two, by contract.
+errors (context.Context).Err context.Canceled,context.DeadlineExceeded
+# context.Cause (context/context.go:288-306): it returns c.Err() when c is not
+# done (the two sentinels, by the Err contract), and otherwise the cause that
+# WithCancelCause or a deadline or timeout variant recorded. A cause given to
+# WithCancelCause is an arbitrary error, so the set is the two sentinels plus
+# opaque. Cause returns nil before c is done; nil is not an error variant.
+errors context.Cause context.Canceled,context.DeadlineExceeded,?
+
+# database/sql (sql.go). Row.Scan returns ErrNoRows when there is no row
+# (sql.go:3513, the "return ErrNoRows" of Row.Scan), r.err or rows.Err (driver
+# errors, opaque), and the scan error (opaque).
+errors (*database/sql.Row).Scan database/sql.ErrNoRows,?
+# Rows.Scan has no errors rule, on purpose: it never returns ErrNoRows. Its
+# result is rs.lasterr, the closed-rows error or a conversion error (Scan at
+# sql.go:3365-3380, scanLocked after it), so its set is opaque, as for any call
+# without a rule. Only Row.Scan above names ErrNoRows.
+# Rows.Err returns the context error that stopped the iteration (sql.go:3011-3020,
+# ctx.Err()) or a driver error.
+errors (*database/sql.Rows).Err context.Canceled,context.DeadlineExceeded,?
+# Tx.Commit returns ErrTxDone when the transaction is finished, and tx.ctx.Err()
+# when the transaction's context ended (sql.go:2287-2300). Rollback returns
+# ErrTxDone or a driver error (sql.go:2358-2359).
+errors (*database/sql.Tx).Commit database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?
+errors (*database/sql.Tx).Rollback database/sql.ErrTxDone,?
+
+# Writers that never fail (mustuse reads these: a discarded call of a writer
+# whose error set is empty is not reported). Each rule was checked against the
+# Go 1.26.9 source under $GOROOT/src (paths relative to it).
+#
+# bytes.Buffer: the doc says err is always nil (bytes/buffer.go:190-192 for
+# Write, 202-204 for WriteString, 299-301 for WriteByte, 313-315 for WriteRune),
+# and every return statement returns nil or a nil-error pair (buffer.go:199,
+# 211, 310, 321 and 329). Its panic on a too-large buffer is not an error.
+errors (*bytes.Buffer).Write none
+errors (*bytes.Buffer).WriteString none
+errors (*bytes.Buffer).WriteByte none
+errors (*bytes.Buffer).WriteRune none
+
+# strings.Builder: "Write always returns len(p), nil" (strings/builder.go:85-86),
+# "The returned error is always nil" (93-94), "It returns the length of r and a
+# nil error" (101-102) and "It returns the length of s and a nil error"
+# (110-111); the returns are at builder.go:90, 98, 107 and 115.
+errors (*strings.Builder).Write none
+errors (*strings.Builder).WriteString none
+errors (*strings.Builder).WriteByte none
+errors (*strings.Builder).WriteRune none
+
+# hash.Hash: its Write comes from the embedded io.Writer, and the interface
+# documents "It never returns an error." (hash/hash.go:27-28). The rule names
+# the interface the value has; errset looks it up by the receiver's static type.
+errors (hash.Hash).Write none

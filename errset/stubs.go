@@ -19,7 +19,9 @@ package errset
 
 import (
 	"fmt"
+	"go/ast"
 	"go/types"
+	"strconv"
 	"strings"
 
 	"github.com/faintghost/effectgo/internal/stubs"
@@ -97,10 +99,10 @@ func parseStubFile(path string) ([]stubRule, error) {
 	return parseErrorRules(rules)
 }
 
-// loadStubs parses the stub files named by -stubs (or EFFECTGO_STUBS) and
+// loadStubs parses the stub files of this package (see stubs.RulesForPass) and
 // resolves them against this package's import graph.
 func (p *pkgState) loadStubs() error {
-	rules, err := stubs.Load(stubs.Paths())
+	rules, err := stubs.RulesForPass(p.pass)
 	if err != nil {
 		return err
 	}
@@ -108,6 +110,15 @@ func (p *pkgState) loadStubs() error {
 	if err != nil {
 		return err
 	}
+	var statusRules []statusRule
+	p.loadStatusFuncs(rules)
+	for _, r := range rules {
+		if r.Verb == stubs.VerbStatus && r.Target.Name == "" {
+			code, _ := strconv.Atoi(r.Value) // checked by internal/stubs
+			statusRules = append(statusRules, statusRule{pkg: r.Target.Pkg, typ: r.Target.Type, code: code})
+		}
+	}
+	p.loadStatusStubs(statusRules)
 	p.stubs = map[string]errSet{}
 	for _, r := range errRules {
 		set := errSet{}
@@ -129,6 +140,9 @@ func (p *pkgState) loadStubs() error {
 // targetKey of the function it names; pointer receivers share the key of the
 // value receiver, as targetKey does.
 func (p *pkgState) targetKeyOf(t stubs.Target) string {
+	if t.TypeOnly {
+		return t.Pkg + "." + t.Type // a named func type: the key of its type name
+	}
 	if !t.Method {
 		return t.Pkg + "." + t.Name
 	}
@@ -203,7 +217,7 @@ func (p *pkgState) stubVariant(t stubToken) (Variant, error) {
 		}
 		return identityVariant(t), nil
 	}
-	v, ok := variantFromObject(obj, t.kind)
+	v, ok := p.variantFromObject(obj, t.kind)
 	if !ok {
 		return Variant{}, fmt.Errorf("%s is not a %s", t.qual, map[string]string{
 			KindSentinel: "sentinel error variable",
@@ -222,17 +236,36 @@ func identityVariant(t stubToken) Variant {
 	case KindSentinel:
 		return Variant{Key: t.qual, Name: short, Kind: KindSentinel}
 	case KindType:
-		return Variant{Key: t.qual, Name: short, Kind: KindType}
+		// Its methods are unknown, so its status is too.
+		return Variant{Key: t.qual, Name: short, Kind: KindType, DynamicStatus: true}
 	default:
 		return Variant{Key: ifacePrefix + t.qual, Name: "some " + short, Kind: KindIface}
 	}
 }
 
+// shortPkg is the package name a path usually declares: its last element, or
+// the element before a major-version suffix (".../pgx/v5" is "pgx"). It is the
+// name the resolved variants use (types.Package.Name), so the two agree.
 func shortPkg(path string) string {
-	if i := strings.LastIndexByte(path, '/'); i >= 0 {
-		return path[i+1:]
+	elems := strings.Split(path, "/")
+	last := elems[len(elems)-1]
+	if len(elems) > 1 && isMajorVersion(last) {
+		return elems[len(elems)-2]
 	}
-	return path
+	return last
+}
+
+// isMajorVersion reports whether a path element is a major-version suffix: v2, v10.
+func isMajorVersion(s string) bool {
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	for _, c := range s[1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // targetKey is the stub key of a function or method (origin object).
@@ -267,10 +300,87 @@ func (p *pkgState) stubSet(f *types.Func) (errSet, bool) {
 	return s, ok
 }
 
+// stubSetVia is stubSet for a method called on a value of static type recv. A
+// method that an interface gets by embedding (hash.Hash gets Write from
+// io.Writer) names the embedded interface as its receiver, so a stub on the
+// interface the value has, "errors (hash.Hash).Write", is looked up by recv too.
+// The interfaces that recv embeds are searched as well: a hash.Hash32 is a
+// hash.Hash, so the contract of hash.Hash.Write holds for it. recv may be nil,
+// which gives stubSet.
+func (p *pkgState) stubSetVia(f *types.Func, recv types.Type) (errSet, bool) {
+	if s, ok := p.stubSet(f); ok {
+		return s, true
+	}
+	if recv == nil || f == nil || !isInterfaceMethod(f) || len(p.stubs) == 0 {
+		return nil, false
+	}
+	return p.stubInInterfaces(recv, f.Name(), 0)
+}
+
+// stubInInterfaces looks up the stub of method name on the named type t, then on
+// the named interfaces that t embeds, recursively (depth bounds the walk).
+func (p *pkgState) stubInInterfaces(t types.Type, name string, depth int) (errSet, bool) {
+	t = types.Unalias(t)
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = types.Unalias(ptr.Elem())
+	}
+	named, ok := t.(*types.Named)
+	if !ok || named.Obj().Pkg() == nil || depth > 8 {
+		return nil, false
+	}
+	if s, ok := p.stubs[objKey(named.Obj())+"."+name]; ok {
+		return s, true
+	}
+	iface, ok := named.Underlying().(*types.Interface)
+	if !ok {
+		return nil, false
+	}
+	for i := 0; i < iface.NumEmbeddeds(); i++ {
+		if s, ok := p.stubInInterfaces(iface.EmbeddedType(i), name, depth+1); ok {
+			return s, true
+		}
+	}
+	return nil, false
+}
+
 // stubLabel is the witness label of a stub-provided variant.
 func stubLabel(f *types.Func) string {
 	if f.Type().(*types.Signature).Recv() != nil {
 		return "(" + recvTypeName(f) + ")." + f.Name() + " [stub]"
 	}
 	return objDisplay(f) + " [stub]"
+}
+
+// dynamicStubSet is the stub error set of a call through a value that a stub
+// names: a package-level variable of func type ("pkgpath.Var"), or a value of
+// a named func type ("(pkgpath.Type)"). The variable takes precedence.
+func (p *pkgState) dynamicStubSet(info *types.Info, call *ast.CallExpr) (errSet, string, bool) {
+	if len(p.stubs) == 0 {
+		return nil, "", false
+	}
+	var id *ast.Ident
+	switch f := unparen(call.Fun).(type) {
+	case *ast.Ident:
+		id = f
+	case *ast.SelectorExpr:
+		if info.Selections[f] == nil { // qualified identifier pkg.Var
+			id = f.Sel
+		}
+	}
+	if id != nil {
+		if v, ok := info.Uses[id].(*types.Var); ok && v.Pkg() != nil && v.Parent() == v.Pkg().Scope() {
+			if s, ok := p.stubs[v.Pkg().Path()+"."+v.Name()]; ok {
+				return s, v.Name() + " [stub]", true
+			}
+		}
+	}
+	if n, ok := types.Unalias(info.TypeOf(call.Fun)).(*types.Named); ok {
+		o := n.Origin().Obj()
+		if o.Pkg() != nil {
+			if s, ok := p.stubs[o.Pkg().Path()+"."+o.Name()]; ok {
+				return s, "(" + o.Name() + ") call [stub]", true
+			}
+		}
+	}
+	return nil, "", false
 }

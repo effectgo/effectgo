@@ -1,0 +1,3 @@
+# Stubs for TestFuncValueStubs in errset (test only).
+errors funcvals.Gate funcvals.ErrBoom
+errors (funcvals.Action) funcvals.ErrBoom

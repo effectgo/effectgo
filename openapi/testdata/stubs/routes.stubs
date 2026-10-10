@@ -1,0 +1,5 @@
+# Route rules for the test package fake, which has the shape of fuego's routes.
+route fake.Get GET 1 2
+route fake.Post POST 1 2
+route fake.Put PUT 1 2
+route fake.Delete DELETE 1 2

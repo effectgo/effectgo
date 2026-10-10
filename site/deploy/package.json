@@ -1,0 +1,9 @@
+{
+  "name": "effectgo-docs-deploy",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "cf": "latest",
+    "wrangler": "latest"
+  }
+}

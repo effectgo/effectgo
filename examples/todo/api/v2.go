@@ -47,8 +47,9 @@ func v2Update(svc *domain.Service) func(fuego.ContextWithBody[updateReq]) result
 	}
 }
 
-func v2Delete(svc *domain.Service) func(fuego.ContextNoBody) result.Result[struct{}] {
-	return func(c fuego.ContextNoBody) result.Result[struct{}] {
-		return result.AndThen(result.From(parseID(c)), svc.DeleteR)
+func v2Delete(svc *domain.Service) func(fuego.ContextNoBody) result.Result[deleted] {
+	return func(c fuego.ContextNoBody) result.Result[deleted] {
+		r := result.AndThen(result.From(parseID(c)), svc.DeleteR)
+		return result.Map(r, func(struct{}) deleted { return deleted{} })
 	}
 }

@@ -13,6 +13,21 @@ import (
 	"github.com/faintghost/effectgo/internal/stubs"
 )
 
+// TestMain clears EFFECTGO_STUBS and selects an explicit empty stub file: the
+// tests state their stub files themselves (TestStubsEnvFallback sets the
+// variable for its own run). Without -stubs, the zero configuration would load
+// the shipped stdlib.stubs, which changes the expected results, e.g. (error).Error
+// is pure.
+func TestMain(m *testing.M) {
+	os.Unsetenv(stubs.Env)
+	none, err := filepath.Abs("testdata/stubs/none.stubs")
+	if err != nil {
+		panic(err)
+	}
+	stubs.Flag = none
+	os.Exit(m.Run())
+}
+
 func TestSamePackageTransitive(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "chain")
 }
@@ -103,6 +118,19 @@ func TestMalformedStubIsHardError(t *testing.T) {
 	}
 }
 
+// TestClosureAttribution covers func literals: a literal is charged to the
+// declared function only when that function runs it (testdata/src/closure).
+func TestClosureAttribution(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "closure")
+}
+
+// TestFuncValueStubs covers stub rules for a named func type (applies to every
+// call through the type) and for a package-level func variable.
+func TestFuncValueStubs(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/funcvals.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "funcvals")
+}
+
 // setStubs sets the shared -stubs value (internal/stubs.Flag) for the test.
 func setStubs(t *testing.T, value string) {
 	t.Helper()
@@ -128,4 +156,61 @@ func absPath(t *testing.T, rel string) string {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// TestWitnessFlag: -witness prints "witness of <F>: <effect> via <chain>" for
+// each effect; the chain starts below the function itself.
+func TestWitnessFlag(t *testing.T) {
+	old := effects.Analyzer.Flags.Lookup("witness").Value.String()
+	if err := effects.Analyzer.Flags.Set("witness", "true"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = effects.Analyzer.Flags.Set("witness", old) })
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "witness")
+}
+
+// TestInteractWitness: witness chains where a literal reaches the effect through
+// parameter polymorphism, and where a stub on a named func type or on a func
+// variable supplies the effect.
+func TestInteractWitness(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/interact.stubs"))
+	setFlag(t, "witness", "true")
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "interact")
+}
+
+// TestAllShippedStubFilesViaEnv: TestMain clears EFFECTGO_STUBS, so this sets it
+// for its own run to the four shipped files together. Loading must succeed (no
+// malformed line, no duplicate target across files).
+func TestAllShippedStubFilesViaEnv(t *testing.T) {
+	setStubs(t, "")
+	t.Setenv("EFFECTGO_STUBS", strings.Join([]string{
+		absPath(t, "../stubs/stdlib.stubs"),
+		absPath(t, "../stubs/pgx.stubs"),
+		absPath(t, "../stubs/gin.stubs"),
+		absPath(t, "../stubs/huma.stubs"),
+	}, ","))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "shipped")
+}
+
+// TestShippedHTTPRules checks the net/http rules of stubs/stdlib.stubs
+// (testdata/src/httpw).
+func TestShippedHTTPRules(t *testing.T) {
+	setStubs(t, absPath(t, "../stubs/stdlib.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "httpw")
+}
+
+// TestSuppressed covers the root rule (testdata/src/suppress and suppressdep):
+// a violation whose only source is a violating callee is not reported, and the
+// other cases (no contract, an allowing contract, an interface, a stub, a
+// direct source, a second callee that does not violate) are reported.
+func TestSuppressed(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/suppress.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "suppress")
+}
+
+// TestSuppressedAll: -all reports the callers too.
+func TestSuppressedAll(t *testing.T) {
+	setStubs(t, absPath(t, "testdata/stubs/suppress.stubs"))
+	setFlag(t, "all", "true")
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "suppressall")
 }

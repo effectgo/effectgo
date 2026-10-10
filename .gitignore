@@ -1,1 +1,12 @@
 bin/
+
+# Documentation site (site/) build and tool output. The Node toolchain lives
+# in site/ only; site/.gitignore covers the rest of its generated files.
+site/node_modules/
+site/dist/
+site/.astro/
+site/.nimbus/
+site/.lint-docs/
+
+# cf CLI caches account info here; never commit it.
+.cloudflare/

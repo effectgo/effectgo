@@ -1,0 +1,4 @@
+# Stubs for TestInteractWitness (test only). A named func type with a stubbed
+# effect, and a package-level func variable with a pure stub.
+effects (interact.Clock) time
+effects interact.Hook pure

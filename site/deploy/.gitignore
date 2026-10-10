@@ -1,0 +1,4 @@
+public/
+node_modules/
+.cloudflare/
+pnpm-lock.yaml
