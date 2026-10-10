@@ -98,6 +98,7 @@ flock /root/pp/go-rust/realworld-eval/heavy.lock systemd-run --scope -q -p Memor
 | `signature/` | `effectgo sig` |
 | `openapi/`, `adapters/gin/`, `adapters/huma/` | the OpenAPI and HTTP checks |
 | `internal/stubs/`, `internal/goroot/` | stub parser and discovery; standard-library detection |
+| `internal/dirparse/` | the keyword and arguments of an `//effectgo:` comment, read the same way by every analyzer |
 | `internal/cmd/stubdoc/` | generates `docs/reference/stub-coverage.md` from the shipped stubs; its test fails when the page is stale |
 | `stubs/` | shipped stub files, embedded; `go generate ./stubs` regenerates the coverage page |
 | `plugin/` | golangci-lint module plugin |
@@ -134,7 +135,7 @@ Architecture: [docs/design/architecture.md](docs/design/architecture.md).
 
 ### Adding a directive
 
-Read it in the analyzer's directive parser. An analyzer must skip keywords it does not own, and report unknown keywords. A keyword is read only at the placements its analyzer uses. The placement table is `placed` in `directive/directive.go`, and it mirrors the readers: a new reader, or a new placement for a keyword, changes that table. Update [docs/reference/directives.md](docs/reference/directives.md) and add a `testdata/` case for the diagnostic. `cmd/effectgo/inert_test.go` pins one diagnostic per misplaced probe line, so a change that adds or repeats one fails there.
+Read it with `internal/dirparse.Parse`, the one keyword rule that every analyzer uses: the first word after the prefix, and the arguments up to the first word that starts with `//`. Do not split the comment text yourself. An analyzer must skip keywords it does not own, report unknown keywords, and report an argument that its keyword does not take. A keyword is read only at the placements its analyzer uses. The placement table is `placed` in `directive/directive.go`, and it mirrors the readers: a new reader, or a new placement for a keyword, changes that table. Update [docs/reference/directives.md](docs/reference/directives.md) and add a `testdata/` case for the diagnostic. `cmd/effectgo/inert_test.go` pins one diagnostic per misplaced probe line, so a change that adds or repeats one fails there.
 
 ### Documentation rules
 

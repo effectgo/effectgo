@@ -62,6 +62,7 @@ The flags are `-effects.all` and `-errset.all`; each one turns the rule off for 
 | `unknown effectgo directive "<kw>"` | a keyword the effects analyzer does not know |
 | `//effectgo:package is only valid in a package doc comment` | a package directive elsewhere |
 | `conflicting package directive "<d>"; keeping "<first>"` | two package directives in one package |
+| `effectgo:<kw> on <Name> checks nothing: an interface contract covers the methods it declares, and <Name> declares none` | a `pure` or `allow` on an interface type that declares no method of its own (it only embeds); reported at the type name |
 
 Example, from `examples/layers`:
 
@@ -87,6 +88,7 @@ Effect names and their roots are in [Effects](effects.md).
 | `handler <F> may return fresh error <new@…><via>, which errmap <M> does not map (errors.Is and errors.As cannot match it) → HTTP 500` | the same, for a fresh `new@` variant (silenced by `-errset.ignoreopaque`) |
 | `handler <F> may return an unresolved <param:i> error<via>, which errmap <M> does not map → HTTP 500` | a handler returns the error of an unresolved parameter |
 | `effectgo:errors: cannot resolve "<name>" in <owner>` | an item of an errors directive does not resolve |
+| `effectgo:errors on <Name> checks nothing: an interface contract covers the methods it declares, and <Name> declares none` | an errors directive on an interface type that declares no method of its own (it only embeds); reported at the type name |
 | `effectgo:errors on <F> checks nothing: it has no error result` | an errors directive on a function with no error set: no error result, and no returned func literal with one |
 | `effectgo:handler on <F> checks nothing: it has no error result; put the directive on the inner function that returns error (see docs/guide/http-checks.md#nethttp-handlers)` | a handler directive on a function with no error set, such as a `func(w, r)` handler |
 | `effectgo:errmap: <F> must have signature func(error) error` | an errmap has the wrong signature |
@@ -114,6 +116,7 @@ domain/service.go:42:19: witness of Service.Update: domain.ErrNotFound via Store
 |---|---|
 | `result of <callee> is discarded; handle it or assign to _` | a call statement discards an error result |
 | `result of <callee> is discarded: <T> is //effectgo:mustuse; handle it or assign to _` | a call statement discards a value of a `//effectgo:mustuse` type; `<T>` is the type, for example `*a.Charge` |
+| `//effectgo:mustuse takes no arguments` | the directive has a word after the keyword; a trailing `// comment` is not an argument. The type is still must-use |
 | `effectgo:mustuse on <F> checks nothing: it has no results; //effectgo:mustuse marks a named type` | the directive is on a function with no results |
 | `effectgo:mustuse on <F> checks nothing: //effectgo:mustuse marks a named type, not a function; put it on the named type that <F> returns` | the directive is on a function with results |
 | `<Name>: //effectgo:mustuse applies to a defined type, not an alias; put it on the type the alias names` | the directive is on an alias |
@@ -141,6 +144,7 @@ The two forms tell apart the error case (the callee returns an error that is not
 |---|---|
 | `missing cases in type switch on <I>: <V1>, <V2>` | a type switch on a sealed interface has no `default` and misses a variant |
 | `missing cases in switch on <E>: <C1>, …` | an expression switch on a sealed enum has no `default` and misses a constant |
+| `//effectgo:sealed takes no arguments` | the directive has a word after the keyword; a trailing `// comment` is not an argument. The interface or enum is still sealed |
 | `sealed interface <I> must have an unexported method` | `//effectgo:sealed` on an interface without one |
 | `<Name>: //effectgo:sealed applies to interfaces and to integer or string types` | the directive is on another kind of declaration |
 
@@ -178,6 +182,7 @@ The directive analyzer reports a `//effectgo:` directive that no analyzer reads 
 Rules:
 
 - A directive that an analyzer reads at its place is silent. So is a directive that another analyzer reports itself (`package` on a function, `pure` in a package doc comment, `errmap` on an interface): that analyzer's message is the only one.
+- A directive is placed by its keyword, read as the words after the prefix up to the first word that starts with `//`. A keyword with an argument it does not take is placed like the bare keyword; the analyzer that reads it reports the argument (see [Directives](directives.md#placement-rules-that-are-easy-to-miss)).
 - The spacing check reads every comment in the file, whatever it sits on. It needs a directive keyword right after `effectgo:`; prose that mentions `effectgo:` is not reported.
 - The analyzer has no flags. It runs in the standalone run, under `go vet`, and in the golangci-lint plugin.
 

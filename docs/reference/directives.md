@@ -7,6 +7,8 @@ A directive is a comment that starts with `//effectgo:` (no space after the slas
 
 Every directive is a contract: the analyzer infers what the code can do, and a directive states what it must not exceed. A violation is a diagnostic at the declaration. For the workflow, see [Contract mode](../guide/contract-mode.md).
 
+The keyword is the first word after `//effectgo:`, and the words after it are its arguments, up to the first word that starts with `//`. So a trailing comment is not an argument: `//effectgo:pure // checked by CI` is the `pure` directive, and every analyzer reads it so. A word after a keyword that takes none is an argument error (`//effectgo:pure foo` is reported as `//effectgo:pure takes no arguments`, and the directive still applies). A keyword glued to a comment, as in `//effectgo:mustuse//note`, has no space before the `//`, so the word is not a known keyword and is reported as unknown.
+
 ## Summary
 
 | Directive | Analyzer | Where | Checks |
@@ -133,6 +135,14 @@ A directive on an interface method (or on the interface type) is a contract for 
 ```
 
 Reported at the method's name when it is declared in the analyzed package, or at the type's name when the method is promoted.
+
+A type-level contract (`//effectgo:pure`, `//effectgo:allow` or `//effectgo:errors` on the interface type) applies to the methods the interface declares. An interface that only embeds other interfaces declares none, so its type-level contract checks nothing. The analyzer that reads the keyword reports it at the type's name:
+
+```text
+effectgo:pure on Base checks nothing: an interface contract covers the methods it declares, and Base declares none
+```
+
+The embedded interfaces keep their own contracts, and the embedding interface does not inherit them. Declare a method on the interface, or put the contract on the embedded interface.
 
 ## Errset directives
 
@@ -268,6 +278,8 @@ Placed on a named type declaration. A call statement that discards a value of th
 type Receipt struct{ ID string }
 ```
 
+The directive may have a trailing comment. An argument after the keyword is reported as `//effectgo:mustuse takes no arguments`, and the type is still must-use.
+
 On a function, the directive is not read, because it marks a named type. The mustuse analyzer reports it, with one of these messages:
 
 ```text
@@ -283,6 +295,8 @@ Two uses:
 
 - on an interface, to make it sealed. The interface must declare an unexported method of its own package (the marker method that only that package can implement); without one the directive is a diagnostic. An interface with an unexported method is sealed even without the directive;
 - on a named integer or string type, which makes it an enum: its variants are the distinct values of its package-level constants.
+
+A trailing comment after the keyword is allowed. An argument after it is reported as `//effectgo:sealed takes no arguments`, and the interface or enum is still sealed.
 
 ```go
 //effectgo:sealed
