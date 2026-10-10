@@ -21,10 +21,14 @@ import (
 	"golang.org/x/tools/go/types/typeutil"
 
 	"github.com/faintghost/effectgo/errset"
+	"github.com/faintghost/effectgo/internal/dirparse"
 )
 
 // Directive marks a named type as must-use.
 const Directive = "//effectgo:mustuse"
+
+// keyword is the directive keyword of Directive.
+const keyword = "mustuse"
 
 // isMustUse is exported as an object fact on the *types.TypeName of a marked
 // type, so that packages importing the defining package can see the mark.
@@ -66,6 +70,7 @@ func (f *errorFree) String() string { return "errorfree(" + f.Name + ")" }
 
 func run(pass *analysis.Pass) (any, error) {
 	exportMarkedTypes(pass)
+	checkFuncDirectives(pass)
 	res, _ := pass.ResultOf[errset.Analyzer].(errset.Result)
 	for fn := range res.NoErrors {
 		if fn.Pkg() == pass.Pkg && !errset.IsStd(pass.Fset, pass.Pkg) && hasErrorResult(fn.Type().(*types.Signature).Results()) {
@@ -245,13 +250,19 @@ func exportMarkedTypes(pass *analysis.Pass) {
 			}
 			for _, spec := range gd.Specs {
 				ts := spec.(*ast.TypeSpec)
-				marked := hasDirective(ts.Doc) || (len(gd.Specs) == 1 && hasDirective(gd.Doc))
-				if !marked {
+				marks := markComments(ts.Doc)
+				if len(gd.Specs) == 1 {
+					marks = append(marks, markComments(gd.Doc)...)
+				}
+				if len(marks) == 0 {
 					continue
 				}
 				obj, _ := pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
 				if obj == nil {
 					continue
+				}
+				for _, c := range marks {
+					reportArgs(pass, c)
 				}
 				if obj.IsAlias() {
 					pass.Reportf(ts.Name.Pos(), "%s: %s applies to a defined type, not an alias; put it on the type the alias names", ts.Name.Name, Directive)
@@ -265,16 +276,66 @@ func exportMarkedTypes(pass *analysis.Pass) {
 	}
 }
 
-func hasDirective(cg *ast.CommentGroup) bool {
-	if cg == nil {
-		return false
-	}
-	for _, c := range cg.List {
-		if strings.TrimSpace(c.Text) == Directive {
-			return true
+// checkFuncDirectives reports the directive on a function declaration. It marks a
+// named type, and no analyzer reads it on a function, so on a function it checks
+// nothing.
+func checkFuncDirectives(pass *analysis.Pass) {
+	for _, file := range pass.Files {
+		for _, decl := range file.Decls {
+			fd, ok := decl.(*ast.FuncDecl)
+			if !ok || len(markComments(fd.Doc)) == 0 {
+				continue
+			}
+			name := declName(fd)
+			if fd.Type.Results.NumFields() == 0 {
+				pass.Reportf(fd.Name.Pos(), "effectgo:mustuse on %s checks nothing: it has no results; %s marks a named type", name, Directive)
+				continue
+			}
+			pass.Reportf(fd.Name.Pos(), "effectgo:mustuse on %s checks nothing: %s marks a named type, not a function; put it on the named type that %s returns", name, Directive, name)
 		}
 	}
-	return false
+}
+
+// declName names a function declaration as the diagnostics show it: F, or T.M for
+// a method of T.
+func declName(fd *ast.FuncDecl) string {
+	if fd.Recv == nil || len(fd.Recv.List) != 1 {
+		return fd.Name.Name
+	}
+	t := fd.Recv.List[0].Type
+	if star, ok := t.(*ast.StarExpr); ok {
+		t = star.X
+	}
+	if ix, ok := t.(*ast.IndexExpr); ok {
+		t = ix.X
+	}
+	if id, ok := t.(*ast.Ident); ok {
+		return id.Name + "." + fd.Name.Name
+	}
+	return fd.Name.Name
+}
+
+// markComments returns the comments of cg that carry the mustuse keyword. The keyword
+// is read as dirparse reads it, so a trailing // comment after it is not an argument.
+func markComments(cg *ast.CommentGroup) []*ast.Comment {
+	if cg == nil {
+		return nil
+	}
+	var out []*ast.Comment
+	for _, c := range cg.List {
+		if kw, _, ok := dirparse.Parse(c.Text); ok && kw == keyword {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// reportArgs reports a mark with arguments, such as "//effectgo:mustuse extra". The
+// mark still applies: the argument is an error, as it is for pure in effects.
+func reportArgs(pass *analysis.Pass, c *ast.Comment) {
+	if _, args, _ := dirparse.Parse(c.Text); len(args) > 0 {
+		pass.Reportf(c.Pos(), "%s takes no arguments", Directive)
+	}
 }
 
 func isAllowed(fn *types.Func, allow map[string]bool) bool {

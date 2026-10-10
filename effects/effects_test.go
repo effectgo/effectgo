@@ -68,6 +68,13 @@ func TestInterfaceContracts(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "ifacedef", "ifaceuse")
 }
 
+// TestTypeContractWithoutMethods: a type-level contract on an interface that declares
+// no method of its own checks nothing, and is reported. One that declares a method is
+// silent.
+func TestTypeContractWithoutMethods(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "emptyiface")
+}
+
 // TestPolymorphism covers placeholders for calls through func parameters,
 // substituted at call sites within a package and across packages, including
 // composition through two levels.

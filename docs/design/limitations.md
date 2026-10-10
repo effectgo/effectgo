@@ -123,7 +123,7 @@ These are findings of the example modules, kept on purpose so that the examples 
 - **[by reading]** Relative `stubs` paths in the plugin settings resolve against the module root of the working directory, not against the config file.
 - **[verified]** The zero configuration loads all five shipped stub files. Results differ from a `stdlib.stubs`-only run.
 - **[by reading]** The Go-proxy install route (`version: <tag>` in `.custom-gcl.yml`) was not verified; the module is private and was only built from a local path.
-- **[verified]** The plugin reports only the four analyzers' diagnostics. The report flags, witnesses and the HTTP subcommands are not available in the editor.
+- **[verified]** The plugin reports only the five analyzers' diagnostics. The report flags, witnesses and the HTTP subcommands are not available in the editor.
 - **[by reading]** Editors were not run. The VS Code settings, the problem matcher, Neovim's working directory and Windows paths were not observed.
 
 ## Not implemented

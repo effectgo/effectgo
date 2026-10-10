@@ -3,9 +3,9 @@ title: Editor integration
 description: Run effectgo diagnostics in VS Code and Neovim through a golangci-lint v2 plugin, or through go vet; plugin settings, stub behaviour, verification status and known limits.
 ---
 
-effectgo's four analyzers can report while you write code. They run through golangci-lint v2, which has a module plugin system, and the editor recipes call golangci-lint. `go vet` with the effectgo vettool is the other route, and needs no plugin.
+effectgo's five analyzers can report while you write code. They run through golangci-lint v2, which has a module plugin system, and the editor recipes call golangci-lint. `go vet` with the effectgo vettool is the other route, and needs no plugin.
 
-The plugin exposes `effects`, `errset`, `mustuse` and `exhaustive`. It does not expose the report flags (`-effects.report`, `-errset.witness`, …) or the HTTP subcommands: golangci-lint reports diagnostics only.
+The plugin exposes `effects`, `errset`, `mustuse`, `exhaustive` and `directive`. It does not expose the report flags (`-effects.report`, `-errset.witness`, …) or the HTTP subcommands: golangci-lint reports diagnostics only.
 
 ## 1. Build a golangci-lint binary with the plugin
 
@@ -43,7 +43,7 @@ linters:
     custom:
       effectgo:
         type: module
-        description: effectgo analyzers (effects, errset, mustuse, exhaustive)
+        description: effectgo analyzers (effects, errset, mustuse, exhaustive, directive)
         settings: {}
 ```
 

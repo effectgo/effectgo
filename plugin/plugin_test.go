@@ -41,8 +41,8 @@ func TestAnalyzersAndLoadMode(t *testing.T) {
 	for _, a := range as {
 		names = append(names, a.Name)
 	}
-	if got := strings.Join(names, ","); got != "effects,errset,mustuse,exhaustive" {
-		t.Errorf("analyzers = %s, want effects,errset,mustuse,exhaustive (report-only and HTTP analyzers are not exposed)", got)
+	if got := strings.Join(names, ","); got != "effects,errset,mustuse,exhaustive,directive" {
+		t.Errorf("analyzers = %s, want effects,errset,mustuse,exhaustive,directive (report-only and HTTP analyzers are not exposed)", got)
 	}
 	if p.GetLoadMode() != register.LoadModeTypesInfo {
 		t.Errorf("load mode = %q, want %q", p.GetLoadMode(), register.LoadModeTypesInfo)

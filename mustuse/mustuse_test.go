@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestMustUse(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), mustuse.Analyzer, "a", "b", "c", "d")
+	analysistest.Run(t, analysistest.TestData(), mustuse.Analyzer, "a", "b", "c", "d", "fn", "args")
 }
 
 // TestMustUseAllowFlag allows the method (*os.File).Close by its full name. The

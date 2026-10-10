@@ -26,10 +26,15 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/faintghost/effectgo/internal/dirparse"
 )
 
 // Directive marks an interface or an enum type as sealed.
 const Directive = "//effectgo:sealed"
+
+// keyword is the directive keyword of Directive.
+const keyword = "sealed"
 
 // sealedFact is exported on the *types.TypeName of a sealed interface. Pkg is
 // the path of the declaring package, Variants the names of its variant types.
@@ -117,11 +122,18 @@ func exportSealed(pass *analysis.Pass) {
 			}
 			for _, spec := range gd.Specs {
 				ts := spec.(*ast.TypeSpec)
-				directive := hasDirective(ts.Doc) || (len(gd.Specs) == 1 && hasDirective(gd.Doc))
+				marks := markComments(ts.Doc)
+				if len(gd.Specs) == 1 {
+					marks = append(marks, markComments(gd.Doc)...)
+				}
 				obj, _ := pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
 				if obj == nil {
 					continue
 				}
+				for _, c := range marks {
+					reportArgs(pass, c)
+				}
+				directive := len(marks) > 0
 				if obj.IsAlias() {
 					if directive {
 						pass.Reportf(ts.Name.Pos(), "%s: %s applies to a defined type, not an alias; put it on the type the alias names", ts.Name.Name, Directive)
@@ -181,16 +193,28 @@ func exportEnum(pass *analysis.Pass, obj *types.TypeName, named *types.Named) {
 	pass.ExportObjectFact(obj, fact)
 }
 
-func hasDirective(cg *ast.CommentGroup) bool {
+// markComments returns the comments of cg that carry the sealed keyword. The keyword
+// is read as dirparse reads it, so a trailing // comment after it is not an argument.
+func markComments(cg *ast.CommentGroup) []*ast.Comment {
 	if cg == nil {
-		return false
+		return nil
 	}
+	var out []*ast.Comment
 	for _, c := range cg.List {
-		if strings.TrimSpace(c.Text) == Directive {
-			return true
+		if kw, _, ok := dirparse.Parse(c.Text); ok && kw == keyword {
+			out = append(out, c)
 		}
 	}
-	return false
+	return out
+}
+
+// reportArgs reports a sealed directive with arguments, such as "//effectgo:sealed
+// extra". The directive still applies: the argument is an error, as it is for pure in
+// effects.
+func reportArgs(pass *analysis.Pass, c *ast.Comment) {
+	if _, args, _ := dirparse.Parse(c.Text); len(args) > 0 {
+		pass.Reportf(c.Pos(), "%s takes no arguments", Directive)
+	}
 }
 
 // hasOwnUnexportedMethod reports whether iface has an unexported method declared

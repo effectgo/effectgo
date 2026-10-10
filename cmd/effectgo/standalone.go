@@ -11,6 +11,7 @@ import (
 	"golang.org/x/tools/go/analysis/checker"
 	"golang.org/x/tools/go/packages"
 
+	"github.com/faintghost/effectgo/directive"
 	"github.com/faintghost/effectgo/effects"
 	"github.com/faintghost/effectgo/errset"
 	"github.com/faintghost/effectgo/exhaustive"
@@ -27,7 +28,7 @@ import (
 
 // standaloneAnalyzers are the analyzers of the standalone run. signature runs
 // only under effectgo sig.
-var standaloneAnalyzers = []*analysis.Analyzer{effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer}
+var standaloneAnalyzers = []*analysis.Analyzer{effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, directive.Analyzer}
 
 var (
 	includeTests bool

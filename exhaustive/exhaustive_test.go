@@ -8,5 +8,5 @@ import (
 )
 
 func TestExhaustive(t *testing.T) {
-	analysistest.Run(t, analysistest.TestData(), exhaustive.Analyzer, "shape", "client", "enum", "enumuse")
+	analysistest.Run(t, analysistest.TestData(), exhaustive.Analyzer, "shape", "client", "enum", "enumuse", "args")
 }

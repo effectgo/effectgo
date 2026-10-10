@@ -166,7 +166,7 @@ Measured on three real Gin services (static evidence; from the journal). order-m
 
 ## net/http handlers
 
-The checks above read a handler's error set. A `net/http` handler, `func(http.ResponseWriter, *http.Request)`, has no error result, so it has no error set: a `//effectgo:handler` directive on it is accepted and checks nothing. The check needs an inner function that returns an error, and the handler is a thin adapter around it. The dogfood reservation service uses this shape, and it is the recommended pattern:
+The checks above read a handler's error set. A `net/http` handler, `func(http.ResponseWriter, *http.Request)`, has no error result, so it has no error set: a `//effectgo:handler` directive on it is reported, because it checks nothing. The check needs an inner function that returns an error, and the handler is a thin adapter around it. The dogfood reservation service uses this shape, and it is the recommended pattern:
 
 ```go
 // ToHTTPError maps the domain errors that the handlers can return.
@@ -193,7 +193,7 @@ Checked on a small module with this shape: `doGet` with a sentinel the errmap ma
 Three things to remember:
 
 - Write the adapter with the same errmap as the directive. The directive checks one errmap; an adapter that maps with another one is not checked.
-- A directive on a `func(w, r)` handler is silently unchecked. This is recorded in the [backlog](../design/backlog.md).
+- A directive on a `func(w, r)` handler is reported as checking nothing. Move it to the inner function that returns the error.
 - The status of a variant in `-errset.statuses` is what the errmap gives; the status the adapter writes is the adapter's own. Keep them the same.
 
 ## Known false positives

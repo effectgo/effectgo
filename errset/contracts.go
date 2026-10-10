@@ -45,6 +45,11 @@ func (p *pkgState) collectInterfaceContracts() {
 				var typeAllowed []Variant
 				if hasTypeContract {
 					typeAllowed, _ = p.resolveContract(typeDirs, ts.Name.Pos(), ts.Name.Name)
+					if !declaresMethods(it) {
+						// The type-level contract applies to the methods the interface declares.
+						// Without any, it checks nothing: the embedded interfaces carry their own.
+						p.pass.Reportf(ts.Name.Pos(), "effectgo:errors on %s checks nothing: an interface contract covers the methods it declares, and %s declares none", ts.Name.Name, ts.Name.Name)
+					}
 				}
 				for _, field := range it.Methods.List {
 					if len(field.Names) != 1 {
@@ -225,4 +230,15 @@ func (p *pkgState) checkConformance() {
 			}
 		}
 	}
+}
+
+// declaresMethods reports whether an interface type declares a method of its own,
+// rather than only embedding other interfaces.
+func declaresMethods(it *ast.InterfaceType) bool {
+	for _, fld := range it.Methods.List {
+		if len(fld.Names) > 0 {
+			return true
+		}
+	}
+	return false
 }
