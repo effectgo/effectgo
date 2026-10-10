@@ -25,6 +25,7 @@ package effects
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 
 	"golang.org/x/tools/go/types/typeutil"
@@ -77,6 +78,11 @@ func (c *checker) argViaHits(self Step, arg ast.Expr, v stubs.Via) []viaHit {
 	info := c.pass.TypesInfo
 	unknownAt := func() []viaHit {
 		return []viaHit{{EffUnkn, Witness{self, Step{Name: types.ExprString(arg) + "." + v.Method}}}}
+	}
+	// A field source (r.Body, or a local that holds it) has the effects of its
+	// stub rule, whatever the method (see fieldsource.go).
+	if ref, ok := c.fieldArg(arg); ok {
+		return fieldHits(self, ref)
 	}
 	if sel, ok := ast.Unparen(arg).(*ast.SelectorExpr); ok && info.Selections[sel] == nil {
 		if pv := pkgVar(info.Uses[sel.Sel]); pv != nil {
@@ -133,6 +139,7 @@ func (c *checker) argViaHits(self Step, arg ast.Expr, v stubs.Via) []viaHit {
 type localFacts struct {
 	defs map[*types.Var][]ast.Expr // the right-hand side of each assignment; nil when not one-to-one
 	bad  map[*types.Var]bool       // used other than as the base of a selector
+	addr map[*types.Var]bool       // whose address is taken (&v)
 }
 
 // isLocalVar reports whether v is a variable of a function (not a field and not
@@ -147,7 +154,7 @@ func (c *checker) locals() *localFacts {
 		return c.lf
 	}
 	info := c.pass.TypesInfo
-	lf := &localFacts{defs: map[*types.Var][]ast.Expr{}, bad: map[*types.Var]bool{}}
+	lf := &localFacts{defs: map[*types.Var][]ast.Expr{}, bad: map[*types.Var]bool{}, addr: map[*types.Var]bool{}}
 	c.lf = lf
 	varOf := func(id *ast.Ident) *types.Var {
 		if v, ok := info.Defs[id].(*types.Var); ok {
@@ -201,6 +208,12 @@ func (c *checker) locals() *localFacts {
 			case *ast.SelectorExpr:
 				if id, ok := ast.Unparen(n.X).(*ast.Ident); ok && n.Sel.Name != "Reset" && n.Sel.Name != "Init" {
 					allowed[id] = true
+				}
+			case *ast.UnaryExpr:
+				if id, ok := ast.Unparen(n.X).(*ast.Ident); ok && n.Op == token.AND {
+					if v := varOf(id); v != nil {
+						lf.addr[v] = true
+					}
 				}
 			}
 			return true

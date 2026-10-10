@@ -871,6 +871,9 @@ func (c *checker) collectCall(st *fnState, call *ast.CallExpr, plan *litPlan) {
 		}
 	case *types.Func:
 		fn := obj.Origin()
+		if c.methodOfField(st, call) {
+			return // a method called on a field source value (see fieldsource.go)
+		}
 		if effs, ok := c.direct(fn); ok {
 			for _, e := range sortedKeys(effs) {
 				st.offer(e, prepend(st.self, effs[e]))

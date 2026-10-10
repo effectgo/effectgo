@@ -260,6 +260,17 @@ effects (net/http.ResponseWriter).WriteHeader net
 effects (net/http.Flusher).Flush net
 effects (net/http.Hijacker).Hijack net
 
+# The bodies of net/http messages are the network data (Go 1.26.9). The
+# Request.Body field is the request's body: for server requests the connection,
+# which the Server closes (net/http/request.go:174-188); a client request's body
+# may be an in-memory reader, which is then over-approximated. The Response.Body
+# field is the response stream, read on demand from the network connection
+# (net/http/response.go:55-72). A method called on either field, and a reader
+# that is built from one (json.NewDecoder(r.Body)), is net; see
+# docs/reference/stubs.md#field-sources.
+effects field:(net/http.Request).Body net
+effects field:(net/http.Response).Body net
+
 # http.Error writes the header and the message to w (server.go:2321-2339, via
 # w.Header, w.WriteHeader and fmt.Fprintln to w). NotFound calls Error with 404
 # (server.go:2342). Redirect writes the Location header and a body through w

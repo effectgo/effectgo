@@ -21,3 +21,12 @@ func TestStoredValues(t *testing.T) {
 	setStubs(t, absPath(t, "../stubs/stdlib.stubs"))
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "stored")
 }
+
+// TestFieldSources covers field source rules of the shipped stub set
+// (testdata/src/fieldsrc): a method on, or a reader built from, the body field of
+// an http.Request or http.Response is net. Another field, a reassigned local and
+// an address-taken local stay unknown.
+func TestFieldSources(t *testing.T) {
+	setStubs(t, absPath(t, "../stubs/stdlib.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "fieldsrc")
+}

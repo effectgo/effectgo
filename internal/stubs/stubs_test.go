@@ -94,3 +94,50 @@ func TestParseSinkRules(t *testing.T) {
 		}
 	}
 }
+
+// A field source target parses for effects rules, and its String is the stub
+// form. Its effects are fixed: via and stores items are rejected.
+func TestParseFieldSourceTargets(t *testing.T) {
+	rules, err := Parse("x.stubs", []byte(`
+effects field:(net/http.Request).Body net
+effects field:(net/http.Response).Body net,fs
+effects field:(a/b.T).F pure
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rules) != 3 {
+		t.Fatalf("want 3 rules, got %d", len(rules))
+	}
+	f := rules[0].Target
+	if !f.Field || f.Method || f.TypeOnly || f.Pkg != "net/http" || f.Type != "Request" || f.Name != "Body" {
+		t.Errorf("field source parsed wrong: %+v", f)
+	}
+	if got := f.String(); got != "field:(net/http.Request).Body" {
+		t.Errorf("String of field source = %q", got)
+	}
+}
+
+// A field source is rejected with the file and line when its form is wrong, or
+// when it is used by a verb other than effects, or with via or stores items.
+func TestParseFieldSourceErrors(t *testing.T) {
+	cases := []struct{ text, want string }{
+		{"effects field:(net/http.Request) net\n", "x.stubs:1: target"},
+		{"effects field:(net/http.Request). net\n", "x.stubs:1: target"},
+		{"effects field:net/http.Request.Body net\n", "x.stubs:1: target"},
+		{"effects field:(*net/http.Request).Body net\n", "x.stubs:1: target"},
+		{"effects field:(error).Error net\n", "x.stubs:1: target"},
+		{"effects field:(Request).Body net\n", "x.stubs:1: target"},
+		{"effects field:(net/http.Request).Body via:0.Read\n", "x.stubs:1: field source"},
+		{"effects field:(net/http.Request).Body stores:0\n", "x.stubs:1: field source"},
+		{"errors field:(net/http.Request).Body none\n", "x.stubs:1: target"},
+		{"status field:(net/http.Request).Body 400\n", "x.stubs:1: target"},
+		{"\neffects field:(net/http.Request).Body net,,fs\n", "x.stubs:2: "},
+	}
+	for _, c := range cases {
+		_, err := Parse("x.stubs", []byte(c.text))
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("Parse(%q): error %v, want it to contain %q", c.text, err, c.want)
+		}
+	}
+}

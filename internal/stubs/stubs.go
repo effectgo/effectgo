@@ -92,10 +92,16 @@ type Target struct {
 	// TypeOnly is set for a named func type target (pkg.T): it names the
 	// type, and the rule applies to calls through values of that type.
 	TypeOnly bool
+	// Field is set for a field source target, field:(pkg.T).F: Name is the
+	// field F of the struct type T (see ParseFieldTarget).
+	Field bool
 }
 
 // String renders the target in stub syntax.
 func (t Target) String() string {
+	if t.Field {
+		return "field:(" + qualifiedType(t) + ")." + t.Name
+	}
 	if t.TypeOnly {
 		q := t.Type
 		if t.Pkg != "" {
@@ -117,9 +123,51 @@ func (t Target) String() string {
 	return "(" + star + q + ")." + t.Name
 }
 
+// qualifiedType is the pkgpath.Type of a target, or Type alone for a type in
+// no package.
+func qualifiedType(t Target) string {
+	if t.Pkg == "" {
+		return t.Type
+	}
+	return t.Pkg + "." + t.Type
+}
+
+// FieldPrefix starts the target of a field source rule.
+const FieldPrefix = "field:"
+
+// ParseFieldTarget parses a field source target, field:(pkgpath.Type).Field:
+// the field Field of the struct type pkgpath.Type. A field of a pointer or of
+// the predeclared error type is not a field source.
+func ParseFieldTarget(s string) (Target, error) {
+	rest, ok := strings.CutPrefix(s, FieldPrefix)
+	if !ok || !strings.HasPrefix(rest, "(") {
+		return Target{}, fmt.Errorf("target %q: want field:(pkgpath.Type).Field", s)
+	}
+	end := strings.IndexByte(rest, ')')
+	if end < 0 {
+		return Target{}, fmt.Errorf("target %q: missing ')'", s)
+	}
+	inner := rest[1:end]
+	field, ok := strings.CutPrefix(rest[end+1:], ".")
+	if !ok || !token.IsIdentifier(field) {
+		return Target{}, fmt.Errorf("target %q: want field:(pkgpath.Type).Field", s)
+	}
+	if strings.HasPrefix(inner, "*") || inner == "error" {
+		return Target{}, fmt.Errorf("target %q: a field source is a field of a named struct type, not a pointer or error", s)
+	}
+	pkg, typ, err := SplitQual(inner)
+	if err != nil {
+		return Target{}, fmt.Errorf("target %v", err)
+	}
+	return Target{Pkg: pkg, Type: typ, Name: field, Field: true}, nil
+}
+
 // ParseTarget parses a target written as pkgpath.Func, (pkgpath.Type).Method,
 // (*pkgpath.Type).Method or (error).Error.
 func ParseTarget(s string) (Target, error) {
+	if strings.HasPrefix(s, FieldPrefix) {
+		return Target{}, fmt.Errorf("target %q: a field source (field:) is an effects rule only", s)
+	}
 	if !strings.HasPrefix(s, "(") {
 		pkg, name, err := SplitQual(s)
 		if err != nil {
@@ -272,6 +320,8 @@ func Parse(name string, data []byte) ([]Rule, error) {
 			if strings.ContainsAny(f[1], "()") {
 				err = fmt.Errorf("errdefault target %q: want a package path", f[1])
 			}
+		case verb == VerbEffects && strings.HasPrefix(f[1], FieldPrefix):
+			r.Target, err = ParseFieldTarget(f[1])
 		default:
 			r.Target, err = ParseTarget(f[1])
 		}
@@ -283,6 +333,9 @@ func Parse(name string, data []byte) ([]Rule, error) {
 			_, vias, stores, err := ParseEffectsValue(f[2])
 			if err != nil {
 				return nil, fail("%v", err)
+			}
+			if r.Target.Field && (len(vias) > 0 || len(stores) > 0) {
+				return nil, fail("field source %q takes fixed effects only, not via or stores items", f[1])
 			}
 			if len(vias) > 0 && r.Target.TypeOnly {
 				return nil, fail("via items need a function or a method target, not %q", f[1])
