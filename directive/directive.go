@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+
+	"github.com/faintghost/effectgo/internal/dirparse"
 )
 
 // Analyzer is the directive analyzer.
@@ -26,8 +28,6 @@ var Analyzer = &analysis.Analyzer{
 	Doc:  "reports //effectgo: directives that no analyzer reads where they are written, and comments that look like directives but have a space after //",
 	Run:  run,
 }
-
-const prefix = "//effectgo:"
 
 // keywords are the directive keywords of the analyzers: pure, allow and package
 // (effects), errors, errmap and handler (errset), and mustuse and sealed (mustuse and
@@ -79,13 +79,9 @@ func checkComment(pass *analysis.Pass, at spot, inTest bool, c *ast.Comment) {
 		pass.Reportf(c.Pos(), "// effectgo:%s is not a directive: remove the space after //", kw)
 		return
 	}
-	body, ok := strings.CutPrefix(c.Text, prefix)
+	kw, _, ok := dirparse.Parse(c.Text)
 	if !ok {
 		return
-	}
-	kw := ""
-	if fields := strings.Fields(body); len(fields) > 0 {
-		kw = fields[0]
 	}
 	if placed(kw, at, inTest) {
 		return
@@ -109,11 +105,11 @@ func spacedKeyword(text string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	fields := strings.Fields(body)
-	if len(fields) == 0 || !keywords[fields[0]] {
+	words := dirparse.Words(body)
+	if len(words) == 0 || !keywords[words[0]] {
 		return "", false
 	}
-	return fields[0], true
+	return words[0], true
 }
 
 // sitesOf maps the doc comment groups of a file to their sites. A comment group that

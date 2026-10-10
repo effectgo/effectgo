@@ -194,3 +194,20 @@ func NativeFn() error
 //
 //effectgo:purr // want `//effectgo:purr is not attached to a function, interface or type declaration and is not read`
 var Unknown = 4
+
+// Noted has a trailing comment after its directive. The keyword is read, so this
+// analyzer is silent.
+//
+//effectgo:mustuse // the caller handles it
+type Noted struct{}
+
+// Extra has an argument after its directive. mustuse reports the argument; the keyword
+// is read here, so this analyzer is silent.
+//
+//effectgo:mustuse extra
+type Extra struct{}
+
+// Glued has no space before the trailing comment, so the word is not a keyword.
+//
+//effectgo:mustuse//note // want `unknown effectgo directive "mustuse//note" is not read here`
+type Glued struct{}
