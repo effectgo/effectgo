@@ -1,7 +1,7 @@
 // Command effectgo runs the effectgo analyzers as a multichecker. It works
 // standalone and as a go vet tool:
 //
-//	effectgo ./...                                  effects, errset, mustuse and exhaustive diagnostics
+//	effectgo ./...                                  effects, errset, mustuse, exhaustive and directive diagnostics
 //	effectgo -stubs=stubs/stdlib.stubs ./...        the same, with stub files
 //	effectgo sig ./...                              inferred Effect<A, E, R> signatures
 //	effectgo openapi [-merge|-check spec.json] ./... OpenAPI error responses of the routes
@@ -30,6 +30,7 @@ import (
 
 	"golang.org/x/tools/go/analysis/multichecker"
 
+	"github.com/faintghost/effectgo/directive"
 	"github.com/faintghost/effectgo/effects"
 	"github.com/faintghost/effectgo/errset"
 	"github.com/faintghost/effectgo/exhaustive"
@@ -73,7 +74,7 @@ func main() {
 		os.Exit(1)
 	}
 	if isVetInvocation(os.Args) || isHelpInvocation(os.Args) {
-		multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer)
+		multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, directive.Analyzer)
 		return
 	}
 	os.Exit(runStandalone(os.Args))
