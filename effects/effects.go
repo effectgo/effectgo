@@ -348,6 +348,14 @@ func (c *checker) exportInterfaceContracts() {
 					tdoc = gd.Doc
 				}
 				typeCons := c.parseContracts(tdoc)
+				if len(typeCons) > 0 && !declaresMethods(it) {
+					// The type-level contract applies to the methods the interface declares.
+					// Without any, it checks nothing: the embedded interfaces carry their own.
+					for _, con := range typeCons {
+						kw := strings.Fields(strings.TrimPrefix(con.text, directivePrefix))[0]
+						c.pass.Reportf(ts.Name.Pos(), "effectgo:%s on %s checks nothing: an interface contract covers the methods it declares, and %s declares none", kw, ts.Name.Name, ts.Name.Name)
+					}
+				}
 				for _, fld := range it.Methods.List {
 					if len(fld.Names) == 0 {
 						continue // embedded interface: its methods carry their own facts
@@ -370,6 +378,17 @@ func (c *checker) exportInterfaceContracts() {
 			}
 		}
 	}
+}
+
+// declaresMethods reports whether an interface type declares a method of its own,
+// rather than only embedding other interfaces.
+func declaresMethods(it *ast.InterfaceType) bool {
+	for _, fld := range it.Methods.List {
+		if len(fld.Names) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // intersectAllowed returns the sorted effects allowed by every contract.
