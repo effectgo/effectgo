@@ -1800,10 +1800,34 @@ func (p *pkgState) checkDirectives(u *fnUnit) {
 		}
 	}
 
+	// An errors contract and a handler check the effective set of the function: the
+	// handler set when it returns a func literal with an error result, otherwise the
+	// error set. A function with neither has no set to check (see checkHandler).
+	if errIndex(u.sig) < 0 && !p.work[u.obj].hasHandler {
+		p.reportNoSet(u, dirs)
+		return
+	}
 	for _, d := range dirs {
 		if d.kind == "handler" {
 			p.checkHandler(u, d)
 		}
+	}
+}
+
+// reportNoSet reports the errors contract and the handler directives of a function
+// that has no error set and no handler set, so that they check nothing.
+func (p *pkgState) reportNoSet(u *fnUnit, dirs []directive) {
+	hasErrors := false
+	for _, d := range dirs {
+		switch d.kind {
+		case "errors":
+			hasErrors = true
+		case "handler":
+			p.pass.Reportf(u.decl.Name.Pos(), "effectgo:handler on %s checks nothing: it has no error result; put the directive on the inner function that returns error (see docs/guide/http-checks.md#nethttp-handlers)", funcName(u.obj))
+		}
+	}
+	if hasErrors {
+		p.pass.Reportf(u.decl.Name.Pos(), "effectgo:errors on %s checks nothing: it has no error result", funcName(u.obj))
 	}
 }
 

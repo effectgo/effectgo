@@ -69,6 +69,12 @@ func TestContracts(t *testing.T) {
 	analysistest.Run(t, testdata(t), errset.Analyzer, "contracts")
 }
 
+// TestNoSetDirectives: a contract or handler on a function with no error set checks
+// nothing and is reported. A constructor that returns an error literal is checked.
+func TestNoSetDirectives(t *testing.T) {
+	analysistest.Run(t, testdata(t), errset.Analyzer, "shape")
+}
+
 func TestOpaqueHandlerReported(t *testing.T) {
 	analysistest.Run(t, testdata(t), errset.Analyzer, "opaque")
 }
