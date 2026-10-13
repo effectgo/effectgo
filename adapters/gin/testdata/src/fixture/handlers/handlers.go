@@ -119,3 +119,32 @@ func Routes(r *gin.Engine, s *store.Store) {
 	r.POST("/items", Create(s))
 	r.DELETE("/items/:id", Delete(s))
 }
+
+func asTypeStatus(err error) (int, bool) { // want asTypeStatus:"gin-status-mapper"
+	if _, ok := errors.AsType[*store.ValidationError](err); ok {
+		return 400, true
+	}
+	return 0, false
+}
+
+func AsTypeMapped(s *store.Store) gin.HandlerFunc { // want AsTypeMapped:"gin-handler-factory"
+	return func(c *gin.Context) {
+		err := s.Validate(-1)
+		if status, ok := asTypeStatus(err); ok {
+			c.JSON(status, gin.H{"error": "invalid"})
+			return
+		}
+		c.JSON(500, gin.H{"error": "internal"})
+	}
+}
+
+func AsTypeInline(s *store.Store) gin.HandlerFunc { // want AsTypeInline:"gin-handler-factory"
+	return func(c *gin.Context) {
+		err := s.Validate(-1)
+		if _, ok := errors.AsType[*store.ValidationError](err); ok {
+			c.JSON(400, gin.H{"error": "invalid"})
+		} else {
+			c.JSON(500, gin.H{"error": "internal"})
+		}
+	}
+}

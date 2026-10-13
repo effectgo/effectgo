@@ -180,6 +180,19 @@ func TestNoFindingForStatusOnly(t *testing.T) {
 	}
 }
 
+func TestAsTypeMapperAndInline(t *testing.T) {
+	res := run(t, "fixture/handlers")
+	for _, name := range []string{"AsTypeMapped", "AsTypeInline"} {
+		fs := find(res, "reach", name)
+		if !has(fs, "store.ErrNotFound", 500) {
+			t.Errorf("%s: unmatched ErrNotFound should reach 500, got %+v", name, fs)
+		}
+		if has(fs, "store.ValidationError", 500) {
+			t.Errorf("%s: AsType matched ValidationError must not reach 500: %+v", name, fs)
+		}
+	}
+}
+
 // TestMain runs the adapter tests with the error-set engine named by
 // EFFECTGO_TEST_ENGINE (ast or ssa); the default is the SSA engine.
 func TestMain(m *testing.M) {

@@ -8,8 +8,9 @@ package huma
 //     constructor below 500:
 //     if errors.Is(err, service.ErrDuplicate) { return nil, huma.Error400BadRequest(…) }
 //     if errors.As(err, &ve)                  { return huma.Error400BadRequest(…) }
+//     if _, ok := errors.AsType[*T](err); ok { return huma.Error400BadRequest(…) }
 //     if service.IsValidationError(err)       { return huma.Error400BadRequest(…) }
-//     (the third form is a predicate: see PredicateFact)
+//     (the last form is a predicate: see PredicateFact)
 //  2. the branches of a func(error) error (errset.Result.Mappers), such as palletError;
 //  3. nothing else: a status that a variant reaches through a call is not a mapping.
 //
@@ -134,6 +135,7 @@ func isErrorPredicate(sig *types.Signature) bool {
 
 // asTypeKey returns the key of the concrete error type that an errors.As call
 // tests (errors.As(err, &T) with T a named non-interface error type).
+// AsType's tuple alone is not a predicate: ifKeys requires its ok result.
 func asTypeKey(info *types.Info, call *ast.CallExpr) (string, bool) {
 	fn := typeutil.StaticCallee(info, call)
 	if fn == nil || fn.Pkg() == nil || fn.Pkg().Path() != "errors" || fn.Name() != "As" || len(call.Args) != 2 {
@@ -235,6 +237,20 @@ func conditionKeys(pass *analysis.Pass, local map[*types.Func]string, cond ast.E
 	return nil
 }
 
+// ifKeys are the variant keys that an if statement tests: its condition, as
+// conditionKeys reads it, or the errors.AsType form declared in its init statement.
+func ifKeys(pass *analysis.Pass, local map[*types.Func]string, s *ast.IfStmt) []string {
+	if keys := conditionKeys(pass, local, s.Cond); keys != nil {
+		return keys
+	}
+	if _, b, ok := errset.IfErrorTest(pass.TypesInfo, s); ok {
+		if k, isType := b.TypeKey(); isType {
+			return []string{k}
+		}
+	}
+	return nil
+}
+
 // bodyStatus is the one status below 500 that the returns of a body carry, or 0
 // when they carry none or several.
 func bodyStatus(rules statusFuncRules, info *types.Info, body []ast.Stmt) int {
@@ -292,7 +308,7 @@ func condMappings(pass *analysis.Pass, rules statusFuncRules, local map[*types.F
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.IfStmt:
-				add(conditionKeys(pass, local, x.Cond), x.Body.List, x, enclosingName(f, x.Pos()))
+				add(ifKeys(pass, local, x), x.Body.List, x, enclosingName(f, x.Pos()))
 			case *ast.SwitchStmt:
 				if x.Tag != nil {
 					return true

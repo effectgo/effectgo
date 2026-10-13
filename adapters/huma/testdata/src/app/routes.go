@@ -136,3 +136,46 @@ func Register(api huma.API, s service.Store, path string, status int) {
 		return &output{}, nil
 	})
 }
+
+type asTypeMappedError struct{}
+type asTypeInlineError struct{}
+type asTypeIgnoredError struct{}
+type asTypeUnrelatedError struct{}
+
+func (*asTypeMappedError) Error() string    { return "mapped" }
+func (*asTypeInlineError) Error() string    { return "inline" }
+func (*asTypeIgnoredError) Error() string   { return "ignored" }
+func (*asTypeUnrelatedError) Error() string { return "unrelated" }
+
+func mapAsType(err error) error {
+	if _, ok := errors.AsType[*asTypeMappedError](err); ok {
+		return huma.Error400BadRequest("mapped")
+	}
+	return huma.Error500InternalServerError("unmapped")
+}
+
+func inlineAsType(err error) (*output, error) {
+	if _, ok := errors.AsType[*asTypeInlineError](err); ok {
+		return nil, huma.Error409Conflict("inline")
+	}
+	return nil, err
+}
+
+func ignoresAsType(err error) bool {
+	_, _ = errors.AsType[*asTypeIgnoredError](err)
+	return true
+}
+
+func ignoredAsTypeGuard(err error) (*output, error) {
+	if ignoresAsType(err) {
+		return nil, huma.Error400BadRequest("ignored")
+	}
+	return nil, err
+}
+
+func unrelatedAsTypeGuard(err error, allowed bool) (*output, error) {
+	if _, _ = errors.AsType[*asTypeUnrelatedError](err); allowed {
+		return nil, huma.Error400BadRequest("unrelated")
+	}
+	return nil, err
+}

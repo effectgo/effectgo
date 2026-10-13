@@ -73,7 +73,7 @@ func (a *analyzer) statusMapperOf(fd *ast.FuncDecl) *statusMapperFact {
 			switch x := s.(type) {
 			case *ast.IfStmt:
 				for cur := x; cur != nil; {
-					if sub, br, ok := errset.ErrorTest(a.info, cur.Cond); ok && sameObj(a.info, sub, errObj) {
+					if sub, br, ok := errset.IfErrorTest(a.info, cur); ok && sameObj(a.info, sub, errObj) {
 						if st, pos, ok := returnStatus(a.info, cur.Body.List); ok {
 							branches = append(branches, mapBranch{Br: br, Status: st, Pos: a.posStr(pos)})
 						}

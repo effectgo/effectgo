@@ -358,6 +358,11 @@ func (f *ssaFn) transfer(v ssa.Value, b *ssa.BasicBlock) errSet {
 	case *ssa.Extract:
 		switch t := x.Tuple.(type) {
 		case *ssa.Call:
+			if _, targ, ok := asTypeCall(t); ok && x.Index == 0 {
+				// The value of errors.AsType is its type argument, as the value of a
+				// comma-ok type assertion is (see typeAssertSet).
+				return f.typeAssertSet(targ)
+			}
 			if x.Index == errIndex(t.Call.Signature()) {
 				return f.callSet(&t.Call, t.Pos(), b, env)
 			}
