@@ -108,7 +108,7 @@ With that line, a pure function that calls `store.Save` is reported, because the
 
 ## An interface contract and the types that implement it
 
-A contract on an interface binds every type that implements the interface, and effectgo checks each such type where the type is declared. The check is structural. For each named type that a package declares, effectgo compares the type, or its pointer, with each contracted interface that it implements. No assignment is needed, and the interface can come from another package. A violation is reported when the type's package is analysed, at the name of the method, and no directive in that package waives it.
+A contract on an interface binds every type that implements the interface, and effectgo checks each such type where the type is declared. The check is structural. For each named type that a package declares, effectgo compares the type, or its pointer, with each contracted interface that it implements. No assignment is needed, and the interface can come from another package. A violation is reported when the type's package is analysed, at the name of the method (or at the embedded field, for a method promoted from an embedded interface), and no directive in that package waives it.
 
 A diagnostics port is implemented here by an HTTP adapter. The port says that its implementations write to standard I/O:
 
@@ -173,7 +173,13 @@ Three details of the check:
 
 - A type is checked when it implements the interface, whether or not a value of it is assigned to the interface. A second adapter type with the same `Write` that nothing assigns to the port is reported like `statusWriter`.
 - A type is checked only when its package is analysed. `effectgo ./diag` reports nothing for this port, and `effectgo ./web` reports the violation.
-- A method that a type gets from an embedded interface is skipped. A type that embeds `http.ResponseWriter` and defines no `Write` of its own is not reported, although its `Write` writes to the client. This is a gap in the check. Define `Write` on the type to have it checked.
+- A method that a type gets from an embedded interface is checked as a call through that interface: its stub, its contract, or `unknown` when the interface is uncontracted. A `statusWriter` that embeds `http.ResponseWriter` and has no `Write` of its own (the example above without its method) is reported at the embedded field, and the promoted method is the first step of the witness:
+
+  ```text
+  web/web.go:11:7: (*statusWriter).Write violates contract of (Writer).Write [allow stdio]: has effect net via (*statusWriter).Write [promoted from embedded http.ResponseWriter] → http.(ResponseWriter).Write [stub]
+  ```
+
+  An uncontracted embedded interface, such as `io.Writer`, gives `unknown`, which the `allow stdio` contract does not allow, and it is reported the same way. A method that the type declares itself is checked at its own name, as above.
 
 ## Streams in a pure function
 

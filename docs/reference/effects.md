@@ -81,7 +81,7 @@ Conformance: for each named, non-generic type `T` in the package and each contra
 (*HTTPRepo).Get violates contract of (Repo).Get [allow db]: has effect net via (*HTTPRepo).Get → http.Get
 ```
 
-Reported at the method's name when the method is declared in the analyzed package, or at the type's name when it is promoted.
+Reported at the method's name when the method is declared in the analyzed package. A method promoted from an embedded interface is checked as a call through that interface (its stub, its contract, or `unknown`), and reported at the embedded field. A method promoted from an embedded struct is reported at the type's name, unless it is declared in the analyzed package, where it is reported at the method's name.
 
 ## Parameter polymorphism
 
