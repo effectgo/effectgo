@@ -11,7 +11,7 @@ Branch `fix/errors-astype`, from `main` at `3e5543d`. A user's probe showed a fa
 
 **Narrowing.** Both edges of the ok result narrow the error argument, as `errors.As` does, with the same target matching (concrete types, pointers, values and interfaces) and the same wrapper handling. A negated test and a later test of an assigned result narrow too.
 
-**Predicates and readers.** A predicate exports its test only in three straight-line forms. An early constant `return false` before the test would make the false edge drop a target that the predicate does not exclude, so that shape exports nothing. The errmap readers, the status branches, and the Gin and Huma adapters read the if-init form `if _, ok := errors.AsType[T](err); ok`. Huma also exports the straight-line predicate forms.
+**Predicates and readers.** A predicate exports its test only in the straight-line forms: `return ok` after the assignment, or the test followed by `if ok { return true }` and `return false` (an else is allowed), with the test in an assignment or an if-init. An early constant `return false` before the test would make the false edge drop a target that the predicate does not exclude, so that shape exports nothing. The errmap coverage reads any call of `errors.AsType`, as it does `errors.As`. The status branches, and the Gin and Huma adapters, read the if-init form `if _, ok := errors.AsType[T](err); ok`. Huma also exports the straight-line predicate forms.
 
 **Left as it was.** `errors.As` is unchanged. Its predicate rule accepts an early constant false return, and `predlimit.CallerAs` is a false negative that this causes. It is pinned as a limit. The AST engine does not narrow on either form.
 
