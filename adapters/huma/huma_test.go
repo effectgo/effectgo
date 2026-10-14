@@ -88,6 +88,34 @@ func variant(t *testing.T, rt huma.Route, display string) huma.RouteVariant {
 	return huma.RouteVariant{}
 }
 
+func TestAsTypeMappingEvidence(t *testing.T) {
+	r := fixtureResult(t)
+	want := map[string]int{
+		"app.asTypeMappedError": 400,
+		"app.asTypeInlineError": 409,
+		"app.asTypeBadError":    400, // through the straight-line predicate isAsTypeBad
+		"app.asTypeElseError":   400, // through isAsTypeElse, the else spelling
+	}
+	found := map[string]bool{}
+	for _, m := range r.Mappings {
+		if status, ok := want[m.Key]; ok {
+			found[m.Key] = true
+			if m.Status != status {
+				t.Errorf("%s: status %d, want %d", m.Key, m.Status, status)
+			}
+		}
+		switch m.Key {
+		case "app.asTypeIgnoredError", "app.asTypeUnrelatedError", "app.asTypeEarlyError":
+			t.Errorf("AsType without testing ok must not establish a mapping: %+v", m)
+		}
+	}
+	for key := range want {
+		if !found[key] {
+			t.Errorf("no AsType mapping evidence for %s", key)
+		}
+	}
+}
+
 func TestRoutesAndStatuses(t *testing.T) {
 	r := fixtureResult(t)
 	if got := len(r.Routes); got != 15 {

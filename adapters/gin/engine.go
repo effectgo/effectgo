@@ -215,7 +215,7 @@ func (e *engine) ifChain(s *ast.IfStmt, chain *ast.Ident) {
 			}
 		}
 	}
-	if sub, br, ok := errset.ErrorTest(info, s.Cond); ok {
+	if sub, br, ok := errset.IfErrorTest(info, s); ok {
 		if id, obj := e.subjectOf(sub); obj != nil {
 			if st, pos, has := e.blockStatus(s.Body.List); has {
 				e.addRule(id, obj, br, st, pos, "inline test (if-branch) at "+e.a.posStr(s.Pos()), false)

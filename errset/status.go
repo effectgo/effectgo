@@ -459,11 +459,24 @@ func (b *branchBuilder) isParam(e ast.Expr) bool {
 	return b.p.pass.TypesInfo.Uses[id] == b.param
 }
 
+// initBranch reads the errors.AsType form of an if statement (see asTypeInit),
+// on the error parameter, as condBranch reads errors.As.
+func (b *branchBuilder) initBranch(s *ast.IfStmt) (Branch, bool) {
+	subject, targ, ok := asTypeInit(b.p.pass.TypesInfo, s.Init, s.Cond)
+	if !ok || !b.isParam(subject) {
+		return Branch{}, false
+	}
+	return b.targetBranch(targ)
+}
+
 // ifChain reads an if / else-if / else chain. Every condition is a rule; the
 // final else is the default.
 func (b *branchBuilder) ifChain(s *ast.IfStmt) {
 	for s != nil && !b.done {
 		m, ok := b.condBranch(s.Cond)
+		if !ok {
+			m, ok = b.initBranch(s)
+		}
 		if !ok {
 			m = Branch{Match: matchAny}
 		}

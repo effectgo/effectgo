@@ -8,8 +8,9 @@ package huma
 //     constructor below 500:
 //     if errors.Is(err, service.ErrDuplicate) { return nil, huma.Error400BadRequest(…) }
 //     if errors.As(err, &ve)                  { return huma.Error400BadRequest(…) }
+//     if _, ok := errors.AsType[*T](err); ok { return huma.Error400BadRequest(…) }
 //     if service.IsValidationError(err)       { return huma.Error400BadRequest(…) }
-//     (the third form is a predicate: see PredicateFact)
+//     (the last form is a predicate: see PredicateFact)
 //  2. the branches of a func(error) error (errset.Result.Mappers), such as palletError;
 //  3. nothing else: a status that a variant reaches through a call is not a mapping.
 //
@@ -30,7 +31,8 @@ import (
 )
 
 // PredicateFact is exported on a func(error) bool whose body tests one concrete
-// error type with errors.As: service.IsValidationError tests validationError.
+// error type with errors.As, or with one of the straight-line errors.AsType forms
+// (asTypeShape): service.IsValidationError tests validationError.
 type PredicateFact struct {
 	Key string // the tested type's key, pkgpath.Name
 }
@@ -114,6 +116,11 @@ func exportPredicates(pass *analysis.Pass) map[*types.Func]string {
 				}
 				return true
 			})
+			if len(keys) == 0 {
+				if k, ok := asTypeShape(pass.TypesInfo, fd); ok {
+					keys[k] = true
+				}
+			}
 			if len(keys) == 1 {
 				for k := range keys {
 					out[obj] = k
@@ -125,6 +132,117 @@ func exportPredicates(pass *analysis.Pass) map[*types.Func]string {
 	return out
 }
 
+// asTypeShape reads the errors.AsType predicates that the SSA engine also exports
+// (errset's TestFact), in their straight-line forms, with p the parameter. The
+// test is either the assignment `_, ok := errors.AsType[T](p)` followed by one of
+// the two results below, or the if-init form `if _, ok := errors.AsType[T](p); ok`
+// followed by the same result:
+//
+//	return ok
+//	if ok { return true }; return false        (or: if ok { return true } else { return false })
+//
+// Any other statement, such as an early return, makes the predicate a different
+// test, so it exports nothing. It returns the key of T.
+func asTypeShape(info *types.Info, fd *ast.FuncDecl) (string, bool) {
+	params := fd.Type.Params.List
+	if len(params) != 1 || len(params[0].Names) != 1 {
+		return "", false
+	}
+	param := info.Defs[params[0].Names[0]]
+	list := fd.Body.List
+	if param == nil || len(list) == 0 {
+		return "", false
+	}
+	switch s := list[0].(type) {
+	case *ast.AssignStmt:
+		key, flag, ok := asTypeAssign(info, s, param)
+		if !ok {
+			return "", false
+		}
+		tail := list[1:]
+		if (len(tail) == 1 && isReturnOf(info, tail[0], flag)) || trueThenFalse(info, tail, flag) {
+			return key, true
+		}
+	case *ast.IfStmt:
+		if s.Init == nil {
+			return "", false
+		}
+		key, flag, ok := asTypeAssign(info, s.Init, param)
+		if ok && trueThenFalse(info, list, flag) {
+			return key, true
+		}
+	}
+	return "", false
+}
+
+// trueThenFalse reports whether stmts are `if flag { return true }` followed by
+// `return false`, or that if with an else that returns false. The condition must
+// denote flag itself, so a test of a shadowing ok does not count.
+func trueThenFalse(info *types.Info, stmts []ast.Stmt, flag types.Object) bool {
+	if len(stmts) == 0 {
+		return false
+	}
+	ifs, ok := stmts[0].(*ast.IfStmt)
+	if !ok || !isIdentOf(info, ifs.Cond, flag) || len(ifs.Body.List) != 1 || !isReturnConst(info, ifs.Body.List[0], true) {
+		return false
+	}
+	if ifs.Else == nil {
+		return len(stmts) == 2 && isReturnConst(info, stmts[1], false)
+	}
+	els, ok := ifs.Else.(*ast.BlockStmt)
+	return ok && len(stmts) == 1 && len(els.List) == 1 && isReturnConst(info, els.List[0], false)
+}
+
+// asTypeAssign reads `_, ok := errors.AsType[T](p)` (or with =), where p is the
+// parameter param. It returns the key of T, which must be a named concrete error
+// type (as for errors.As), and the object of ok.
+func asTypeAssign(info *types.Info, s ast.Stmt, param types.Object) (string, types.Object, bool) {
+	as, ok := s.(*ast.AssignStmt)
+	if !ok || (as.Tok != token.DEFINE && as.Tok != token.ASSIGN) || len(as.Lhs) != 2 || len(as.Rhs) != 1 {
+		return "", nil, false
+	}
+	call, ok := unparenExpr(as.Rhs[0]).(*ast.CallExpr)
+	if !ok {
+		return "", nil, false
+	}
+	subject, targ, ok := errset.AsTypeCall(info, call)
+	if !ok || !isIdentOf(info, subject, param) {
+		return "", nil, false
+	}
+	flag, ok := as.Lhs[1].(*ast.Ident)
+	if !ok || flag.Name == "_" {
+		return "", nil, false
+	}
+	obj := info.ObjectOf(flag)
+	n := namedErrorTypeOf(targ)
+	if obj == nil || n == nil {
+		return "", nil, false
+	}
+	return objKeyOf(n.Obj()), obj, true
+}
+
+// isIdentOf reports whether e is an identifier that denotes obj.
+func isIdentOf(info *types.Info, e ast.Expr, obj types.Object) bool {
+	id, ok := unparenExpr(e).(*ast.Ident)
+	return ok && obj != nil && info.Uses[id] == obj
+}
+
+// isReturnOf reports whether s is `return obj`.
+func isReturnOf(info *types.Info, s ast.Stmt, obj types.Object) bool {
+	r, ok := s.(*ast.ReturnStmt)
+	return ok && len(r.Results) == 1 && isIdentOf(info, r.Results[0], obj)
+}
+
+// isReturnConst reports whether s is `return v` for the constant bool v.
+func isReturnConst(info *types.Info, s ast.Stmt, want bool) bool {
+	r, ok := s.(*ast.ReturnStmt)
+	if !ok || len(r.Results) != 1 {
+		return false
+	}
+	tv, ok := info.Types[r.Results[0]]
+	return ok && tv.Value != nil && tv.Value.Kind() == constant.Bool && constant.BoolVal(tv.Value) == want
+}
+
 // isErrorPredicate reports whether sig is func(error) bool.
 func isErrorPredicate(sig *types.Signature) bool {
 	return sig.Params().Len() == 1 && sig.Results().Len() == 1 &&
@@ -133,7 +251,9 @@ func isErrorPredicate(sig *types.Signature) bool {
 }
 
 // asTypeKey returns the key of the concrete error type that an errors.As call
-// tests (errors.As(err, &T) with T a named non-interface error type).
+// tests (errors.As(err, &T) with T a named non-interface error type). It reads
+// errors.As only: errors.AsType is read by asTypeShape (predicates) and ifKeys
+// (the if-init form).
 func asTypeKey(info *types.Info, call *ast.CallExpr) (string, bool) {
 	fn := typeutil.StaticCallee(info, call)
 	if fn == nil || fn.Pkg() == nil || fn.Pkg().Path() != "errors" || fn.Name() != "As" || len(call.Args) != 2 {
@@ -235,6 +355,20 @@ func conditionKeys(pass *analysis.Pass, local map[*types.Func]string, cond ast.E
 	return nil
 }
 
+// ifKeys are the variant keys that an if statement tests: its condition, as
+// conditionKeys reads it, or the errors.AsType form declared in its init statement.
+func ifKeys(pass *analysis.Pass, local map[*types.Func]string, s *ast.IfStmt) []string {
+	if keys := conditionKeys(pass, local, s.Cond); keys != nil {
+		return keys
+	}
+	if _, b, ok := errset.IfErrorTest(pass.TypesInfo, s); ok {
+		if k, isType := b.TypeKey(); isType {
+			return []string{k}
+		}
+	}
+	return nil
+}
+
 // bodyStatus is the one status below 500 that the returns of a body carry, or 0
 // when they carry none or several.
 func bodyStatus(rules statusFuncRules, info *types.Info, body []ast.Stmt) int {
@@ -292,7 +426,7 @@ func condMappings(pass *analysis.Pass, rules statusFuncRules, local map[*types.F
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch x := n.(type) {
 			case *ast.IfStmt:
-				add(conditionKeys(pass, local, x.Cond), x.Body.List, x, enclosingName(f, x.Pos()))
+				add(ifKeys(pass, local, x), x.Body.List, x, enclosingName(f, x.Pos()))
 			case *ast.SwitchStmt:
 				if x.Tag != nil {
 					return true

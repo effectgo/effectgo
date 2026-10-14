@@ -106,3 +106,14 @@ func HUnclassified() func() (int, error) { // want HUnclassified:"." "unclassifi
 
 // unclassifiedFormat is not a constant, so the error it formats is opaque.
 var unclassifiedFormat = "x %v"
+
+//effectgo:errmap
+func ToStatusAsType(err error) error { // want ToStatusAsType:"." ToStatusAsType:"."
+	if _, ok := errors.AsType[Plain](err); ok {
+		return HTTPErr{Status: 409}
+	}
+	return err
+}
+
+//effectgo:handler ToStatusAsType
+func HAsType() error { return Plain{} } // want HAsType:"." "statuses of HAsType: 409 status.Plain"

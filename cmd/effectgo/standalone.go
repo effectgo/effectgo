@@ -58,6 +58,16 @@ func runStandalone(args []string) int {
 	if err := flag.CommandLine.Parse(args[1:]); err != nil {
 		return 2
 	}
+	if err := checkFlagOrder("", flag.CommandLine, args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	// After the flag check: a flag written after the patterns would otherwise
+	// be read as a pattern, and its value as a stub or a directory.
+	if err := checkStubs(args); err != nil {
+		fmt.Fprintf(os.Stderr, "effectgo: %v\n", err)
+		return 1
+	}
 	patterns := flag.Args()
 	if len(patterns) == 0 {
 		fmt.Fprintln(os.Stderr, "usage: effectgo [flags] packages   (see effectgo -help)")
