@@ -238,3 +238,24 @@ func asTypeEarlyGuard(err error) (*output, error) {
 	}
 	return nil, err
 }
+
+type asEarlyError struct{}
+
+func (*asEarlyError) Error() string { return "early as" }
+
+// isAsEarly returns false before its errors.As test, so it is not an equivalent test
+// of asEarlyError and exports nothing, as the SSA engine does.
+func isAsEarly(err error) bool {
+	if err == nil {
+		return false
+	}
+	var target *asEarlyError
+	return errors.As(err, &target)
+}
+
+func asEarlyGuard(err error) (*output, error) {
+	if isAsEarly(err) {
+		return nil, huma.Error400BadRequest("early")
+	}
+	return nil, err
+}

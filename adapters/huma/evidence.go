@@ -31,8 +31,8 @@ import (
 )
 
 // PredicateFact is exported on a func(error) bool whose body tests one concrete
-// error type with errors.As, or with one of the straight-line errors.AsType forms
-// (asTypeShape): service.IsValidationError tests validationError.
+// error type in one of the straight-line forms of errors.As (errorsAsShape) or
+// errors.AsType (asTypeShape): service.IsValidationError tests validationError.
 type PredicateFact struct {
 	Key string // the tested type's key, pkgpath.Name
 }
@@ -94,7 +94,11 @@ func (rules statusFuncRules) codeOf(info *types.Info, call *ast.CallExpr) int {
 }
 
 // exportPredicates exports a PredicateFact on every func(error) bool of the package
-// whose body tests exactly one concrete error type with errors.As.
+// whose body is a straight-line test of one concrete error type, in the forms of
+// errors.As (errorsAsShape) or errors.AsType (asTypeShape). These are the forms in
+// which the SSA engine exports its test (errset's predicateFact), so both agree on
+// which predicates test a type. A predicate with a constant return before its test
+// exports nothing.
 func exportPredicates(pass *analysis.Pass) map[*types.Func]string {
 	out := map[*types.Func]string{}
 	for _, f := range pass.Files {
@@ -107,29 +111,94 @@ func exportPredicates(pass *analysis.Pass) map[*types.Func]string {
 			if !ok || !isErrorPredicate(obj.Type().(*types.Signature)) {
 				continue
 			}
-			keys := map[string]bool{}
-			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				if call, ok := n.(*ast.CallExpr); ok {
-					if k, ok := asTypeKey(pass.TypesInfo, call); ok {
-						keys[k] = true
-					}
-				}
-				return true
-			})
-			if len(keys) == 0 {
-				if k, ok := asTypeShape(pass.TypesInfo, fd); ok {
-					keys[k] = true
-				}
+			k, ok := errorsAsShape(pass.TypesInfo, fd)
+			if !ok {
+				k, ok = asTypeShape(pass.TypesInfo, fd)
 			}
-			if len(keys) == 1 {
-				for k := range keys {
-					out[obj] = k
-					pass.ExportObjectFact(obj, &PredicateFact{Key: k})
-				}
+			if ok {
+				out[obj] = k
+				pass.ExportObjectFact(obj, &PredicateFact{Key: k})
 			}
 		}
 	}
 	return out
+}
+
+// errorsAsShape reads the errors.As predicates in the straight-line forms that the
+// SSA engine exports (errset's predicateFact), with p the parameter. Declarations of
+// the target variables may come first. The rest of the body is one of:
+//
+//	return errors.As(p, &t)
+//	if errors.As(p, &t) { return true }; return false        (or: … else { return false })
+//	if !errors.As(p, &t) { return false }; return true
+//
+// Any other statement, such as an early return, makes the predicate a different
+// test, so it exports nothing. It returns the key of t.
+func errorsAsShape(info *types.Info, fd *ast.FuncDecl) (string, bool) {
+	param := predicateParam(info, fd)
+	list := fd.Body.List
+	for len(list) > 0 {
+		if _, isDecl := list[0].(*ast.DeclStmt); !isDecl {
+			break
+		}
+		list = list[1:]
+	}
+	if param == nil || len(list) == 0 {
+		return "", false
+	}
+	if r, ok := list[0].(*ast.ReturnStmt); ok {
+		if len(list) != 1 || len(r.Results) != 1 {
+			return "", false
+		}
+		return errorsAsTest(info, r.Results[0], param)
+	}
+	ifs, ok := list[0].(*ast.IfStmt)
+	if !ok || ifs.Init != nil {
+		return "", false
+	}
+	cond, negated := unparenExpr(ifs.Cond), false
+	if u, isNot := cond.(*ast.UnaryExpr); isNot && u.Op == token.NOT {
+		cond, negated = unparenExpr(u.X), true
+	}
+	key, ok := errorsAsTest(info, cond, param)
+	if !ok || !onlyReturn(info, ifs.Body.List, !negated) {
+		return "", false
+	}
+	if ifs.Else != nil {
+		els, isBlock := ifs.Else.(*ast.BlockStmt)
+		if !isBlock || negated || len(list) != 1 || !onlyReturn(info, els.List, false) {
+			return "", false
+		}
+		return key, true
+	}
+	if len(list) != 2 || !onlyReturn(info, list[1:], negated) {
+		return "", false
+	}
+	return key, true
+}
+
+// errorsAsTest reads errors.As(p, &t) on the parameter p and returns the key of t.
+func errorsAsTest(info *types.Info, e ast.Expr, param types.Object) (string, bool) {
+	call, ok := unparenExpr(e).(*ast.CallExpr)
+	if !ok || len(call.Args) != 2 || !isIdentOf(info, call.Args[0], param) {
+		return "", false
+	}
+	return asTypeKey(info, call)
+}
+
+// onlyReturn reports whether stmts are the single statement `return v` for the
+// constant bool v.
+func onlyReturn(info *types.Info, stmts []ast.Stmt, want bool) bool {
+	return len(stmts) == 1 && isReturnConst(info, stmts[0], want)
+}
+
+// predicateParam returns the object of the single named parameter of fd, or nil.
+func predicateParam(info *types.Info, fd *ast.FuncDecl) types.Object {
+	params := fd.Type.Params.List
+	if len(params) != 1 || len(params[0].Names) != 1 {
+		return nil
+	}
+	return info.Defs[params[0].Names[0]]
 }
 
 // asTypeShape reads the errors.AsType predicates that the SSA engine also exports
@@ -144,11 +213,7 @@ func exportPredicates(pass *analysis.Pass) map[*types.Func]string {
 // Any other statement, such as an early return, makes the predicate a different
 // test, so it exports nothing. It returns the key of T.
 func asTypeShape(info *types.Info, fd *ast.FuncDecl) (string, bool) {
-	params := fd.Type.Params.List
-	if len(params) != 1 || len(params[0].Names) != 1 {
-		return "", false
-	}
-	param := info.Defs[params[0].Names[0]]
+	param := predicateParam(info, fd)
 	list := fd.Body.List
 	if param == nil || len(list) == 0 {
 		return "", false

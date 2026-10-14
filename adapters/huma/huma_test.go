@@ -107,6 +107,8 @@ func TestAsTypeMappingEvidence(t *testing.T) {
 		switch m.Key {
 		case "app.asTypeIgnoredError", "app.asTypeUnrelatedError", "app.asTypeEarlyError":
 			t.Errorf("AsType without testing ok must not establish a mapping: %+v", m)
+		case "app.asEarlyError":
+			t.Errorf("errors.As predicate with a constant return before its test must not establish a mapping: %+v", m)
 		}
 	}
 	for key := range want {
