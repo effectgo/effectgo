@@ -273,3 +273,33 @@ func partialBranchPredicate() error { // want partialBranchPredicate:"." "errors
 	}
 	return err
 }
+
+// isBusyElse is the else spelling of the isBusy test: the same predicate.
+func isBusyElse(err error) bool { // want isBusyElse:"errset-test: errors.As astype.BusyError" isBusyElse:"errors=\\(none\\)"
+	if _, ok := errors.AsType[*BusyError](err); ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+// elseGuard narrows by the else spelling of the predicate.
+func elseGuard() error { // want elseGuard:"." "errors of elseGuard: \\(none\\)"
+	err := busy()
+	if isBusyElse(err) {
+		return nil
+	}
+	return err
+}
+
+// The test is of another type, so BusyError stays in the false branch and the
+// contract is violated: this is the diagnostic that a mismatched test must keep.
+//
+//effectgo:errors ErrA
+func mismatchContract() error { // want "mismatchContract may return astype.BusyError" "errors of mismatchContract: .*astype.BusyError" mismatchContract:"."
+	err := busy()
+	if _, ok := errors.AsType[*OtherError](err); ok {
+		return ErrA
+	}
+	return err
+}

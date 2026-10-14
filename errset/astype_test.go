@@ -25,9 +25,18 @@ func TestASTAsTypeLimit(t *testing.T) {
 	analysistest.Run(t, testdata(t), errset.Analyzer, "limitsasttype")
 }
 
+// The predicate rule shared with errors.As: an early constant false return exports
+// the errors.As test, which is a known false negative (testdata/src/predlimit,
+// CallerAs), and the errors.AsType form exports nothing there, so it is reported.
+func TestPredicateEarlyFalseLimit(t *testing.T) {
+	setFlag(t, "engine", "ssa")
+	setFlag(t, "report", "true")
+	analysistest.Run(t, testdata(t), errset.Analyzer, "predlimit")
+}
+
 // The errmap reads errors.AsType and the handler check uses its mapped variants
-// (testdata/src/astypemap and astypehandler). The errmap reader is the AST one,
-// so this runs under both engines.
+// (testdata/src/astypemap and astypehandler). The errmap is read by the shared AST
+// reader, and the handler set by each engine, so both engines run.
 func TestErrmapAsType(t *testing.T) {
 	for _, engine := range []string{"ssa", "ast"} {
 		t.Run(engine, func(t *testing.T) {
