@@ -37,10 +37,11 @@ GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/
 
 ## Use it
 
-- `effectgo ./...` runs the five analyzers (effects, errset, mustuse, exhaustive, directive) with no configuration.
+- `effectgo ./...` runs the six analyzers (effects, errset, mustuse, exhaustive, schematag, directive) with no configuration.
 - `go vet -vettool=$(which effectgo) ./...` runs the same analyzers through `go vet`.
 - `effectgo sig ./...` prints `Effect<A, E, R>` for each function.
 - `effectgo openapi`, `http-gin`, `http-huma` and `http` check HTTP error responses against the error sets.
+- `effectgo ts -name NAME ./...` writes the TypeScript client of the `rt/web` routes (effect/http-api).
 
 ## Documentation
 

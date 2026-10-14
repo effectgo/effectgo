@@ -7,10 +7,10 @@ One binary, `effectgo`, runs in four ways:
 
 | Way | Command | What runs |
 |---|---|---|
-| standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive, directive; test files analyzed by default; ends with a summary line |
+| standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive, schematag, directive; test files analyzed by default; ends with a summary line |
 | go vet | `go vet -vettool=$(which effectgo) ./...` | the same five analyzers, through `go vet` |
 | sig | `effectgo sig ./...` | signatures only |
-| subcommands | `effectgo openapi`, `http-gin`, `http-huma`, `http` | the OpenAPI and HTTP checks |
+| subcommands | `effectgo openapi`, `ts`, `http-gin`, `http-huma`, `http` | the OpenAPI, TypeScript and HTTP checks |
 
 The golangci-lint plugin is a fifth way; see [Editor integration](../guide/editor.md).
 
@@ -23,6 +23,7 @@ Build the binary from a clone with `go build -o bin/effectgo ./cmd/effectgo` (Go
 | `effectgo ./...` | diagnostics of the five analyzers | the driver's diagnostics |
 | `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any (exit 3 is success here, see [Exit codes](#exit-codes)) |
 | `effectgo openapi [-merge spec.json \| -check spec.json] ./...` | error responses of each route | a fragment (JSON), a merged document (JSON), or a drift report (text) |
+| `effectgo ts [-o FILE] [-name NAME] ./...` | the routes of `rt/web` as a TypeScript client (effect/http-api, effect@4.0.x) | the file on stdout, or in `FILE`; a generation error exits 1 with its position |
 | `effectgo http-gin [-json] [-all] [-mappers] ./...` | Gin responses against their error sets | text, or one JSON object per finding |
 | `effectgo http-huma [-json] [-all] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding |
 | `effectgo http [-json] [-all] ./...` | both HTTP checks, one list | text, or one JSON object per finding |
@@ -74,6 +75,15 @@ The standalone run is not the multichecker, so it accepts a smaller set of drive
 | `-errset.engine` | error-set engine |
 
 With neither `-merge` nor `-check`, the output is the fragment: `paths.<path>.<method>.responses.<code>` with `description` and `x-effectgo-errors`. Routes without a documented error set go to stderr as `undocumented: <METHOD> <path> (<pos>): <reason>`. `-merge` and `-check` cannot be combined (exit 2).
+
+### ts
+
+| Flag | Meaning |
+|---|---|
+| `-o FILE` | write the file here (default: stdout) |
+| `-name NAME` | the API name passed to `HttpApi.make` (default: the last element of the module path) |
+
+The output is deterministic. A type that rt cannot describe, a recursive type, two types with one name, or two endpoints with one name in a group is a generation error: the generator writes nothing and lists each error with its position. The schema rules that have no TypeScript check become comments that say what the server checks. Exit 2 is a usage error.
 
 ### http-gin
 

@@ -445,3 +445,41 @@ func typeSwitchOperand(ts *ast.TypeSwitchStmt) ast.Expr {
 	}
 	return ta.X
 }
+
+// SealedEnums returns the sealed enums declared in the non-test files of the
+// package: the named integer or string types that carry //effectgo:sealed, as
+// exportSealed exports them. An analyzer that needs to know which types are
+// enums, in this package or in an importer, exports its own fact on these.
+func SealedEnums(pass *analysis.Pass) []*types.TypeName {
+	var out []*types.TypeName
+	for _, file := range pass.Files {
+		if isTestFile(pass, file.Pos()) {
+			continue
+		}
+		for _, decl := range file.Decls {
+			gd, ok := decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.TYPE {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				ts := spec.(*ast.TypeSpec)
+				marks := markComments(ts.Doc)
+				if len(gd.Specs) == 1 {
+					marks = append(marks, markComments(gd.Doc)...)
+				}
+				obj, _ := pass.TypesInfo.Defs[ts.Name].(*types.TypeName)
+				if len(marks) == 0 || obj == nil || obj.IsAlias() {
+					continue
+				}
+				named, ok := obj.Type().(*types.Named)
+				if !ok {
+					continue
+				}
+				if basic, ok := named.Underlying().(*types.Basic); ok && basic.Info()&(types.IsInteger|types.IsString) != 0 {
+					out = append(out, obj)
+				}
+			}
+		}
+	}
+	return out
+}

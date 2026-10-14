@@ -20,13 +20,26 @@ func ToHTTPError(err error) error {
 	}
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		return err
+		return notFound{}
 	case errors.Is(err, domain.ErrInvalid):
-		return err
+		return invalid{}
 	default:
 		return err
 	}
 }
+
+// notFound and invalid are the statuses that ToHTTPError gives the mapped
+// variants. Returning err itself would be a passthrough, and a sentinel has no
+// status of its own (see errset/passthrough).
+type notFound struct{}
+
+func (notFound) Error() string   { return "not found" }
+func (notFound) StatusCode() int { return 404 }
+
+type invalid struct{}
+
+func (invalid) Error() string   { return "invalid" }
+func (invalid) StatusCode() int { return 400 }
 
 //effectgo:errmap
 func MapTypeOnly(err error) error {

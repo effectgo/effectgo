@@ -165,3 +165,31 @@ func TestUndocumentedReasons(t *testing.T) {
 		t.Errorf("no DELETE route found")
 	}
 }
+
+// rt/web's route functions are generic, with the router as argument 0 and the
+// handler func(context.Context, In) (Out, error) as argument 2. The route is
+// found at the generic call site, and the method value passed as the handler
+// carries its error set and errmap.
+func TestRtShapedGenericRoutes(t *testing.T) {
+	rs := routesOfPkg(t, "rtapi")
+	if len(rs) != 2 {
+		t.Fatalf("want 2 routes, got %d", len(rs))
+	}
+	get := find(t, rs, "GET", "/contacts/{id}")
+	if get.Undocumented != "" || get.Handler != "Get" || !get.Complete {
+		t.Fatalf("GET: handler %q undocumented=%q complete=%v", get.Handler, get.Undocumented, get.Complete)
+	}
+	if status(get, "domain.ErrNotFound") != 404 {
+		t.Errorf("GET ErrNotFound status %d, want 404", status(get, "domain.ErrNotFound"))
+	}
+	post := find(t, rs, "POST", "/contact")
+	if post.Undocumented != "" || post.Handler != "Update" || !post.Complete {
+		t.Fatalf("POST: handler %q undocumented=%q complete=%v", post.Handler, post.Undocumented, post.Complete)
+	}
+	if status(post, "domain.ErrConflict") != 409 {
+		t.Errorf("POST ErrConflict status %d, want 409", status(post, "domain.ErrConflict"))
+	}
+	if status(post, "domain.ValidationErr") != 500 {
+		t.Errorf("POST ValidationErr status %d, want 500 (no status of its own)", status(post, "domain.ValidationErr"))
+	}
+}

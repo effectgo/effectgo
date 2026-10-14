@@ -111,6 +111,9 @@ type ErrFact struct {
 	// //effectgo:errors contract does not allow. A caller that gets such a
 	// variant only through this function is not reported (see suppressedVariant).
 	Violated []string
+	// Contract is true when the function has an //effectgo:errors directive. A
+	// route check reports its unknown-origin variants only then (see routes.go).
+	Contract bool
 }
 
 // AFact marks ErrFact as an analysis fact.
@@ -179,6 +182,10 @@ type Result struct {
 	// rule states "errors <target> none" for it (see stubSetVia). mustuse reads
 	// it to tell a discarded error that can occur from one that cannot.
 	NoErrors map[*types.Func]bool
+	// Statuses holds the constant results of the StatusCode methods of this
+	// package (the same values as their StatusFact). tsgen reads them for the
+	// framework's own error types, whose facts it cannot see from this analyzer.
+	Statuses map[*types.Func]int
 }
 
 // FuncErrors is the error set of one function. When the function returns
@@ -1337,6 +1344,9 @@ type pkgState struct {
 	// violated holds, for each unit, the variants its contract does not allow
 	// (see contractBad); the reports and the ErrFacts read it.
 	violated map[*types.Func][]Variant
+	// routeRules holds the route rules of the stub files by registering function
+	// (see routes.go).
+	routeRules map[string]RouteRule
 }
 
 func run(pass *analysis.Pass) (any, error) {
@@ -1388,6 +1398,7 @@ func run(pass *analysis.Pass) (any, error) {
 			HasHandler: w.hasHandler,
 			Handler:    w.handler.list(),
 			Violated:   violated,
+			Contract:   hasDirective(u, "errors"),
 		})
 	}
 
@@ -1412,6 +1423,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 	}
 	p.checkConformance()
+	p.checkRoutes()
 
 	if statusesFlag {
 		for _, u := range p.units {
@@ -1453,7 +1465,7 @@ func run(pass *analysis.Pass) (any, error) {
 		}
 		flows[u.decl] = Flow{p: p, c: p.newFlow(u)}
 	}
-	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows, Mappers: p.mappers(), NoErrors: p.noErrors()}
+	res := Result{Funcs: map[*types.Func]FuncErrors{}, Literals: p.literalSets(), Errmaps: p.errmaps, Flows: flows, Mappers: p.mappers(), NoErrors: p.noErrors(), Statuses: p.statusDecls}
 	for _, u := range p.units {
 		w := p.work[u.obj]
 		arg, errmap := p.handlerRef(u)
@@ -2011,6 +2023,66 @@ func covered(v Variant, m *ErrmapFact) bool {
 	return false
 }
 
+// statusByRule reports whether a rule of the errmap gives v a known status, so
+// that v is handled. The first rule that matches v decides: a rule with a
+// constant status gives it, and so does a passthrough (Branch.Passthrough) that
+// keeps the status v carries. A passthrough keeps only a constant status of
+// its own (StatusFact or a status stub): a plain error, a sentinel or a dynamic
+// status is not kept, and it is still reported. A Carrier passthrough keeps only
+// a carried variant.
+func statusByRule(v Variant, m *ErrmapFact) bool {
+	for _, b := range m.Branches {
+		if !b.matches(v) {
+			continue
+		}
+		if !b.Passthrough {
+			return b.Status > 0
+		}
+		if b.Carrier {
+			return v.Carried && v.Status > 0
+		}
+		if v.Kind == KindParam || v.Kind == KindFresh || v.Kind == KindIface {
+			return false
+		}
+		return v.Status > 0 && !v.DynamicStatus
+	}
+	return false
+}
+
+// passedThrough reports whether the first rule that selects v is a passthrough.
+// A mapped variant whose first rule is a passthrough is covered only by the
+// status it carries (statusByRule): the errmap sends it on unchanged, so a
+// variant without a status of its own is sent as 500 even though errors.Is
+// names it.
+func passedThrough(v Variant, m *ErrmapFact) bool {
+	for _, b := range m.Branches {
+		if b.matches(v) {
+			return b.Passthrough
+		}
+	}
+	return false
+}
+
+// provablyNoStatus reports whether variant v has no status of its own, so that
+// the framework sends it as 500: a fresh error, a sentinel or a type whose method
+// set has no StatusCode. A dynamic status, a status that a stub gives, and an
+// origin that is not known are not provably none: the value decides them, so
+// they are not reported by a passthrough (see checkHandler).
+func provablyNoStatus(v Variant) bool {
+	if v.Status > 0 || v.DynamicStatus {
+		return false
+	}
+	switch v.Kind {
+	case KindFresh:
+		return true
+	case KindSentinel:
+		return !hasStatusMethod(v.Methods)
+	case KindType:
+		return len(v.Methods) > 0 && !hasStatusMethod(v.Methods)
+	}
+	return false
+}
+
 func implementsAll(have, need []string) bool {
 	set := make(map[string]bool, len(have))
 	for _, h := range have {
@@ -2042,7 +2114,7 @@ func (p *pkgState) checkHandler(u *fnUnit, d directive) {
 	}
 	mname := objDisplay(f)
 	for _, v := range displayOrder(p.visible(p.work[u.obj].effective().list())) {
-		if covered(v, &m) {
+		if statusByRule(v, &m) || (covered(v, &m) && !(passedThrough(v, &m) && provablyNoStatus(v))) {
 			continue
 		}
 		switch v.Kind {

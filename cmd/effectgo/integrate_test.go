@@ -41,8 +41,8 @@ func shippedStubs(t *testing.T) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 5 {
-		t.Fatalf("want the five shipped stub files, got %v", files)
+	if len(files) != 6 {
+		t.Fatalf("want the six shipped stub files, got %v", files)
 	}
 	return files
 }
@@ -216,7 +216,7 @@ func TestPgxRowsStubRules(t *testing.T) {
 	}
 }
 
-// TestShippedStubsLoadTogether is interaction (c). All five shipped stub files
+// TestShippedStubsLoadTogether is interaction (c). All six shipped stub files
 // load together, through EFFECTGO_STUBS as well as -stubs, with no error in any
 // analyzer (duplicate rules and malformed lines are errors) on the fixture app.
 func TestShippedStubsLoadTogether(t *testing.T) {
@@ -229,8 +229,8 @@ func TestShippedStubsLoadTogether(t *testing.T) {
 	stubs.Flag = ""
 	t.Cleanup(func() { stubs.Flag = old })
 	t.Setenv(stubs.Env, strings.Join(files, ","))
-	if got := stubs.Paths(); len(got) != 5 {
-		t.Fatalf("EFFECTGO_STUBS names %d files, want 5", len(got))
+	if got := stubs.Paths(); len(got) != 6 {
+		t.Fatalf("EFFECTGO_STUBS names %d files, want 6", len(got))
 	}
 	if _, err := analyzeHTTP([]string{"./app", "./rowscan"}, effects.Analyzer, errset.Analyzer, ginhttp.Analyzer, huma.Analyzer); err != nil {
 		t.Fatalf("analysis with the shipped stubs: %v", err)

@@ -206,3 +206,21 @@ func TestShippedCause(t *testing.T) {
 	setStubs(t, filepath.Join("..", "stubs", "stdlib.stubs"))
 	analysistest.Run(t, testdata(t), errset.Analyzer, "cause")
 }
+
+// TestPassthroughErrmap: an errmap whose only rule returns the error unchanged
+// keeps the constant status of a variant, so a handler that returns such a
+// variant is not reported. A variant without a constant status (a plain error,
+// a sentinel, a dynamic StatusCode) is still reported. See checkHandler.
+func TestPassthroughErrmap(t *testing.T) {
+	analysistest.Run(t, testdata(t), errset.Analyzer, "passthrough")
+}
+
+// TestRouteStatus: a handler registered through a route rule must give each
+// variant of its error set a constant status (routes.go). A sentinel, a fresh
+// error, a dynamic or missing StatusCode and a foreign sentinel are reported; an
+// unknown origin is reported only with an //effectgo:errors contract; a closure
+// is reported as not checkable.
+func TestRouteStatus(t *testing.T) {
+	setStubs(t, filepath.Join(testdata(t), "stubs", "rtweb.stubs"))
+	analysistest.Run(t, testdata(t), errset.Analyzer, "rtweb")
+}

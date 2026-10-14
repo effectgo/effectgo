@@ -1,10 +1,11 @@
 // Command effectgo runs the effectgo analyzers as a multichecker. It works
 // standalone and as a go vet tool:
 //
-//	effectgo ./...                                  effects, errset, mustuse, exhaustive and directive diagnostics
+//	effectgo ./...                                  effects, errset, mustuse, exhaustive, schematag and directive diagnostics
 //	effectgo -stubs=stubs/stdlib.stubs ./...        the same, with stub files
 //	effectgo sig ./...                              inferred Effect<A, E, R> signatures
 //	effectgo openapi [-merge|-check spec.json] ./... OpenAPI error responses of the routes
+//	effectgo ts [-o FILE] [-name NAME] ./...        TypeScript client (effect/http-api) of the routes
 //	effectgo http-gin [-json] [-all] [-mappers] ./... Gin responses against the error sets
 //	effectgo http-huma [-json] [-all] ./...         Huma routes: variants that reach HTTP 500
 //	effectgo http [-json] [-all] ./...              the gin and Huma adapters over one load, one list
@@ -36,6 +37,7 @@ import (
 	"github.com/faintghost/effectgo/exhaustive"
 	"github.com/faintghost/effectgo/internal/stubs"
 	"github.com/faintghost/effectgo/mustuse"
+	"github.com/faintghost/effectgo/schematag"
 	"github.com/faintghost/effectgo/signature"
 )
 
@@ -53,6 +55,9 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == "openapi" {
 		os.Exit(runOpenAPI(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "ts" {
+		os.Exit(runTS(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "http-gin" {
 		os.Exit(runHTTPGin(os.Args[2:]))
@@ -78,7 +83,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "effectgo: %v\n", err)
 			os.Exit(1)
 		}
-		multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, directive.Analyzer)
+		multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, schematag.Analyzer, directive.Analyzer)
 		return
 	}
 	// The standalone run checks its stub files after its flags are parsed.

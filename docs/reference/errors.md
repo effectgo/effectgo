@@ -177,7 +177,7 @@ Service.Update may return domain.ErrConflict (via Store.checkTitle), not in its 
 
 `//effectgo:errmap` on a `func(error) error` exports the variants it maps and the interfaces it targets. Its mapping is approximate: any `==` or `switch` case against a sentinel counts as mapped, whatever the branch returns.
 
-`//effectgo:handler <errmap>` checks that every variant of the handler's set is covered. A variant is covered when its key is mapped, or when it is an interface target whose methods it implements. Uncovered variants are HTTP 500 findings (see [Directives](directives.md)). `-errset.ignoreopaque` silences the unclassified and fresh ones.
+`//effectgo:handler <errmap>` checks that every variant of the handler's set is covered. A variant is covered when its key is mapped, when it is an interface target whose methods it implements, or when a rule of the errmap gives it a known status (a constant return, or a passthrough of a variant with a constant status, see [HTTP status](#http-status)). One exception: when the first rule that selects a variant is a passthrough (`return err`) and the variant has no status of its own (a sentinel, a plain error type or a fresh error), the variant is not covered, even when `errors.Is` names it. `if errors.Is(err, ErrPlain) { return err }` sends `ErrPlain` as 500, and the check reports it. Uncovered variants are HTTP 500 findings (see [Directives](directives.md)). `-errset.ignoreopaque` silences the unclassified and fresh ones.
 
 ## HTTP status
 
@@ -193,7 +193,7 @@ The status of a variant comes from, in order:
 2. a `status (pkg.Type) <code>` stub line, as a fallback;
 3. otherwise the status is dynamic, and it is unknown.
 
-Rules of an errmap give statuses: the constant of a returned composite literal (`T{…}` or `&T{…}`) when its type has a constant `StatusCode`; otherwise the constant `Status` field of a literal; `return err` is a passthrough that keeps the variant's own status; a return that cannot be read, or a mix of statuses in one rule, is unknown.
+Rules of an errmap give statuses: the constant of a returned composite literal (`T{…}` or `&T{…}`) when its type has a constant `StatusCode`; otherwise the constant `Status` field of a literal; `return err` is a passthrough that keeps the variant's own status; a return that cannot be read, or a mix of statuses in one rule, is unknown. The last rule of the body may be an unconditional return: it is the default for every variant that no earlier rule matches, so `return err` at the end of an errmap is a passthrough default.
 
 How to audit an errmap: run `effectgo -errset.statuses ./...`. Each handler prints the status of every variant, so a `default` or a `500` that you did not intend is visible at once. The rules that produce a status, including the constant `Status` field and the `StatusCode` method, are in [Directives](directives.md#how-an-errmap-gives-a-status).
 
