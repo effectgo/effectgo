@@ -100,13 +100,29 @@ With neither `-merge` nor `-check`, the output is the fragment: `paths.<path>.<m
 
 | Run | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
-| standalone `effectgo ./...` | no diagnostics | a run error (the packages do not load, a malformed stub file) | — | diagnostics were reported |
+| standalone `effectgo ./...` | no diagnostics | a run error (the packages do not load, a malformed stub file) | a usage error: an unknown flag, or a flag after the package patterns (see [Flags after the package patterns](#flags-after-the-package-patterns)) | diagnostics were reported |
 | `go vet -vettool=…` | no diagnostics | diagnostics were reported (go vet's convention) | — | — |
-| `effectgo sig` | — | a run error | — | a signature was printed. This is a success, not a diagnostic: a script that tests for a non-zero exit must accept 3 |
+| `effectgo sig` | — | a run error | a usage error, as above | a signature was printed. This is a success, not a diagnostic: a script that tests for a non-zero exit must accept 3 |
 | `effectgo openapi` | success | `-check` found a missing code, or the run failed | usage error | — |
 | `http`, `http-gin`, `http-huma` | the run completed (findings do not change the status) | a load or analysis error | usage error | — |
 
 The HTTP checks report their findings and exit 0; they are for reading and for JSON consumers, not for gating a build. The `openapi -check` exit 1 is the gate.
+
+## Flags after the package patterns
+
+The flag package stops at the first argument that is not a flag, so a flag written after a package pattern is read as a pattern. Without a check, the run fails with `malformed import path "-effects.report": leading dash`, which does not name the cause. Before it loads any package, effectgo checks for such flags in the standalone run and in each subcommand that takes patterns (`sig`, `openapi`, `http`, `http-gin`, `http-huma`). It exits 2 and prints the command with the flags first:
+
+```text
+effectgo: flag -effects.report after the package patterns; flags must come before them: effectgo -effects.report ./...
+```
+
+A value flag is moved with its value (`-stubs x.stubs`), and the message names the flags without the value. A flag that the command does not define gets a different message. When the standalone run defines it, the message names that command:
+
+```text
+effectgo: flag -errset.statuses after the package patterns, and effectgo sig does not define -errset.statuses; the standalone run does: effectgo -errset.statuses ./internal/store/
+```
+
+`sig` takes the flags of its own usage (`effectgo sig -help`), not the report flags of the analyzers, such as `-errset.statuses`, which are the standalone run's. The check does not apply under go vet, which parses its own flags.
 
 ## Test files
 

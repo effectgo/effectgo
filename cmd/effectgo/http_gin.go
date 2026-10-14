@@ -48,6 +48,10 @@ func runHTTPGin(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if err := checkFlagOrder("http-gin", fs, args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
 	patterns := fs.Args()
 	if len(patterns) == 0 {
 		patterns = []string{"./..."}
