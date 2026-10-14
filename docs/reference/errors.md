@@ -56,11 +56,34 @@ On the true edge of a branch whose condition has one of these forms, the subject
 | `w, ok := v.(T)` | as `errors.As` for `T`, without wrappers | as `errors.As` for `T` |
 | `P(v)`, where `P` is a predicate | the test that `P` names, on `v` | the same, negated |
 
-A **predicate** is a `func(error) bool` whose every return is a constant false, a call of `errors.Is` or `errors.As` on its parameter (or of another predicate), or the constant true reached only through the true edge of such a test. It exports its test to importing packages, so `IsValidation(err)` narrows at its call sites in other packages.
+A **predicate** is a `func(error) bool` whose every return is either the test itself (a call of `errors.Is` or `errors.As` on its parameter, or of another predicate, or the ok result of `errors.AsType`), or a constant reached only through an edge of that test: `true` through the positive edge and `false` through the negative edge. So a `false` result implies that the test is false, and a `true` result that it holds. The predicate exports its test to importing packages, so `IsValidation(err)` narrows at its call sites in other packages. A predicate with a constant `return false` before its test exports nothing, because the false edge of its call would not imply that the test is false (see the example below).
+
+```go
+func IsBusy(err error) bool {
+	if disabled {
+		return false // before the test: the false edge does not mean "not BusyError"
+	}
+	var b *BusyError
+	return errors.As(err, &b)
+}
+
+//effectgo:errors ErrA
+func Caller() error {
+	err := source() // a *BusyError
+	if IsBusy(err) {
+		return ErrA
+	}
+	return err // reported: IsBusy can return false for a *BusyError
+}
+```
+
+Before this rule, `Caller` was silent, because the false edge of `IsBusy` removed `BusyError`. The same predicate written with `errors.AsType` exported nothing, so it was already reported.
 
 For Go 1.26's `errors.AsType[T]`, SSA follows the boolean result through `ok`, `!ok`, and an assignment followed by a later test. Recognition uses the standard-library package path and the generic function's origin, so import aliases work and unrelated functions named `AsType` do not narrow. Concrete pointer/value error types and interface targets use the same matching rules as `errors.As`. The matched value has the concrete target's error variant; an interface result remains opaque. Type arguments must satisfy the standard library's `error` constraint.
 
-An AsType predicate exports its test only in the straight-line forms that SSA reads: `return ok` after `_, ok := errors.AsType[T](p)`, or that assignment (or the if-init `if _, ok := errors.AsType[T](p); ok`) followed by `if ok { return true }` and `return false`, where the if may have an else that returns `false`. Any other shape exports nothing. This is stricter than the `errors.As` rule, which also accepts a constant `false` return before its test. That rule can drop a target from a branch where the predicate does not exclude it (see [Limitations](../design/limitations.md#error-sets)).
+An AsType predicate exports its test only in the straight-line forms that SSA reads: `return ok` after `_, ok := errors.AsType[T](p)`, or that assignment (or the if-init `if _, ok := errors.AsType[T](p); ok`) followed by `if ok { return true }` and `return false`, where the if may have an else that returns `false`. Any other shape exports nothing.
+
+The `errors.As` predicate follows the same rule. It exports its test in the forms `return errors.As(p, &t)`, `if errors.As(p, &t) { return true }` followed by `return false` (or with an else that returns `false`), and `if !errors.As(p, &t) { return false }` followed by `return true`. A declaration of the target variable may come first. Any other shape, such as a constant `return false` before the test, exports nothing (see [Limitations](../design/limitations.md#error-sets)).
 
 The AST engine does not narrow after `errors.AsType`, just as it does not narrow after `errors.As`; use the default SSA engine for these guards. The AST readers of the HTTP status maps and of the Gin and Huma adapters recognize `if _, ok := errors.AsType[T](err); ok` as a mapping rule, and Huma also exports the predicate forms above. They do not recognize a negated condition, an assignment in an earlier statement, or a compound condition. This restriction also applies with the SSA error-set engine.
 

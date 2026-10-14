@@ -136,7 +136,7 @@ A directive on an interface method (or on the interface type) is a contract for 
 (*HTTPRepo).Get violates contract of (Repo).Get [allow db]: has effect net via (*HTTPRepo).Get → http.Get
 ```
 
-Reported at the method's name when it is declared in the analyzed package, or at the type's name when the method is promoted.
+Reported at the method's name when it is declared in the analyzed package, at the embedded field when the method is promoted from an embedded interface, and at the type's name when it is promoted from an embedded struct of another package.
 
 A type-level contract (`//effectgo:pure`, `//effectgo:allow` or `//effectgo:errors` on the interface type) applies to the methods the interface declares. An interface that only embeds other interfaces declares none, so its type-level contract checks nothing. The analyzer that reads the keyword reports it at the type's name:
 

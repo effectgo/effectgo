@@ -1605,6 +1605,8 @@ func (c *checker) contractedInterfaces() []contractedIface {
 // checkConformance checks every named non-interface type declared in this
 // package against every contracted interface it implements (through T or *T):
 // each implementing method's effects must be allowed by the method's contract.
+// A method that the type gets from an embedded interface field is checked too,
+// with the effects of a call through that field (see promotedEffects).
 func (c *checker) checkConformance() {
 	ifaces := c.contractedInterfaces()
 	if len(ifaces) == 0 {
@@ -1612,6 +1614,7 @@ func (c *checker) checkConformance() {
 	}
 	scope := c.pass.Pkg.Scope()
 	pkgPath := c.pass.Pkg.Path()
+	reported := map[string]bool{}
 	for _, name := range scope.Names() {
 		tn, ok := scope.Lookup(name).(*types.TypeName)
 		if !ok || tn.IsAlias() {
@@ -1632,22 +1635,40 @@ func (c *checker) checkConformance() {
 				if cf == nil {
 					continue
 				}
-				obj, _, _ := types.LookupFieldOrMethod(ptr, true, m.Pkg(), m.Name())
+				obj, index, _ := types.LookupFieldOrMethod(ptr, true, m.Pkg(), m.Name())
 				impl, ok := obj.(*types.Func)
-				if !ok || isIfaceMethod(impl) {
-					continue
-				}
-				effs, pos, ok := c.implEffects(impl, tn)
 				if !ok {
 					continue
+				}
+				var (
+					effs    map[string]Witness
+					pos     token.Pos
+					display string
+				)
+				if isIfaceMethod(impl) {
+					// Promoted from an embedded interface field: there is no body to analyze.
+					effs, pos = c.promotedEffects(named, tn, impl, index)
+					display = "(*" + tn.Name() + ")." + impl.Name()
+				} else {
+					effs, pos, ok = c.implEffects(impl, tn)
+					if !ok {
+						continue
+					}
+					display = funcDisplay(impl)
 				}
 				for _, e := range sortedKeys(effs) {
 					if cf.allows(e) {
 						continue
 					}
-					c.pass.Reportf(pos, "%s violates contract of (%s).%s %s: has effect %s via %s",
-						funcDisplay(impl), ci.tn.Name(), m.Name(), contractText(cf.Allowed),
+					msg := fmt.Sprintf("%s violates contract of (%s).%s %s: has effect %s via %s",
+						display, ci.tn.Name(), m.Name(), contractText(cf.Allowed),
 						e, renderWitness(effs[e], pkgPath))
+					// A method promoted from a struct of this package is also reached by
+					// the check of that struct, at the same position: report it once.
+					if key := fmt.Sprintf("%d %s", pos, msg); !reported[key] {
+						reported[key] = true
+						c.pass.Reportf(pos, "%s", msg)
+					}
 				}
 			}
 		}
@@ -1670,4 +1691,51 @@ func (c *checker) implEffects(impl *types.Func, owner *types.TypeName) (map[stri
 		return f.Effects, owner.Pos(), true
 	}
 	return nil, 0, false
+}
+
+// promotedEffects returns the effects of a method that named gets from an embedded
+// interface field (iface, at the path index). They are the effects of a call through
+// that interface, as a call site evaluates them: its stub, its contract, or unknown.
+// Each witness starts with the promoted method. The position is the embedded field
+// that the path starts with, so a report points at the embedding; when the type embeds
+// the interface directly, that field is the interface itself.
+func (c *checker) promotedEffects(named *types.Named, tn *types.TypeName, iface *types.Func, index []int) (map[string]Witness, token.Pos) {
+	pos := tn.Pos()
+	if st, ok := named.Underlying().(*types.Struct); ok && len(index) > 1 {
+		pos = st.Field(index[0]).Pos()
+	}
+	step := Step{
+		Name: "(*" + tn.Name() + ")." + iface.Name() + " [promoted from embedded " + ifaceTypeName(iface) + "]",
+		Pkg:  c.pass.Pkg.Path(),
+		Qual: c.pass.Pkg.Name(),
+	}
+	callee := c.calleeEffects(iface)
+	out := make(map[string]Witness, len(callee))
+	for _, e := range sortedKeys(callee) {
+		key := e
+		if _, ok := paramIndexOf(e); ok {
+			// A placeholder for an argument of the interface method. The promoted method
+			// has no call site, so the argument is unknown.
+			key = EffUnkn
+		}
+		if _, dup := out[key]; dup {
+			continue
+		}
+		out[key] = append(Witness{step}, callee[e]...)
+	}
+	return out, pos
+}
+
+// ifaceTypeName names the interface that declares the method iface, as a witness
+// shows it: pkg.Name, or "interface" for an unnamed interface.
+func ifaceTypeName(iface *types.Func) string {
+	recv := iface.Type().(*types.Signature).Recv()
+	if recv == nil {
+		return "interface"
+	}
+	n, ok := types.Unalias(recv.Type()).(*types.Named)
+	if !ok || n.Obj().Pkg() == nil {
+		return "interface"
+	}
+	return n.Obj().Pkg().Name() + "." + n.Obj().Name()
 }

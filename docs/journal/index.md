@@ -30,6 +30,7 @@ The text is moved from the former `NOTES.md`, lightly edited for readability. No
 | [17-p7b-body-fields-memory.md](17-p7b-body-fields-memory.md) | P7b | the memory of the standalone run (the inspector requirement removed), and field sources for HTTP bodies |
 | [18-p8-no-silent-directives.md](18-p8-no-silent-directives.md) | P8 | the directive analyzer for placements and spacing, one keyword rule for trailing comments and arguments, type-level contracts without methods, B4 closed |
 | [19-p9-errors-astype.md](19-p9-errors-astype.md) | P9 | errors.AsType narrows like errors.As on both edges of its ok result; the predicate forms and the HTTP readers; the errors.As predicate limit pinned |
+| [20-p10-silent-misses.md](20-p10-silent-misses.md) | P10 | two false negatives: an errors.As predicate with an early return exports no test (a semantic change), and methods promoted from an embedded interface are checked against the contracts they satisfy |
 
 ## Where the former NOTES.md sections went
 

@@ -377,9 +377,13 @@ func (p *pkgState) testOf(fn *types.Func) (TestFact, bool) {
 }
 
 // predicateFact reads the test that a func(error) bool performs on its
-// parameter. Every return must be a constant false, a test of the parameter,
-// or the constant true reached only through the positive edge of such a test.
-// All tests must be the same; otherwise the function has no fact.
+// parameter. Every return must be the test itself, or a constant reached only
+// through an edge of the test: the constant true through its positive edge,
+// and the constant false through its negative edge (see falseEdgeOf). So a
+// false result implies that the test is false, and a true result that it
+// holds. A constant false return before the test (an early `return false`) is
+// not on the test's edge, so the predicate has no fact. All tests must be the
+// same; otherwise the function has no fact.
 func (p *pkgState) predicateFact(fn *ssa.Function) (TestFact, bool) {
 	sig := fn.Signature
 	if sig.Recv() != nil || sig.Params().Len() != 1 || sig.Results().Len() != 1 || len(fn.Params) != 1 {
@@ -394,6 +398,7 @@ func (p *pkgState) predicateFact(fn *ssa.Function) (TestFact, bool) {
 	param := fn.Params[0]
 	var fact TestFact
 	have := false
+	var falses []*ssa.BasicBlock // blocks that return a constant false; checked below
 	for _, b := range fn.Blocks {
 		if len(b.Instrs) == 0 {
 			continue
@@ -420,6 +425,7 @@ func (p *pkgState) predicateFact(fn *ssa.Function) (TestFact, bool) {
 				return TestFact{}, false
 			}
 			if !constant.BoolVal(x.Value) {
+				falses = append(falses, b)
 				continue
 			}
 			if len(b.Preds) != 1 {
@@ -446,7 +452,34 @@ func (p *pkgState) predicateFact(fn *ssa.Function) (TestFact, bool) {
 		}
 		fact, have = t, true
 	}
-	return fact, have
+	if !have {
+		return TestFact{}, false
+	}
+	for _, b := range falses {
+		if !p.falseEdgeOf(b, param, fact) {
+			return TestFact{}, false
+		}
+	}
+	return fact, true
+}
+
+// falseEdgeOf reports whether the block b, which returns false, is entered only
+// along the negative edge of a test of param with the given fact. Then the
+// predicate returns false only when that test is false.
+func (p *pkgState) falseEdgeOf(b *ssa.BasicBlock, param ssa.Value, fact TestFact) bool {
+	if len(b.Preds) != 1 {
+		return false
+	}
+	pb := b.Preds[0]
+	if len(pb.Instrs) == 0 || len(pb.Succs) != 2 || pb.Succs[1] != b || pb.Succs[0] == b {
+		return false
+	}
+	ifi, ok := pb.Instrs[len(pb.Instrs)-1].(*ssa.If)
+	if !ok {
+		return false
+	}
+	t, ok := p.testOfValue(ifi.Cond, param)
+	return ok && reflect.DeepEqual(t, fact)
 }
 
 // testOfCall is the test that a call performs on the value param: errors.Is or
