@@ -93,6 +93,8 @@ func TestAsTypeMappingEvidence(t *testing.T) {
 	want := map[string]int{
 		"app.asTypeMappedError": 400,
 		"app.asTypeInlineError": 409,
+		"app.asTypeBadError":    400, // through the straight-line predicate isAsTypeBad
+		"app.asTypeElseError":   400, // through isAsTypeElse, the else spelling
 	}
 	found := map[string]bool{}
 	for _, m := range r.Mappings {
@@ -102,7 +104,8 @@ func TestAsTypeMappingEvidence(t *testing.T) {
 				t.Errorf("%s: status %d, want %d", m.Key, m.Status, status)
 			}
 		}
-		if m.Key == "app.asTypeIgnoredError" || m.Key == "app.asTypeUnrelatedError" {
+		switch m.Key {
+		case "app.asTypeIgnoredError", "app.asTypeUnrelatedError", "app.asTypeEarlyError":
 			t.Errorf("AsType without testing ok must not establish a mapping: %+v", m)
 		}
 	}
