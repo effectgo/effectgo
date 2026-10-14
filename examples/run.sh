@@ -50,3 +50,24 @@ section "editor, zero configuration through go vet"
 section "check: the normal run prints no signatures"
 n=$(cd "$here/todo" && EFFECTGO_STUBS="$stdlib,$fuego" "$bin" ./... 2>&1 | grep -c "Effect<")
 echo "lines with Effect<: $n"
+
+fail=0
+
+section "web, standalone: effectgo ./... (expected 0 findings)"
+(cd "$here/web" && "$bin" ./...); rc=$?; echo "exit $rc"
+[ "$rc" -eq 0 ] || fail=1
+
+section "web, generated TypeScript: effectgo ts -name contacts ./... against web/ts/api.gen.ts"
+gen="$(mktemp)"
+(cd "$here/web" && "$bin" ts -name contacts ./... > "$gen"); rc=$?; echo "exit $rc"
+if [ "$rc" -ne 0 ]; then
+  fail=1
+elif diff -u "$here/web/ts/api.gen.ts" "$gen"; then
+  echo "api.gen.ts matches the generator"
+else
+  echo "api.gen.ts differs from the generator; regenerate: cd examples/web && effectgo ts -name contacts -o ts/api.gen.ts ./..."
+  fail=1
+fi
+rm -f "$gen"
+
+exit "$fail"
