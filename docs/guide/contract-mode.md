@@ -106,6 +106,75 @@ effects example.com/editor/store.Save db
 
 With that line, a pure function that calls `store.Save` is reported, because the call is `db`. The file is read with no configuration; see [Stub files](../reference/stubs.md).
 
+## An interface contract and the types that implement it
+
+A contract on an interface binds every type that implements the interface, and effectgo checks each such type where the type is declared. The check is structural. For each named type that a package declares, effectgo compares the type, or its pointer, with each contracted interface that it implements. No assignment is needed, and the interface can come from another package. A violation is reported when the type's package is analysed, at the name of the method, and no directive in that package waives it.
+
+A diagnostics port is implemented here by an HTTP adapter. The port says that its implementations write to standard I/O:
+
+```go
+// Package diag is the diagnostics port of the example app.
+package diag
+
+// Writer is the diagnostics port. Its implementations write to standard I/O.
+//
+//effectgo:allow stdio
+type Writer interface {
+	Write(p []byte) (int, error)
+}
+```
+
+The adapter wraps an `http.ResponseWriter`. Its `Write` sends the bytes to the client, which is `net`, from the shipped stub of `ResponseWriter.Write`. `NewWriter` assigns the adapter to the port:
+
+```go
+// Package web is the HTTP adapter of the example app.
+package web
+
+import (
+	"net/http"
+
+	"example.com/app/diag"
+)
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+// Write sends the bytes to the client: net.
+func (s *statusWriter) Write(p []byte) (int, error) {
+	return s.ResponseWriter.Write(p)
+}
+
+// NewWriter returns the response as a diag.Writer.
+func NewWriter(w http.ResponseWriter) diag.Writer {
+	return &statusWriter{ResponseWriter: w}
+}
+```
+
+`effectgo ./...` reports the violation at the method:
+
+```text
+web/web.go:16:24: (*statusWriter).Write violates contract of (Writer).Write [allow stdio]: has effect net via (*statusWriter).Write → http.(ResponseWriter).Write [stub]
+```
+
+Two directives in the adapter do not waive it, and the diagnostic is still reported:
+
+- `//effectgo:allow net` on `(*statusWriter).Write` makes the method's own contract hold. The conformance check compares with the port's contract, not with the method's.
+- `//effectgo:package allow net` on `web` changes the contracts of the package's own functions. It does not change the port's.
+
+The fix is on the port's side, and each way out is a decision about the port:
+
+1. **An infrastructure sink takes a concrete type.** Write the sink as `func WriteFile(f *os.File, line string) error`. Its effect is inferred from the body (`fs`), and no interface or contract is involved. The cost: the sink takes only an `*os.File`, so a test or another destination needs its own function.
+2. **The interface declares the effects its implementers have.** `//effectgo:allow stdio,net,fs` makes the adapter conform, and so does an implementation that writes to `os.Stdout`, whose effects are `fs` and `stdio`. The cost: the contract is the union of all implementers, so a pure caller of the port reports every effect in the list.
+3. **Leave the interface uncontracted.** The conformance check has nothing to compare, and each call through the port is `unknown`. The cost: a pure caller is reported as `unknown`, and an `allow` list passes only if it names `unknown`.
+
+Three details of the check:
+
+- A type is checked when it implements the interface, whether or not a value of it is assigned to the interface. A second adapter type with the same `Write` that nothing assigns to the port is reported like `statusWriter`.
+- A type is checked only when its package is analysed. `effectgo ./diag` reports nothing for this port, and `effectgo ./web` reports the violation.
+- A method that a type gets from an embedded interface is skipped. A type that embeds `http.ResponseWriter` and defines no `Write` of its own is not reported, although its `Write` writes to the client. This is a gap in the check. Define `Write` on the type to have it checked.
+
 ## Conventions that keep the output quiet
 
 The analyzers report a risk only when they can prove it. Code gets clean output when it follows these conventions, which are the ones the analyzers are built around. They are not a formal specification.
@@ -132,6 +201,7 @@ Short answers, each with the page that has the details and the evidence:
 - **Why is a function that writes to an `io.Writer` parameter not pure?** `fmt.Fprintf(w, …)` writes through `w`, so the write is the write of `w.Write`: `unknown` without a contract, or the interface's contract. Put a contract on the interface, or pass a concrete writer such as a `*bytes.Buffer`. See [Stub files](../reference/stubs.md#effects) for the via items that describe these calls.
 - **What does effectgo not check?** Data races, goroutine leaks, deadlocks, cancellation and timing. See [What effectgo does not check](what-it-does-not-check.md).
 - **Why does a clean standalone run show no test finding?** It analyses `_test.go` files by default, so a clean run covers them; pass `-test=false` to skip them. See [Getting started](getting-started.md#a-clean-run-is-not-a-full-run).
+- **Why is a type in another package reported against my interface?** The check is structural: any type that implements a contracted interface is compared with its contract, whether or not it is assigned to it. See [An interface contract and the types that implement it](#an-interface-contract-and-the-types-that-implement-it).
 
 ## The zero-false-positives promise
 
