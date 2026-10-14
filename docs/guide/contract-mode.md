@@ -175,6 +175,61 @@ Three details of the check:
 - A type is checked only when its package is analysed. `effectgo ./diag` reports nothing for this port, and `effectgo ./web` reports the violation.
 - A method that a type gets from an embedded interface is skipped. A type that embeds `http.ResponseWriter` and defines no `Write` of its own is not reported, although its `Write` writes to the client. This is a gap in the check. Define `Write` on the type to have it checked.
 
+## Streams in a pure function
+
+A `//effectgo:pure` function can read a stream when the stream is created and read in the same function, from a concrete reader. `json.NewDecoder` stores its reader, and `Decode`, `Token` and `More` read the stored reader. The rule is in [Stub files](../reference/stubs.md#effects). These two functions are pure, and effectgo reports nothing for them:
+
+```go
+//effectgo:pure
+func Local(s string) (int, error) {
+	dec := json.NewDecoder(strings.NewReader(s))
+	n := 0
+	for dec.More() {
+		if _, err := dec.Token(); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
+//effectgo:pure
+func Unmarshal(s string) (any, error) {
+	var v any
+	err := json.Unmarshal([]byte(s), &v)
+	return v, err
+}
+```
+
+In `Local` the decoder is a local variable with one assignment, it is used only through method calls, and its stored reader is a `*strings.Reader`, which has no effect. `json.Unmarshal` takes the bytes, so it stores nothing.
+
+The rule finds the stored reader in two cases only: the receiver is the constructor call itself, or it is a local variable with one assignment from the constructor whose uses are method calls or field reads. Any other receiver makes the stored reader `unknown`. A decoder in a struct field is therefore reported:
+
+```go
+type norm struct{ dec *json.Decoder }
+
+//effectgo:pure
+func Field(s string) error {
+	n := norm{dec: json.NewDecoder(strings.NewReader(s))}
+	_, err := n.dec.Token()
+	return err
+}
+```
+
+```text
+p.go:31:6: Field is declared //effectgo:pure but has effect unknown via Field → json.(*Decoder).Token → stored value of n.dec
+```
+
+A decoder received as a parameter is reported in the same way, with the witness `stored value of dec`:
+
+```text
+param.go:22:6: Param is declared //effectgo:pure but has effect unknown via Param → json.(*Decoder).Token → stored value of dec
+```
+
+A decoder over a reader that is a parameter is reported as well. The stored reader is evaluated by its static type, `io.Reader`, whose `Read` is not modelled, so the witness ends in `io.Reader.Read`. A pure function that only passes a local decoder on to `Param` is not reported separately: the function that uses the decoder is the root (see [the root rule](../reference/analyzers.md#root-rule)).
+
+To keep such a function pure, create the decoder and read from it in the same function, from a concrete reader. Otherwise, move the stream code out of the pure function and pass in the values it needs.
+
 ## Conventions that keep the output quiet
 
 The analyzers report a risk only when they can prove it. Code gets clean output when it follows these conventions, which are the ones the analyzers are built around. They are not a formal specification.
@@ -202,6 +257,7 @@ Short answers, each with the page that has the details and the evidence:
 - **What does effectgo not check?** Data races, goroutine leaks, deadlocks, cancellation and timing. See [What effectgo does not check](what-it-does-not-check.md).
 - **Why does a clean standalone run show no test finding?** It analyses `_test.go` files by default, so a clean run covers them; pass `-test=false` to skip them. See [Getting started](getting-started.md#a-clean-run-is-not-a-full-run).
 - **Why is a type in another package reported against my interface?** The check is structural: any type that implements a contracted interface is compared with its contract, whether or not it is assigned to it. See [An interface contract and the types that implement it](#an-interface-contract-and-the-types-that-implement-it).
+- **Why is a decoder in a pure function `unknown`?** The stored reader of a decoder is known only when the decoder is created and read in the same function. See [Streams in a pure function](#streams-in-a-pure-function).
 
 ## The zero-false-positives promise
 

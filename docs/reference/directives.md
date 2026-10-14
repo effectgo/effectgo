@@ -45,6 +45,8 @@ Diagnostic (effects), one per effect, at the function name:
 Normalize is declared //effectgo:pure but has effect time via Normalize → infra.Stamp → time.Now
 ```
 
+A stream held in a pure function, such as a `json.Decoder`, is `unknown` unless the function creates and reads it itself. See [Streams in a pure function](../guide/contract-mode.md#streams-in-a-pure-function).
+
 ### `//effectgo:allow <effects>`
 
 Takes a comma- or space-separated list of effect names (see [Effects](effects.md#effect-names)).
