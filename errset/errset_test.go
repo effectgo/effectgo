@@ -69,6 +69,14 @@ func TestContracts(t *testing.T) {
 	analysistest.Run(t, testdata(t), errset.Analyzer, "contracts")
 }
 
+// TestPromotedErrorSetLimit pins a limit of the error-set conformance check
+// (testdata/src/embedlimit): a method promoted from an uncontracted embedded interface
+// is not checked, while the same method declared on the type is. When the check learns
+// to read promoted methods, this test fails and the limit must be removed.
+func TestPromotedErrorSetLimit(t *testing.T) {
+	analysistest.Run(t, testdata(t), errset.Analyzer, "embedlimit")
+}
+
 // TestNoSetDirectives: a contract or handler on a function with no error set checks
 // nothing and is reported. A constructor that returns an error literal is checked.
 func TestNoSetDirectives(t *testing.T) {

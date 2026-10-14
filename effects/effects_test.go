@@ -206,6 +206,16 @@ func TestShippedHTTPRules(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "httpw")
 }
 
+// TestPromotedInterfaceMethods checks the methods that a type gets from an embedded
+// interface, against a contracted interface (testdata/src/promoted, promotedtimed,
+// promotedlib): the net/http stub, an uncontracted interface (unknown), a contract
+// of the embedded interface, a type's own method, and the methods promoted from
+// embedded structs.
+func TestPromotedInterfaceMethods(t *testing.T) {
+	setStubs(t, absPath(t, "../stubs/stdlib.stubs"))
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "promoted", "promotedtimed")
+}
+
 // TestSuppressed covers the root rule (testdata/src/suppress and suppressdep):
 // a violation whose only source is a violating callee is not reported, and the
 // other cases (no contract, an allowing contract, an interface, a stub, a
