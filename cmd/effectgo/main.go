@@ -64,19 +64,24 @@ func main() {
 		os.Exit(runHTTP(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "sig" {
+		if err := checkSigFlagOrder(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
 		os.Args = append(os.Args[:1:1], os.Args[2:]...)
 		os.Args = takeEngineFlag(os.Args)
 		multichecker.Main(signature.Analyzer)
 		return
 	}
-	if err := checkStubs(os.Args); err != nil {
-		fmt.Fprintf(os.Stderr, "effectgo: %v\n", err)
-		os.Exit(1)
-	}
 	if isVetInvocation(os.Args) || isHelpInvocation(os.Args) {
+		if err := checkStubs(os.Args); err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo: %v\n", err)
+			os.Exit(1)
+		}
 		multichecker.Main(effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, directive.Analyzer)
 		return
 	}
+	// The standalone run checks its stub files after its flags are parsed.
 	os.Exit(runStandalone(os.Args))
 }
 
