@@ -29,6 +29,7 @@ The text is moved from the former `NOTES.md`, lightly edited for readability. No
 | [16-p7-writer-effects.md](16-p7-writer-effects.md) | P7 | writer and reader effects: stub via items, stored values resolved from their constructor, the page on what effectgo does not check |
 | [17-p7b-body-fields-memory.md](17-p7b-body-fields-memory.md) | P7b | the memory of the standalone run (the inspector requirement removed), and field sources for HTTP bodies |
 | [18-p8-no-silent-directives.md](18-p8-no-silent-directives.md) | P8 | the directive analyzer for placements and spacing, one keyword rule for trailing comments and arguments, type-level contracts without methods, B4 closed |
+| [19-p9-errors-astype.md](19-p9-errors-astype.md) | P9 | errors.AsType narrows like errors.As on both edges of its ok result; the predicate forms and the HTTP readers; the errors.As predicate limit pinned |
 
 ## Where the former NOTES.md sections went
 
