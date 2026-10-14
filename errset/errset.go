@@ -1883,6 +1883,10 @@ func (p *pkgState) buildErrmap(u *fnUnit) *ErrmapFact {
 	ast.Inspect(u.decl.Body, func(n ast.Node) bool {
 		switch x := n.(type) {
 		case *ast.CallExpr:
+			if _, targ, ok := AsTypeCall(p.pass.TypesInfo, x); ok {
+				addType(targ)
+				return true
+			}
 			f := typeutil.StaticCallee(p.pass.TypesInfo, x)
 			if f == nil || f.Pkg() == nil || f.Pkg().Path() != "errors" || len(x.Args) != 2 {
 				return true

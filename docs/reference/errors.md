@@ -52,14 +52,21 @@ On the true edge of a branch whose condition has one of these forms, the subject
 | `v == nil` | empty (the nil edge carries nothing) | unchanged |
 | `errors.As(v, &x)`, `x` of concrete type `T` | keep `T`, wrappers, unknown origins | remove `T` |
 | `errors.As(v, &x)`, `x` of interface `I` | keep the variants that implement `I` (a fresh error only if `I` is `error`), wrappers, unknown origins | remove the known variants that implement `I` |
+| `_, ok := errors.AsType[T](v); ok` | as `errors.As` for target `T` | as `errors.As` for target `T` |
 | `w, ok := v.(T)` | as `errors.As` for `T`, without wrappers | as `errors.As` for `T` |
 | `P(v)`, where `P` is a predicate | the test that `P` names, on `v` | the same, negated |
 
 A **predicate** is a `func(error) bool` whose every return is a constant false, a call of `errors.Is` or `errors.As` on its parameter (or of another predicate), or the constant true reached only through the true edge of such a test. It exports its test to importing packages, so `IsValidation(err)` narrows at its call sites in other packages.
 
+For Go 1.26's `errors.AsType[T]`, SSA follows the boolean result through `ok`, `!ok`, and an assignment followed by a later test. Recognition uses the standard-library package path and the generic function's origin, so import aliases work and unrelated functions named `AsType` do not narrow. Concrete pointer/value error types and interface targets use the same matching rules as `errors.As`. The matched value has the concrete target's error variant; an interface result remains opaque. Type arguments must satisfy the standard library's `error` constraint.
+
+An AsType predicate exports its test only in the straight-line forms that SSA reads: `return ok` after `_, ok := errors.AsType[T](p)`, or that assignment (or the if-init `if _, ok := errors.AsType[T](p); ok`) followed by `if ok { return true }` and `return false`, where the if may have an else that returns `false`. Any other shape exports nothing. This is stricter than the `errors.As` rule, which also accepts a constant `false` return before its test. That rule can drop a target from a branch where the predicate does not exclude it (see [Limitations](../design/limitations.md#error-sets)).
+
+The AST engine does not narrow after `errors.AsType`, just as it does not narrow after `errors.As`; use the default SSA engine for these guards. The AST readers of the HTTP status maps and of the Gin and Huma adapters recognize `if _, ok := errors.AsType[T](err); ok` as a mapping rule, and Huma also exports the predicate forms above. They do not recognize a negated condition, an assignment in an earlier statement, or a compound condition. This restriction also applies with the SSA error-set engine.
+
 A reassigned variable, and a value reset by a guard (`err = nil`), no longer carry the old variants.
 
-Only `errors.Is`, `errors.As`, `==` and type assertions narrow. `errors.Unwrap` chains, `reflect`, and user `Is`/`As` methods are not evaluated.
+Only `errors.Is`, `errors.As`, `errors.AsType`, `==` and type assertions narrow. `errors.Unwrap` chains, `reflect`, and user `Is`/`As` methods are not evaluated.
 
 Consequences to expect: findings can disappear (the guarded path no longer reaches a sink), and a few can appear (a call through a local closure is resolved to the literal, and a per-use read sees the variable at its own use).
 

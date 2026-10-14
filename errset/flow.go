@@ -97,6 +97,80 @@ func ErrorTest(info *types.Info, cond ast.Expr) (subject ast.Expr, b Branch, ok 
 	return nil, Branch{}, false
 }
 
+// AsTypeCall reads a call of errors.AsType: its error argument and the type
+// argument E of the instance. The callee is recognised by its object, the
+// standard library's generic function, not by how the call is spelled, so every
+// instance (errors.AsType[*T], errors.AsType[T], …) is the same test. ok is false
+// for any other call.
+func AsTypeCall(info *types.Info, call *ast.CallExpr) (subject ast.Expr, targ types.Type, ok bool) {
+	if len(call.Args) != 1 {
+		return nil, nil, false
+	}
+	fn := typeutil.StaticCallee(info, call)
+	if fn == nil {
+		return nil, nil, false
+	}
+	fn = fn.Origin()
+	if fn.Pkg() == nil || fn.Pkg().Path() != "errors" || fn.Name() != "AsType" {
+		return nil, nil, false
+	}
+	tup, isTuple := info.TypeOf(call).(*types.Tuple)
+	if !isTuple || tup.Len() != 2 {
+		return nil, nil, false
+	}
+	return call.Args[0], tup.At(0).Type(), true
+}
+
+// asTypeInit reads the errors.AsType form of an if statement: the ok result is
+// declared or assigned by the init statement and the condition tests it, as in
+// if _, ok := errors.AsType[T](err); ok { … }. It returns the tested expression
+// and T. Other shapes are not read: a negated test, an ok variable tested in a
+// later statement, and a compound condition.
+func asTypeInit(info *types.Info, init ast.Stmt, cond ast.Expr) (subject ast.Expr, targ types.Type, ok bool) {
+	as, isAssign := init.(*ast.AssignStmt)
+	if !isAssign || (as.Tok != token.DEFINE && as.Tok != token.ASSIGN) || len(as.Lhs) != 2 || len(as.Rhs) != 1 {
+		return nil, nil, false
+	}
+	flag, isIdent := as.Lhs[1].(*ast.Ident)
+	if !isIdent {
+		return nil, nil, false
+	}
+	test, isIdent := unparen(cond).(*ast.Ident)
+	if !isIdent {
+		return nil, nil, false
+	}
+	obj := info.ObjectOf(flag)
+	if obj == nil || info.Uses[test] != obj {
+		return nil, nil, false
+	}
+	call, isCall := unparen(as.Rhs[0]).(*ast.CallExpr)
+	if !isCall {
+		return nil, nil, false
+	}
+	return AsTypeCall(info, call)
+}
+
+// IfErrorTest reads the test of an if statement: its condition, as ErrorTest
+// reads it, or the errors.AsType form in its init statement (asTypeInit). It
+// returns the tested expression and the branch that the test selects.
+func IfErrorTest(info *types.Info, s *ast.IfStmt) (ast.Expr, Branch, bool) {
+	if sub, b, ok := ErrorTest(info, s.Cond); ok {
+		return sub, b, true
+	}
+	sub, targ, ok := asTypeInit(info, s.Init, s.Cond)
+	if !ok {
+		return nil, Branch{}, false
+	}
+	b, ok := (&branchBuilder{}).targetBranch(targ)
+	return sub, b, ok
+}
+
+// TypeKey is the key of the concrete error type that the branch selects, and
+// whether it selects one (an interface or a sentinel test does not).
+func (b Branch) TypeKey() (string, bool) {
+	return b.Key, b.Match == matchType
+}
+
 // Matches reports whether the branch selects variant v.
 func (b Branch) Matches(v Variant) bool { return b.matches(v) }
 

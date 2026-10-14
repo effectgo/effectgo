@@ -13,6 +13,8 @@ package errset
 //	                  the variants whose method set implements I (wrappers and
 //	                  unknown origins too); false removes the known variants
 //	                  that implement I.
+//	_, ok := errors.AsType[T](v); ok
+//	                  as errors.As with target T, on either edge of ok.
 //	v.(T) (comma ok)  as errors.As, without the chain: no wrappers.
 //	P(v)              a predicate with a TestFact (see testFact): the test it
 //	                  names, on its argument.
@@ -99,12 +101,24 @@ func (f *ssaFn) narrowCond(cond ssa.Value, positive bool, e map[ssa.Value]errSet
 			f.narrowCond(c.X, !positive, e)
 		}
 	case *ssa.Extract:
-		ta, ok := c.Tuple.(*ssa.TypeAssert)
-		if !ok || !ta.CommaOk || c.Index != 1 {
+		if c.Index != 1 {
 			return
 		}
-		if tgt, ok := typeTarget(ta.AssertedType); ok {
-			f.narrowAt(ta.X, e, func(s errSet) errSet { return narrowAs(s, tgt, positive, false) })
+		switch t := c.Tuple.(type) {
+		case *ssa.TypeAssert:
+			if !t.CommaOk {
+				return
+			}
+			if tgt, ok := typeTarget(t.AssertedType); ok {
+				f.narrowAt(t.X, e, func(s errSet) errSet { return narrowAs(s, tgt, positive, false) })
+			}
+		case *ssa.Call:
+			// The ok result of errors.AsType: errors.As on its type argument, with the chain.
+			if subject, targ, ok := asTypeCall(t); ok {
+				if tgt, ok := typeTarget(targ); ok {
+					f.narrowAt(subject, e, func(s errSet) errSet { return narrowAs(s, tgt, positive, true) })
+				}
+			}
 		}
 	case *ssa.BinOp:
 		if c.Op != token.EQL && c.Op != token.NEQ {
@@ -293,6 +307,26 @@ func asTarget(arg ssa.Value) (target, bool) {
 	return typeTarget(ptr.Elem())
 }
 
+// asTypeCall reads a call of errors.AsType: the error argument and the type
+// argument E of the instance. The callee is the standard library's generic
+// function, recognised by the object of its origin, so every instance is the
+// same test. E is the target, read as errors.As reads its target (typeTarget).
+func asTypeCall(c *ssa.Call) (ssa.Value, types.Type, bool) {
+	fn := c.Call.StaticCallee()
+	if fn == nil || len(c.Call.Args) != 1 || len(fn.TypeArgs()) != 1 {
+		return nil, nil, false
+	}
+	orig := fn.Origin()
+	if orig == nil {
+		orig = fn
+	}
+	obj, ok := orig.Object().(*types.Func)
+	if !ok || obj.Pkg() == nil || obj.Pkg().Path() != "errors" || obj.Name() != "AsType" {
+		return nil, nil, false
+	}
+	return c.Call.Args[0], fn.TypeArgs()[0], true
+}
+
 // sentinelOfValue returns the key of the sentinel that v loads, looking
 // through a conversion to an interface.
 func sentinelOfValue(v ssa.Value) (string, bool) {
@@ -370,8 +404,13 @@ func (p *pkgState) predicateFact(fn *ssa.Function) (TestFact, bool) {
 		}
 		var t TestFact
 		switch x := r.Results[0].(type) {
-		case *ssa.Call:
-			tf, ok := p.testOfCall(x, param)
+		case *ssa.Call, *ssa.Extract:
+			// AsType predicates must test the parameter on every returning path.
+			// Keep the legacy call-predicate rules unchanged.
+			if _, extract := x.(*ssa.Extract); extract && len(fn.Blocks) != 1 {
+				return TestFact{}, false
+			}
+			tf, ok := p.testOfValue(x, param)
 			if !ok {
 				return TestFact{}, false
 			}
@@ -391,11 +430,10 @@ func (p *pkgState) predicateFact(fn *ssa.Function) (TestFact, bool) {
 			if !ok || len(pb.Succs) != 2 || pb.Succs[0] != b || pb.Succs[1] == b {
 				return TestFact{}, false
 			}
-			call, ok := ifi.Cond.(*ssa.Call)
-			if !ok {
+			if _, extract := ifi.Cond.(*ssa.Extract); extract && (len(fn.Blocks) != 3 || pb != fn.Blocks[0]) {
 				return TestFact{}, false
 			}
-			tf, ok := p.testOfCall(call, param)
+			tf, ok := p.testOfValue(ifi.Cond, param)
 			if !ok {
 				return TestFact{}, false
 			}
@@ -437,6 +475,36 @@ func (p *pkgState) testOfCall(c *ssa.Call, param ssa.Value) (TestFact, bool) {
 		return TestFact{}, false
 	}
 	return p.testOf(obj)
+}
+
+// testOfValue is the test that a boolean value performs on param: a call (see
+// testOfCall), or the ok result of errors.AsType (see testOfAsType).
+func (p *pkgState) testOfValue(v ssa.Value, param ssa.Value) (TestFact, bool) {
+	switch x := v.(type) {
+	case *ssa.Call:
+		return p.testOfCall(x, param)
+	case *ssa.Extract:
+		return p.testOfAsType(x, param)
+	}
+	return TestFact{}, false
+}
+
+// testOfAsType is the test that the ok result of errors.AsType performs on the
+// value param: errors.As on the type argument of the instance (see asTypeCall).
+func (p *pkgState) testOfAsType(x *ssa.Extract, param ssa.Value) (TestFact, bool) {
+	call, ok := x.Tuple.(*ssa.Call)
+	if !ok || x.Index != 1 {
+		return TestFact{}, false
+	}
+	subject, targ, ok := asTypeCall(call)
+	if !ok || subject != param {
+		return TestFact{}, false
+	}
+	tgt, ok := typeTarget(targ)
+	if !ok {
+		return TestFact{}, false
+	}
+	return TestFact{Key: tgt.key, Iface: tgt.iface, Methods: tgt.methods}, true
 }
 
 // exportTests computes the TestFact of each predicate of the package and

@@ -138,3 +138,43 @@ func TestSummaryOnStandalone(t *testing.T) {
 		t.Errorf("go vet did not report the test function:\n%s", vetErr.String())
 	}
 }
+
+// TestStandaloneErrorsAsType exercises the real source-to-contract path, with
+// errors.As as the compatibility baseline and no fixture stubs.
+func TestStandaloneErrorsAsType(t *testing.T) {
+	bin := buildEffectgo(t)
+	for _, tc := range []struct {
+		name     string
+		code     int
+		findings string
+		violated []string
+	}{
+		{name: "positive", code: 0, findings: "0"},
+		{name: "negative", code: 3, findings: "2", violated: []string{"Mismatch", "NonStdlib"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, err := filepath.Abs(filepath.Join("testdata", "astype", tc.name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdout, stderr, code := runIn(t, bin, dir, "./...")
+			if stdout != "" || code != tc.code {
+				t.Fatalf("standalone run: exit %d, stdout %q, want exit %d and no stdout\n%s", code, stdout, tc.code, stderr)
+			}
+			summary := regexp.MustCompile(`^effectgo: \d+ packages? analysed \(\d+ test variants?\), ` + tc.findings + ` findings$`)
+			if !summary.MatchString(lastLine(stderr)) {
+				t.Errorf("last line %q, want the %s-findings summary\n%s", lastLine(stderr), tc.findings, stderr)
+			}
+			const contractViolation = ", not in its //effectgo:errors contract"
+			if count := strings.Count(stderr, contractViolation); count != len(tc.violated) {
+				t.Errorf("got %d contract violations, want %d\n%s", count, len(tc.violated), stderr)
+			}
+			for _, name := range tc.violated {
+				diagnostic := regexp.MustCompile(regexp.QuoteMeta(name+" may return astypenegative.BusyError") + `(?: \(via [^\n]+\))?` + regexp.QuoteMeta(contractViolation))
+				if count := len(diagnostic.FindAllString(stderr, -1)); count != 1 {
+					t.Errorf("%s has %d BusyError contract violations, want exactly one\n%s", name, count, stderr)
+				}
+			}
+		})
+	}
+}

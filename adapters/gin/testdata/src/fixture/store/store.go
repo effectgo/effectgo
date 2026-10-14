@@ -35,3 +35,14 @@ func (s *Store) Lock() error { return ErrLocked }
 
 // Fail returns a fresh error (new@), which no errors.Is can match.
 func (s *Store) Fail() error { return errors.New("boom") }
+
+type ValidationError struct{}
+
+func (*ValidationError) Error() string { return "invalid" }
+
+func (s *Store) Validate(id int) error {
+	if id < 0 {
+		return &ValidationError{}
+	}
+	return ErrNotFound
+}

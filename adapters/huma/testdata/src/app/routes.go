@@ -136,3 +136,105 @@ func Register(api huma.API, s service.Store, path string, status int) {
 		return &output{}, nil
 	})
 }
+
+type asTypeMappedError struct{}
+type asTypeInlineError struct{}
+type asTypeIgnoredError struct{}
+type asTypeUnrelatedError struct{}
+
+func (*asTypeMappedError) Error() string    { return "mapped" }
+func (*asTypeInlineError) Error() string    { return "inline" }
+func (*asTypeIgnoredError) Error() string   { return "ignored" }
+func (*asTypeUnrelatedError) Error() string { return "unrelated" }
+
+func mapAsType(err error) error {
+	if _, ok := errors.AsType[*asTypeMappedError](err); ok {
+		return huma.Error400BadRequest("mapped")
+	}
+	return huma.Error500InternalServerError("unmapped")
+}
+
+func inlineAsType(err error) (*output, error) {
+	if _, ok := errors.AsType[*asTypeInlineError](err); ok {
+		return nil, huma.Error409Conflict("inline")
+	}
+	return nil, err
+}
+
+func ignoresAsType(err error) bool {
+	_, _ = errors.AsType[*asTypeIgnoredError](err)
+	return true
+}
+
+func ignoredAsTypeGuard(err error) (*output, error) {
+	if ignoresAsType(err) {
+		return nil, huma.Error400BadRequest("ignored")
+	}
+	return nil, err
+}
+
+func unrelatedAsTypeGuard(err error, allowed bool) (*output, error) {
+	if _, _ = errors.AsType[*asTypeUnrelatedError](err); allowed {
+		return nil, huma.Error400BadRequest("unrelated")
+	}
+	return nil, err
+}
+
+type asTypeBadError struct{}
+
+func (*asTypeBadError) Error() string { return "bad" }
+
+// isAsTypeBad is an errors.AsType predicate in a straight-line form, which the
+// adapter exports as a test of asTypeBadError (as errset does for SSA).
+func isAsTypeBad(err error) bool { // want isAsTypeBad:"huma-predicate: app.asTypeBadError"
+	_, ok := errors.AsType[*asTypeBadError](err)
+	return ok
+}
+
+func asTypeBadGuard(err error) (*output, error) {
+	if isAsTypeBad(err) {
+		return nil, huma.Error400BadRequest("bad")
+	}
+	return nil, err
+}
+
+type asTypeElseError struct{}
+
+func (*asTypeElseError) Error() string { return "else" }
+
+// isAsTypeElse is the else spelling of the same test, read as isAsTypeBad is.
+func isAsTypeElse(err error) bool { // want isAsTypeElse:"huma-predicate: app.asTypeElseError"
+	if _, ok := errors.AsType[*asTypeElseError](err); ok {
+		return true
+	} else {
+		return false
+	}
+}
+
+func asTypeElseGuard(err error) (*output, error) {
+	if isAsTypeElse(err) {
+		return nil, huma.Error400BadRequest("else")
+	}
+	return nil, err
+}
+
+type asTypeEarlyError struct{}
+
+func (*asTypeEarlyError) Error() string { return "early" }
+
+// isAsTypeEarly returns false before its test, so it is not an equivalent test of
+// asTypeEarlyError and exports nothing.
+func isAsTypeEarly(err error) bool {
+	if err == nil {
+		return false
+	}
+	_, ok := errors.AsType[*asTypeEarlyError](err)
+	return ok
+}
+
+func asTypeEarlyGuard(err error) (*output, error) {
+	if isAsTypeEarly(err) {
+		return nil, huma.Error400BadRequest("early")
+	}
+	return nil, err
+}
