@@ -78,9 +78,10 @@ func Routes(r *web.Router, s *Service) {
 }
 ```
 
-- A handler is any `func(context.Context, In) (Out, error)`. `web.Get`, `web.Post`, … are generic over `In` and `Out`; the router decodes `In` from path, query and JSON body with `rt/schema`, calls the handler, and encodes `Out`.
+- A handler is any `func(context.Context, In) (Out, error)`. `web.Get`, `web.Post`, … are generic over `In` and `Out`; the router decodes `In` from path, query, headers (`header:"X-Name"`), cookies (`cookie:"name"`) and JSON body with `rt/schema`, calls the handler, and encodes `Out`.
+- Header and cookie fields keep their Go `json` name for schema decoding. Header tags read one HTTP header; cookie tags read one named cookie from the `Cookie` header. Missing values remain absent so required fields produce `*schema.DecodeError`. Cookie fields are server inputs, not generated client headers: browsers supply matching cookies from the origin cookie jar.
 - A handler is a named function or a method value (`s.UpdateContact`), not a closure. The endpoint's error set is that function's inferred set; M0 showed that a closure inside a constructor, with errors passed to a shared `writeError(err error)`, leaves no set for any route. The analyzer reports a closure registered through `rt/web` (M2).
-- Decoding failures belong to the framework, not the handler: a malformed path, query or body is `*schema.DecodeError`, status 400, tag `DecodeError`. It is part of every endpoint that has an input, and the generator adds it to every such endpoint's error list.
+- Decoding failures belong to the framework, not the handler: a malformed path, query, header, cookie or body is `*schema.DecodeError`, status 400, tag `DecodeError`. It is part of every endpoint that has an input, and the generator adds it to every such endpoint's error list.
 - Errors are encoded by their own type. An error type that implements `StatusCode() int` is sent with that status and its exported JSON fields, plus `"_tag"` set to the Go type name. The status must be a constant returned by the method, which is what errset's `StatusFact` records; a computed status is reported (M2).
 - Tags are Go type names, so two packages that both declare `ValidationError` collide. A collision among the variants of one API is a generation error that names both types; the fix is to rename one. There is no tag directive until a real case needs it. Anything else is a 500 with a generic body and a log line carrying the request ID; error text never reaches the client by accident (the real-world evaluation found `err.Error()` sent to clients in 90 places across three services).
 - `rt/web` provides the boundary concerns that the novastar port wrote by hand: request ID, structured access log, body size limit, Host check, token guard for unsafe methods, security headers, static files with an SPA fallback. Each is a middleware a service can leave out.
@@ -125,14 +126,14 @@ export const Api = HttpApi.make("care").add(
 )
 ```
 
-- The error list of an endpoint is the handler's inferred set, plus `DecodeError` when the endpoint has an input. Nobody maintains it by hand.
+- The error list combines inferred handler errors, runtime decode/body/internal errors, and explicit `web.ExternalError[E]()` route options for middleware or custom encoders. External error bodies retain their Go JSON fields without requiring `_tag`; generated `Schema.Error` instances add `_tag` after decoding. Declaring an inferred handler error as external explicitly selects its untagged wire format. Use distinct literal code enums to discriminate envelopes sharing one HTTP status. Middleware execution and custom encoders still require HTTP integration checks: declarations do not prove their behavior. Options must be direct generic calls on the route, not opaque helper values.
 - Path parameters are translated from Go's `{id}` to Effect's `:id`.
 - The file imports `effect/http-api` even where it uses only `Schema`: the `httpApiStatus` annotation type-checks through a module augmentation in `HttpApiSchema.d.ts`, which applies only when that module is in the compilation.
 - It exports `type TransportError = HttpClientError | Schema.SchemaError`, so an exhaustive handler can state what it leaves unhandled.
-- The client needs an `HttpClient` layer: `NodeHttpClient.layerUndici` from `@effect/platform-node` on Node, a fetch-based layer in the browser. The generated file does not choose one.
+- The client needs an `HttpClient` layer: `NodeHttpClient.layerUndici` from `@effect/platform-node` on Node, or the generated `BrowserFetchHttpClient` layer for APIs containing cookie inputs. That layer configures Effect TS `4.0.4` `FetchHttpClient.RequestInit` with `credentials: "include"`; JavaScript cannot set a `Cookie` request header. Other browser or Node transport choices remain caller-controlled.
 - Output is deterministic (sorted, stable names), so it can be committed and diffed in review.
 - API names were checked against `effect@4.0.4` as installed in novastar: `Schema.TaggedError` (not `TaggedErrorClass`) with the status in its annotations argument, as `HttpApiError.BadRequest` does; `Schema.optionalKey`, `Schema.Literals`, `Schema.isPattern`, `Schema.isMaxLength`, `Schema.isGreaterThanOrEqualTo`.
-- The target is `effect@4.0.x`. `effect/http-api` is marked `@stability unstable` in 4.x, so the generator pins the minor version it emits for, and its golden tests compile the output with `tsc --noEmit` against that version.
+- The target is exactly `effect@4.0.4`. `effect/http-api` is marked `@stability unstable` in 4.x; golden compilation and the external-error HTTP decoder regression use that installed version.
 
 ### Mapping rules (decided for M3)
 
@@ -140,7 +141,7 @@ The one rule behind the others: **the TypeScript schema is never stricter than t
 
 | Go | Payload, query, path (TS encodes, Go decodes) | Success, error fields (Go encodes with `encoding/json`, TS decodes) |
 |---|---|---|
-| `string`, ints, floats, `bool` | `Schema.String`, `Schema.Int` / `Schema.Number`, `Schema.Boolean` | same |
+| `string`, ints, floats, `bool` | `Schema.String`, `Schema.Int` / `Schema.Number`, `Schema.Boolean`; 64-bit integer kinds use `Schema.Number` checked with `Number.isInteger` | same: accept the existing JSON numeric wire beyond 2^53 rather than rejecting it with Effect's safe-integer `Schema.Int`; JavaScript precision loss remains explicitly documented, not repaired by a representation change |
 | `*T` (optional) | `Schema.optionalKey(Schema.NullOr(T))`: Go accepts a missing key and `null` | `Schema.NullOr(T)`; with `omitempty`, `Schema.optionalKey(…)` |
 | `[]T`, `map[string]T` | `Schema.Array(T)`, `Schema.Record(Schema.String, T)` | wrapped in `Schema.NullOr`: a nil slice or map encodes as `null` |
 | `time.Time` | `Schema.String` (RFC 3339; not parsed client side) | `Schema.String` |

@@ -36,6 +36,7 @@ import (
 	"github.com/faintghost/effectgo/errset"
 	"github.com/faintghost/effectgo/exhaustive"
 	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/faintghost/effectgo/internal/version"
 	"github.com/faintghost/effectgo/mustuse"
 	"github.com/faintghost/effectgo/schematag"
 	"github.com/faintghost/effectgo/signature"
@@ -112,7 +113,7 @@ func isHelpInvocation(args []string) bool {
 // they are picked up when the working directory is inside their module.
 func printIdentity() {
 	cwd, _ := os.Getwd()
-	fmt.Printf("effectgo version devel buildID=%s\n", identityHash(cwd))
+	fmt.Printf("effectgo version %s buildID=%s\n", version.Current, identityHash(cwd))
 }
 
 // identityHash is the hex digest of the executable and of the stub files that

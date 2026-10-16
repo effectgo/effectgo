@@ -11,20 +11,19 @@ import (
 	"github.com/faintghost/effectgo/internal/rtshape"
 )
 
-// Target is the effect version the output is checked against. effect/http-api
-// is unstable in 4.x, so the generator pins the minor version it writes for.
-const Target = "effect@4.0.x"
+// Target is the exact Effect version used to validate generated clients.
+const Target = "effect@4.0.4"
 
 // reserved are the names the generated file itself declares.
 var reserved = map[string]bool{"Api": true, "TransportError": true, "Schema": true, "HttpApi": true,
-	"HttpApiGroup": true, "HttpApiEndpoint": true, "HttpApiSchema": true, "HttpClientError": true}
+	"HttpApiGroup": true, "HttpApiEndpoint": true, "HttpApiSchema": true, "HttpClientError": true, "BrowserFetchHttpClient": true}
 
 // Generate writes the TypeScript file for the results of the packages of one run.
 // api is the name given to HttpApi.make, module is the module path and packages
 // the analyzed package paths. Every generation error is returned together, sorted,
 // each with its position.
 func Generate(results []Result, api, module string, packages []string) (string, error) {
-	e := &emitter{decls: map[string]Decl{}, classes: map[string]int{}, usage: map[string]uint8{}}
+	e := &emitter{decls: map[string]Decl{}, classes: map[string]int{}, untagged: map[string]bool{}, usage: map[string]uint8{}}
 	var routes []Route
 	for _, res := range results {
 		for _, d := range res.Decls {
@@ -35,6 +34,7 @@ func Generate(results []Result, api, module string, packages []string) (string, 
 		routes = append(routes, res.Routes...)
 	}
 	for _, r := range routes {
+		e.usesCookies = e.usesCookies || routeHasCookies(r)
 		e.errs = append(e.errs, r.Problems...)
 		seen := map[string]bool{}
 		for _, er := range r.Errors {
@@ -42,7 +42,11 @@ func Generate(results []Result, api, module string, packages []string) (string, 
 				e.errs = append(e.errs, fmt.Sprintf("%s: the error list of %s lists %s twice; a variant is listed once", r.Pos, r.Name, er.Key))
 			}
 			seen[er.Key] = true
+			if _, exists := e.classes[er.Key]; exists && e.untagged[er.Key] != er.Untagged {
+				e.errs = append(e.errs, fmt.Sprintf("error %s is used both as a tagged handler error and an untagged external error; use distinct types", er.Key))
+			}
 			e.classes[er.Key] = er.Status
+			e.untagged[er.Key] = er.Untagged
 		}
 	}
 	e.markUsage(routes)
@@ -58,24 +62,57 @@ func Generate(results []Result, api, module string, packages []string) (string, 
 	fmt.Fprintf(&b, "// source: module %s; packages: %s\n", module, strings.Join(sortedCopy(packages), ", "))
 	fmt.Fprintf(&b, "// target: %s (effect/http-api is unstable in 4.x)\n", Target)
 	b.WriteString("\n")
-	b.WriteString(`import { Schema } from "effect"` + "\n")
+	if e.usesCookies {
+		b.WriteString(`import { Layer, Schema } from "effect"` + "\n")
+	} else {
+		b.WriteString(`import { Schema } from "effect"` + "\n")
+	}
 	imports := "HttpApi, HttpApiEndpoint, HttpApiGroup"
 	if e.usesNoContent {
 		imports += ", HttpApiSchema"
 	}
 	fmt.Fprintf(&b, "import { %s } from \"effect/http-api\"\n", imports)
-	b.WriteString(`import type { HttpClientError } from "effect/http"` + "\n\n")
+	if e.usesCookies {
+		b.WriteString(`import { FetchHttpClient } from "effect/http"` + "\n")
+	} else {
+		b.WriteString(`import type { HttpClientError } from "effect/http"` + "\n")
+	}
+	if e.usesCookies {
+		b.WriteString(`import type { HttpClientError } from "effect/http"` + "\n\n")
+	} else {
+		b.WriteString("\n")
+	}
+	if e.usesCookies {
+		b.WriteString("// Browser cookies are supplied by the origin's cookie jar; JavaScript cannot set Cookie headers.\n")
+		b.WriteString("export const BrowserFetchHttpClient = FetchHttpClient.layer.pipe(\n")
+		b.WriteString("  Layer.provide(Layer.succeed(FetchHttpClient.RequestInit, { credentials: \"include\" })),\n")
+		b.WriteString(")\n\n")
+	}
 	b.WriteString(body)
 	return b.String(), nil
+}
+
+func routeHasCookies(r Route) bool {
+	if r.In == nil {
+		return false
+	}
+	for _, f := range r.In.Root.Fields {
+		if f.Cookie != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // emitter holds the state of one generation.
 type emitter struct {
 	decls         map[string]Decl  // every named struct, by key
 	classes       map[string]int   // the error types of the error lists, by key, with their status
+	untagged      map[string]bool  // external wire errors acquire _tag only after decoding
 	usage         map[string]uint8 // bit 1: a request type; bit 2: a response type
 	errs          []string
 	usesNoContent bool
+	usesCookies   bool
 }
 
 // checkNames reports the names that two types share, and the names the generator
@@ -222,7 +259,7 @@ func (e *emitter) markUsage(routes []Route) {
 				mark(r.In.Root, 1, map[string]bool{}) // the payload is this type
 			} else {
 				for _, f := range r.In.Root.Fields {
-					if f.Path == "" && f.Query == "" {
+					if f.Path == "" && f.Query == "" && f.Header == "" && f.Cookie == "" {
 						mark(f.Type, 1, map[string]bool{})
 					}
 				}
@@ -248,7 +285,7 @@ func (e *emitter) markUsage(routes []Route) {
 // bodyOnly reports whether every field of an input is a body field.
 func bodyOnly(t *rtshape.Type) bool {
 	for _, f := range t.Fields {
-		if f.Path != "" || f.Query != "" {
+		if f.Path != "" || f.Query != "" || f.Header != "" || f.Cookie != "" {
 			return false
 		}
 	}
@@ -325,6 +362,15 @@ func (e *emitter) class(b *strings.Builder, d Decl, status int) {
 		b.WriteString(c + "\n")
 		lines = nil
 	}
+	if e.untagged[d.Key] {
+		fmt.Fprintf(b, "export class %s extends Schema.Error<%s>(%s)(\n", d.Name, d.Name, strconv.Quote(d.Name))
+		b.WriteString("  {\n")
+		for _, l := range lines {
+			b.WriteString(l + "\n")
+		}
+		fmt.Fprintf(b, "  },\n  { httpApiStatus: %d },\n) {\n  readonly _tag = %s\n}\n\n", status, strconv.Quote(d.Name))
+		return
+	}
 	fmt.Fprintf(b, "export class %s extends Schema.TaggedError<%s>()(\n", d.Name, d.Name)
 	fmt.Fprintf(b, "  %s,\n", strconv.Quote(d.Name))
 	if len(lines) == 0 {
@@ -341,7 +387,7 @@ func (e *emitter) class(b *strings.Builder, d Decl, status int) {
 
 // endpoint writes one endpoint of a group.
 func (e *emitter) endpoint(b *strings.Builder, r Route) {
-	var params, query, body []*rtshape.Field
+	var params, query, headers, body []*rtshape.Field
 	if r.In != nil {
 		for _, f := range r.In.Root.Fields {
 			switch {
@@ -349,12 +395,16 @@ func (e *emitter) endpoint(b *strings.Builder, r Route) {
 				params = append(params, f)
 			case f.Query != "":
 				query = append(query, f)
+			case f.Header != "", f.Cookie != "":
+				headers = append(headers, f)
 			default:
 				body = append(body, f)
 			}
 		}
 	}
 	var opts []string
+	clientHeaders := headerFields(headers)
+	clientParts := len(params) + len(query) + len(clientHeaders)
 	if len(params) > 0 {
 		opts = append(opts, "      params: {")
 		opts = append(opts, e.fieldLines(urlFields(params), true, false, "        ")...)
@@ -365,11 +415,16 @@ func (e *emitter) endpoint(b *strings.Builder, r Route) {
 		opts = append(opts, e.fieldLines(urlFields(query), true, false, "        ")...)
 		opts = append(opts, "      }),")
 	}
+	if len(clientHeaders) > 0 {
+		opts = append(opts, "      headers: Schema.Struct({")
+		opts = append(opts, e.fieldLines(clientHeaders, true, false, "        ")...)
+		opts = append(opts, "      }),")
+	}
 	if len(body) > 0 {
-		if _, c, custom := wire(r.In.Root, true); custom && len(params)+len(query) == 0 {
+		if _, c, custom := wire(r.In.Root, true); custom && clientParts == 0 {
 			opts = append(opts, "      "+c)
 			opts = append(opts, "      payload: Schema.Unknown,")
-		} else if len(params)+len(query) == 0 && r.In.Root.Name != "" {
+		} else if clientParts == 0 && r.In.Root.Name != "" {
 			opts = append(opts, "      payload: "+r.In.Root.Name+",")
 		} else {
 			opts = append(opts, "      payload: Schema.Struct({")
@@ -416,6 +471,22 @@ func urlFields(fields []*rtshape.Field) []*rtshape.Field {
 		} else {
 			c.JSON = c.Query
 		}
+		out = append(out, &c)
+	}
+	return out
+}
+
+// headerFields returns copies keyed by HTTP header names. Cookie fields are
+// supplied by the browser's cookie jar and therefore do not become request
+// headers, which JavaScript is forbidden to set.
+func headerFields(fields []*rtshape.Field) []*rtshape.Field {
+	out := make([]*rtshape.Field, 0, len(fields))
+	for _, f := range fields {
+		if f.Cookie != "" {
+			continue
+		}
+		c := *f
+		c.JSON = c.Header
 		out = append(out, &c)
 	}
 	return out
@@ -483,6 +554,9 @@ func (e *emitter) expr(t *rtshape.Type, req bool) string {
 	case rtshape.CatString, rtshape.CatTime:
 		return "Schema.String"
 	case rtshape.CatInt:
+		if is64(t) {
+			return `Schema.Number.check(Schema.makeFilter(globalThis.Number.isInteger, { expected: "an integer" }))`
+		}
 		return "Schema.Int"
 	case rtshape.CatFloat:
 		return "Schema.Number"

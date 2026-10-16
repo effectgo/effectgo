@@ -78,6 +78,32 @@ type GetIn struct {
 	Since time.Time `query:"since" json:"since"`
 	Ratio float64   `query:"ratio" json:"ratio"`
 }
+type HeaderCookieIn struct {
+	RequestID string `header:"X-Request-ID" json:"request_id"`
+	Session   string `cookie:"session" json:"session"`
+	CSRF      string `cookie:"csrf" json:"csrf"`
+}
+
+func TestHeaderAndCookieInputs(t *testing.T) {
+	r := New()
+	Get(r, "/auth/me", func(ctx context.Context, in HeaderCookieIn) (Contact, error) {
+		return Contact{ID: 1, Name: in.RequestID + ":" + in.Session + ":" + in.CSRF}, nil
+	})
+
+	rec := do(t, r, http.MethodGet, "/auth/me", "")
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"session"`) {
+		t.Fatalf("missing cookie: %d %s", rec.Code, rec.Body)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/auth/me", nil)
+	req.Header.Set("X-Request-ID", "req-7")
+	req.AddCookie(&http.Cookie{Name: "session", Value: "abc"})
+	req.AddCookie(&http.Cookie{Name: "csrf", Value: "token"})
+	rec = httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"id":1,"name":"req-7:abc:token"}` {
+		t.Fatalf("header/cookie input: %d %s", rec.Code, rec.Body)
+	}
+}
 
 type UpdateIn struct {
 	ID   int64   `path:"id" json:"id"`

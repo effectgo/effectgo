@@ -23,7 +23,7 @@ Build the binary from a clone with `go build -o bin/effectgo ./cmd/effectgo` (Go
 | `effectgo ./...` | diagnostics of the five analyzers | the driver's diagnostics |
 | `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any (exit 3 is success here, see [Exit codes](#exit-codes)) |
 | `effectgo openapi [-merge spec.json \| -check spec.json] ./...` | error responses of each route | a fragment (JSON), a merged document (JSON), or a drift report (text) |
-| `effectgo ts [-o FILE] [-name NAME] ./...` | the routes of `rt/web` as a TypeScript client (effect/http-api, effect@4.0.x) | the file on stdout, or in `FILE`; a generation error exits 1 with its position |
+| `effectgo ts [-o FILE] [-name NAME] ./...` | the routes of `rt/web` as a TypeScript client (effect/http-api, effect@4.0.4) | the file on stdout, or in `FILE`; a generation error exits 1 with its position |
 | `effectgo http-gin [-json] [-all] [-mappers] ./...` | Gin responses against their error sets | text, or one JSON object per finding |
 | `effectgo http-huma [-json] [-all] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding |
 | `effectgo http [-json] [-all] ./...` | both HTTP checks, one list | text, or one JSON object per finding |

@@ -23,15 +23,17 @@ type inputPlan[In any] struct {
 	noInput   bool
 	readsBody bool
 	fields    []inputField
-	urlKeys   map[string]bool // json names of the path and query fields
+	urlKeys   map[string]bool // json names of fields supplied outside the body
 	hasQuery  bool
 }
 
 type inputField struct {
-	fromPath bool
-	urlName  string // path wildcard or query parameter name
-	jsonName string // key in the object that schema.Decode reads
-	typ      reflect.Type
+	fromPath   bool
+	fromHeader bool
+	fromCookie bool
+	urlName    string // path wildcard, query parameter, header or cookie name
+	jsonName   string // key in the object that schema.Decode reads
+	typ        reflect.Type
 }
 
 func newInputPlan[In any](method, pattern string) (*inputPlan[In], error) {
@@ -63,17 +65,28 @@ func newInputPlan[In any](method, pattern string) (*inputPlan[In], error) {
 		jsonTag := f.Tag.Get("json")
 		pathName, hasPath := f.Tag.Lookup("path")
 		queryName, hasQuery := f.Tag.Lookup("query")
-		if !hasPath && !hasQuery {
+		headerName, hasHeader := f.Tag.Lookup("header")
+		cookieName, hasCookie := f.Tag.Lookup("cookie")
+		if hasPath && hasQuery {
+			return nil, fmt.Errorf("field %s has both path and query tags", f.Name)
+		}
+		locations := 0
+		for _, present := range []bool{hasPath, hasQuery, hasHeader, hasCookie} {
+			if present {
+				locations++
+			}
+		}
+		if locations > 1 {
+			return nil, fmt.Errorf("field %s has more than one input location tag", f.Name)
+		}
+		if locations == 0 {
 			if jsonTag != "-" {
 				hasBody = true
 			}
 			continue
 		}
-		if hasPath && hasQuery {
-			return nil, fmt.Errorf("field %s has both path and query tags", f.Name)
-		}
 		if jsonTag == "-" {
-			return nil, fmt.Errorf("field %s has a path or query tag but json:\"-\"", f.Name)
+			return nil, fmt.Errorf("field %s has an input location tag but json:\"-\"", f.Name)
 		}
 		jsonName, _, _ := strings.Cut(jsonTag, ",")
 		if jsonName == "" {
@@ -89,14 +102,26 @@ func newInputPlan[In any](method, pattern string) (*inputPlan[In], error) {
 			used[pathName] = true
 			p.fields = append(p.fields, inputField{fromPath: true, urlName: pathName, jsonName: jsonName, typ: f.Type})
 		} else {
-			if queryName == "" {
+			name := queryName
+			if hasHeader {
+				name = headerName
+			} else if hasCookie {
+				name = cookieName
+			}
+			if hasQuery && queryName == "" {
 				return nil, fmt.Errorf("query field %s has an empty name", f.Name)
 			}
-			if !scalar(f.Type) && !(f.Type.Kind() == reflect.Slice && scalar(f.Type.Elem())) {
+			if name == "" {
+				return nil, fmt.Errorf("field %s has an empty input location name", f.Name)
+			}
+			if !hasQuery && !scalar(f.Type) {
+				return nil, fmt.Errorf("field %s must be a scalar, got %s", f.Name, f.Type)
+			}
+			if hasQuery && !scalar(f.Type) && !(f.Type.Kind() == reflect.Slice && scalar(f.Type.Elem())) {
 				return nil, fmt.Errorf("query field %s must be a scalar or a slice of scalars, got %s", f.Name, f.Type)
 			}
-			p.hasQuery = true
-			p.fields = append(p.fields, inputField{urlName: queryName, jsonName: jsonName, typ: f.Type})
+			p.hasQuery = p.hasQuery || hasQuery
+			p.fields = append(p.fields, inputField{fromHeader: hasHeader, fromCookie: hasCookie, urlName: name, jsonName: jsonName, typ: f.Type})
 		}
 		p.urlKeys[jsonName] = true
 	}
@@ -147,6 +172,19 @@ func (p *inputPlan[In]) decode(w http.ResponseWriter, req *http.Request, maxBody
 	for _, f := range p.fields {
 		if f.fromPath {
 			obj[f.jsonName] = scalarJSON(f.typ, req.PathValue(f.urlName))
+			continue
+		}
+		if f.fromHeader {
+			if value := req.Header.Get(f.urlName); value != "" {
+				obj[f.jsonName] = scalarJSON(f.typ, value)
+			}
+			continue
+		}
+		if f.fromCookie {
+			cookie, err := req.Cookie(f.urlName)
+			if err == nil {
+				obj[f.jsonName] = scalarJSON(f.typ, cookie.Value)
+			}
 			continue
 		}
 		vals, ok := query[f.urlName]

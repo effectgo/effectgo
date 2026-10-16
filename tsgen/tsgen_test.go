@@ -40,6 +40,23 @@ func TestProblemIsGenerationError(t *testing.T) {
 	wantErr(t, err, "problem.go:", "field In.Ch: type chan int is not supported")
 }
 
+// TestMultipleCookiesUseBrowserCredentials: cookie fields come from the browser
+// cookie jar, so multiple names are supported without generating Cookie headers.
+func TestMultipleCookiesUseBrowserCredentials(t *testing.T) {
+	out, err := generate(t, "testdata/mod", "./bad/cookies")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "headers: Schema.Struct") || strings.Contains(out, "Cookie: Schema") {
+		t.Fatalf("generated client exposes a Cookie header:\n%s", out)
+	}
+	for _, want := range []string{"BrowserFetchHttpClient", `credentials: "include"`, `HttpApiEndpoint.get("get"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("generated output lacks %q:\n%s", want, out)
+		}
+	}
+}
+
 // TestRecursiveIsGenerationError: a type that refers to itself is not supported.
 func TestRecursiveIsGenerationError(t *testing.T) {
 	_, err := generate(t, "testdata/mod", "./bad/recursion")

@@ -84,9 +84,10 @@ type Route struct {
 
 // ErrRef is one entry of an endpoint's error list.
 type ErrRef struct {
-	Key    string // pkgpath.Name
-	Name   string // the Go type name, the TypeScript class name
-	Status int
+	Key      string // pkgpath.Name
+	Name     string // the Go type name, the TypeScript class name
+	Status   int
+	Untagged bool // external middleware body has no required wire _tag
 }
 
 // Decl is one named struct type that a route reaches.
@@ -119,6 +120,13 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, err
 	}
 	st := &state{pass: pass, res: res, table: errset.RouteRules(rules), decls: map[string]bool{}}
+	// Other HTTP frameworks share route stubs for diagnostics, but do not use
+	// rt/web's handler shape, encoding, or route options.
+	for target := range st.table {
+		if !strings.HasPrefix(target, webPath+".") {
+			delete(st.table, target)
+		}
+	}
 	if len(st.table) == 0 {
 		return Result{}, nil
 	}
@@ -174,11 +182,12 @@ func (st *state) route(call *ast.CallExpr, rule errset.RouteRule) {
 	}
 	st.checkPath(&r, noInput)
 	r.Errors = st.errors(fn, &r, !noInput)
+	st.externalErrors(call, &r)
 }
 
-// checkPath checks the input against the pattern, as rt/web does at registration:
-// every wildcard has a path field, every path field has a wildcard, and the body
-// fields need a method that reads a body.
+// checkPath checks the input against the pattern and method, as rt/web does at
+// registration: every wildcard has a path field, every path field has a
+// wildcard, and body fields need a method that reads a body.
 func (st *state) checkPath(r *Route, noInput bool) {
 	wild := map[string]bool{}
 	for _, seg := range strings.Split(r.Pattern, "/") {
@@ -206,8 +215,8 @@ func (st *state) checkPath(r *Route, noInput bool) {
 				r.Problems = append(r.Problems, r.Pos+": path field "+f.Name+" has no {"+f.Path+"} in "+r.Pattern)
 			}
 		}
-		if f.Path == "" && f.Query == "" && r.Method != "POST" && r.Method != "PUT" && r.Method != "PATCH" {
-			r.Problems = append(r.Problems, r.Pos+": "+r.Method+" takes no body, but field "+f.Name+" has no path or query tag")
+		if f.Path == "" && f.Query == "" && f.Header == "" && f.Cookie == "" && r.Method != "POST" && r.Method != "PUT" && r.Method != "PATCH" {
+			r.Problems = append(r.Problems, r.Pos+": "+r.Method+" takes no body, but field "+f.Name+" has no input location tag")
 		}
 	}
 	for name := range wild {

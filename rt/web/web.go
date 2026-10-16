@@ -4,9 +4,9 @@
 // Host check, token guard, security headers, static files).
 //
 // A handler is a function func(context.Context, In) (Out, error). In is
-// decoded from the path (`path:"name"`), the query (`query:"name"`) and, for
-// POST, PUT and PATCH, the JSON body; every other field is a body field.
-// Decoding is done by package schema, so decode failures are a
+// decoded from the path (`path:"name"`), query (`query:"name"`), header
+// (`header:"X-Name"`), cookie (`cookie:"name"`) and, for POST, PUT and PATCH,
+// the JSON body; every other field is a body field.
 // *schema.DecodeError with status 400. An error is encoded by its own type:
 // an error implementing StatusCode() int is sent with that status and its
 // exported JSON fields plus "_tag", the Go type name. An error without one is
@@ -334,35 +334,43 @@ func (w *trackWriter) Write(b []byte) (int, error) {
 func (w *trackWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // Get registers a GET route. See the package comment for the input rules.
-func Get[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error)) {
-	register(r, http.MethodGet, pattern, h)
+func Get[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error), opts ...RouteOption) {
+	register(r, http.MethodGet, pattern, h, opts...)
 }
 
 // Post registers a POST route; the body is read.
-func Post[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error)) {
-	register(r, http.MethodPost, pattern, h)
+func Post[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error), opts ...RouteOption) {
+	register(r, http.MethodPost, pattern, h, opts...)
 }
 
 // Put registers a PUT route; the body is read.
-func Put[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error)) {
-	register(r, http.MethodPut, pattern, h)
+func Put[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error), opts ...RouteOption) {
+	register(r, http.MethodPut, pattern, h, opts...)
 }
 
 // Patch registers a PATCH route; the body is read.
-func Patch[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error)) {
-	register(r, http.MethodPatch, pattern, h)
+func Patch[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error), opts ...RouteOption) {
+	register(r, http.MethodPatch, pattern, h, opts...)
 }
 
 // Delete registers a DELETE route; the body is not read.
-func Delete[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error)) {
-	register(r, http.MethodDelete, pattern, h)
+func Delete[In, Out any](r *Router, pattern string, h func(context.Context, In) (Out, error), opts ...RouteOption) {
+	register(r, http.MethodDelete, pattern, h, opts...)
 }
 
 // register checks the input and output types and the pattern, then adds the
 // route. Every problem found here panics at startup.
-func register[In, Out any](r *Router, method, pattern string, h func(context.Context, In) (Out, error)) {
+func register[In, Out any](r *Router, method, pattern string, h func(context.Context, In) (Out, error), opts ...RouteOption) {
 	if h == nil {
 		panic(fmt.Sprintf("web: %s %s: nil handler", method, pattern))
+	}
+	for _, opt := range opts {
+		if opt.validate == nil {
+			panic("web: invalid zero RouteOption")
+		}
+		if err := opt.validate(); err != nil {
+			panic(fmt.Sprintf("web: %s %s: external error: %v", method, pattern, err))
+		}
 	}
 	if err := schema.Compile[Out](); err != nil {
 		panic(fmt.Sprintf("web: %s %s: output: %v", method, pattern, err))

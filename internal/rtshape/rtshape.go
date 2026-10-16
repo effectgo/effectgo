@@ -71,10 +71,12 @@ type Field struct {
 	Name      string // the Go name
 	JSON      string // the json name; the Go name when the tag gives none
 	Omitempty bool   // json:",omitempty"
-	Optional  bool   // the field is declared with a pointer type
 	Path      string // the path tag, "" when there is none
 	Query     string // the query tag, "" when there is none
+	Header    string // the header tag, "" when there is none
+	Cookie    string // the cookie tag, "" when there is none
 	Rules     []Rule // the schema rules that parsed and fit the field
+	Optional  bool   // the field is declared with a pointer type
 	Type      *Type  // the field's type; with Optional, the type the pointer points to
 }
 
@@ -337,6 +339,8 @@ func (b *builder) structFields(out *Type, t types.Type, st *types.Struct) {
 			Omitempty: slices.Contains(strings.Split(opts, ","), "omitempty"),
 			Path:      tag.Get("path"),
 			Query:     tag.Get("query"),
+			Header:    tag.Get("header"),
+			Cookie:    tag.Get("cookie"),
 		}
 		b.rules(schemaTag, f, where, fld)
 		if p, ok := f.Type().(*types.Pointer); ok {

@@ -357,3 +357,24 @@ func TestRuleVocabularyIsComplete(t *testing.T) {
 		t.Errorf("RuleNames = %q", got)
 	}
 }
+
+func TestInputLocations(t *testing.T) {
+	s := describe(t, `package p
+type Root struct {
+	RequestID string `+"`header:\"X-Request-ID\" json:\"request_id\"`"+`
+	Session string `+"`cookie:\"session\" json:\"session\"`"+`
+	CSRF string `+"`cookie:\"csrf\" json:\"csrf\"`"+`
+}`, Options{})
+	if got := len(s.Root.Fields); got != 3 {
+		t.Fatalf("field count = %d, want 3", got)
+	}
+	if got := field(t, s.Root, "RequestID").Header; got != "X-Request-ID" {
+		t.Fatalf("header = %q", got)
+	}
+	if got := field(t, s.Root, "Session").Cookie; got != "session" {
+		t.Fatalf("session cookie = %q", got)
+	}
+	if got := field(t, s.Root, "CSRF").Cookie; got != "csrf" {
+		t.Fatalf("csrf cookie = %q", got)
+	}
+}
