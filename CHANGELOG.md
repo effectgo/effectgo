@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.2 - 2026-10-17
+
+- Document optional header/cookie pointer semantics and Huma-to-rt/web envelope migration.
+- Add real HTTP migration regressions for authentication boundaries, top-level responses, custom error media types, and preserved manual OpenAPI operation IDs.
+
 ## 0.0.1 - 2026-10-17
 
 ### Features

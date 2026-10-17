@@ -61,6 +61,46 @@ cd examples/web
 
 `examples/run.sh` checks that the committed file matches the generator, and fails when it does not.
 
+## Migrating a Huma execution handler
+
+[migration_test.go](migration_test.go) is a runnable migration example using
+`rt/web` and the standard library, without a Huma dependency. Run it with:
+
+```sh
+GOMAXPROCS=2 go test -p=1 -run TestMigrationHTTPContract -count=1 .
+```
+
+The three migration boundaries are explicit:
+
+- Optional cookie/header inputs use `*string`. Missing values are nil; an empty
+  cookie is a present pointer to `""`. The current runtime treats an empty header
+  as absent. Plain `string` fields remain required and missing values produce
+  `DecodeError` (400 with the default encoder). Optional decoding does not grant
+  authentication: the handler decides whether an actor or either cookie is valid
+  and returns 401 if none is accepted. The example's actor header and literal
+  cookie values stand in for an application's authentication result; never trust
+  a public actor header or authenticate by mere credential presence in production.
+- Huma's `struct { Body Envelope }` is a transport wrapper. Return the envelope
+  itself from `rt/web`, with a `Data` field tagged `json:"data"`, to keep
+  `{"data": ...}` at the top level. `rt/web` JSON-encodes the entire return value;
+  it does not unwrap `Body`. Huma output header/cookie fields also do not become
+  response headers automatically. Use `http.ResponseWriter` middleware for
+  headers and `http.SetCookie` for response cookies, with the existing security
+  attributes preserved; document these separately in the OpenAPI response.
+- `WithErrorEncoder` owns status, body, and Content-Type. The example keeps
+  200/401 as `application/json` and 500 as `application/problem+json`, redacts
+  internal errors, and checks actual HTTP responses against manual OpenAPI
+  response metadata. Keep the existing `operationId` (`get-api-auth-me` in this
+  example) and make the 200 schema describe the direct envelope. Register one
+  execution handler; keep Huma documentation-only metadata separate from execution.
+
+`web.ExternalError[E]()` declares an error shape/status for analysis and generated
+clients; it does not describe media types, response headers, cookies, or operation
+IDs. The current route API cannot replace manual OpenAPI metadata. No new generic
+metadata layer is needed for this migration. Effect TypeScript remains `4.0.4`;
+optional cookies still use the browser cookie jar through `BrowserFetchHttpClient`.
+
+
 ## Negative experiment
 
 Add a Go error with a constant status to `UpdateContact` (for example `ContactLocked`
