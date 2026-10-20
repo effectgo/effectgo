@@ -18,10 +18,10 @@ function run(command, args, options = {}) {
 try {
   if (packages.length === 1 && packages[0] === '--root') {
     const all = run('go', ['list', './...'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim().split('\n');
-    const isolated = all.filter(pkg => ['/cmd/effectgo', '/tsgen', '/errset'].some(suffix => pkg.endsWith(suffix)));
+    const isolated = all.filter(pkg => ['/cmd/effectgo', '/tsgen', '/errset', '/openapi', '/signature'].some(suffix => pkg.endsWith(suffix)));
     const ordinary = all.filter(pkg => !isolated.includes(pkg));
-    assert.equal(isolated.length, 3, 'expected CLI, generator and error-set test packages');
-    run('go', ['test', '-race', '-count=1', ...ordinary]);
+    assert.equal(isolated.length, 5, 'expected CLI, generator, error-set, OpenAPI and signature test packages');
+    if (ordinary.length > 0) run('go', ['test', '-race', '-count=1', ...ordinary]);
     packages.splice(0, 1, ...isolated);
   }
   for (const pkg of packages) {

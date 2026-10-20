@@ -23,7 +23,7 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 
 ### How to run it
 
-- `effectgo ./...`: the five analyzers, zero configuration. Exit 3 means diagnostics.
+- `effectgo ./...`: the six analyzers, zero configuration. Exit 3 means diagnostics.
 - `go vet -vettool=$(which effectgo) ./...`: the same through go vet. Exit 1 means diagnostics.
 - `effectgo sig ./...`: one `Effect<A, E, R>` line per function (exit 3 when printed; the lines go to stderr).
 - Report flags: `-effects.report`, `-effects.witness`, `-errset.report`, `-errset.witness`, `-errset.statuses`. They print information, not diagnostics. `-effects.all` and `-errset.all` print the violations that the root rule hides.
