@@ -43,6 +43,10 @@ GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/
 - `effectgo openapi`, `http-gin`, `http-huma` and `http` check HTTP error responses against the error sets.
 - `effectgo ts -name NAME ./...` writes the TypeScript client of the `rt/web` routes (effect/http-api).
 
+Release validation: install the locked example dependencies, then run `bash scripts/release-check.sh`; see [releasing](docs/guide/releasing.md). Generated-client compilation and HTTP decoding are mandatory at this gate.
+
+To update an application's pinned source, run `node scripts/pin-source.mjs /path/to/app` from a verified source checkout. This records a release candidate; add `--release v0.1.0` only from the clean tagged release. Applications keep their own lock and thin `scripts/effectgo-source.mjs` entry point; the verifier is copied unchanged from the framework release.
+
 ## Documentation
 
 - [Getting started](docs/guide/getting-started.md): install, the first run, reading the output.

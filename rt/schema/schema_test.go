@@ -33,6 +33,47 @@ type Contact struct {
 	Suppressed bool    `json:"suppressed"`
 }
 
+func TestDecodePreservesRejectedJSONValues(t *testing.T) {
+	type input struct {
+		Count int `json:"count" schema:"min=1"`
+	}
+	for _, tc := range []struct {
+		body, code, value string
+	}{
+		{`{"count":0}`, CodeMin, "0"},
+		{`{"count":"secret"}`, CodeType, `"secret"`},
+		{`{"count":null}`, CodeType, "null"},
+		{`{"count":1,"extra":{"n":9007199254740993}}`, CodeUnknown, `{"n":9007199254740993}`},
+		{`{}`, CodeMissing, ""},
+	} {
+		for _, into := range []bool{false, true} {
+			body := []byte(tc.body)
+			var err error
+			if into {
+				v := input{Count: 9}
+				err = DecodeInto(body, &v)
+				if v.Count != 0 {
+					t.Fatalf("DecodeInto failed to reset destination: %+v", v)
+				}
+			} else {
+				_, err = Decode[input](body)
+			}
+			issues := issuesOf(t, err)
+			if len(issues) != 1 || issues[0].Code != tc.code || issues[0].Source != "" {
+				t.Fatalf("issues = %#v", issues)
+			}
+			clear(body)
+			if tc.value == "" {
+				if issues[0].Value != nil {
+					t.Fatalf("missing value = %#v", issues[0].Value)
+				}
+			} else if raw, ok := issues[0].Value.(json.RawMessage); !ok || string(raw) != tc.value {
+				t.Fatalf("rejected value = %#v, want %s", issues[0].Value, tc.value)
+			}
+		}
+	}
+}
+
 func TestDecodeValid(t *testing.T) {
 	c, err := Decode[Contact]([]byte(`{"id":7,"name":"  Ada  ","email":"ada@example.com","segment":"hot","suppressed":true}`))
 	if err != nil {

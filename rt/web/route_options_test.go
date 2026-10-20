@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -51,6 +52,30 @@ func TestExternalErrorRejectsInvalidBoundary(t *testing.T) {
 				}
 			}()
 			Get(New(), "/private", externalDenied, option)
+		})
+	}
+}
+
+func TestRouteOptionDiagnosticContext(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		option RouteOption
+		reason string
+	}{
+		{"success", SuccessStatus(199), "invalid success status 199"},
+		{"alternatives", SuccessStatuses(200, 200), "invalid or repeated success status 200"},
+		{"range", SuccessStatusRange(200, 300), "invalid success status range 200..300"},
+		{"external", ExternalError[badStatus](), "invalid error status 200"},
+		{"zero", RouteOption{}, "invalid zero RouteOption"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				failure, ok := recover().(string)
+				if !ok || !strings.HasPrefix(failure, "web: GET /private: route option: ") || !strings.Contains(failure, tc.reason) {
+					t.Fatalf("route diagnostic lost its context or cause: %q", failure)
+				}
+			}()
+			Get(New(), "/private", externalDenied, tc.option)
 		})
 	}
 }

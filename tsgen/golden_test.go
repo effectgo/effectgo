@@ -1,7 +1,7 @@
 package tsgen
 
 import (
-	"flag"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,44 +9,71 @@ import (
 	"testing"
 )
 
-// update rewrites the golden file from the generator output. Review the diff
-// line by line before committing it.
-var update = flag.Bool("update", false, "rewrite testdata/golden/api.golden.ts from the generator")
-
-// goldenFile is the generator output for every package of testdata/mod/golden.
-const goldenFile = "testdata/golden/api.golden.ts"
-
-// goldenPatterns are the packages of the golden output.
-var goldenPatterns = []string{"./golden/..."}
-
-// TestGolden: the output for the golden packages is the golden file. Each
-// package covers rows of the mapping tables (see docs/design/framework.md).
-func TestGolden(t *testing.T) {
-	got, err := generate(t, "testdata/mod", goldenPatterns...)
+func requireTypeScript(t *testing.T) (node, tsc, nodeModules string) {
+	t.Helper()
+	mode := os.Getenv("EFFECTGO_STRICT_CROSS_LANGUAGE")
+	strict := mode != "" && mode != "0"
+	fail := func(format string, args ...any) {
+		if strict {
+			t.Fatalf("cross-language dependency missing: "+format, args...)
+		}
+		t.Skipf(format, args...)
+	}
+	var err error
+	if node, err = exec.LookPath("node"); err != nil {
+		fail("Node.js is not installed")
+	}
+	root, err := filepath.Abs("../examples/web/ts")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if *update {
-		if err := os.MkdirAll(filepath.Dir(goldenFile), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(goldenFile, []byte(got), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return
+	nodeModules = filepath.Join(root, "node_modules")
+	tsc = filepath.Join(nodeModules, "typescript", "bin", "tsc")
+	if _, err := os.Stat(tsc); err != nil {
+		fail("TypeScript is not installed at %s; run npm ci in examples/web/ts", tsc)
 	}
-	want, err := os.ReadFile(goldenFile)
-	if err != nil {
-		t.Fatalf("%v (run go test -run TestGolden -update to write it)", err)
+	for _, dependency := range []struct {
+		path, want string
+	}{
+		{filepath.Join(nodeModules, "effect", "package.json"), "4.0.4"},
+		{filepath.Join(nodeModules, "@effect", "platform-node", "package.json"), "4.0.4"},
+		{filepath.Join(nodeModules, "typescript", "package.json"), "7.0.2"},
+	} {
+		body, err := os.ReadFile(dependency.path)
+		if err != nil {
+			fail("dependency metadata is missing at %s; run npm ci in examples/web/ts", dependency.path)
+		}
+		var metadata struct{ Version string }
+		if err := json.Unmarshal(body, &metadata); err != nil || metadata.Version != dependency.want {
+			fail("%s is %q, want %s; run npm ci in examples/web/ts", dependency.path, metadata.Version, dependency.want)
+		}
 	}
-	if got != string(want) {
-		t.Errorf("the output differs from %s; run go test -run TestGolden -update, then review the diff", goldenFile)
+	return node, tsc, nodeModules
+}
+
+func TestTypeScriptRequirementBehavior(t *testing.T) {
+	if os.Getenv("EFFECTGO_TEST_REQUIRE_TYPESCRIPT") == "1" {
+		requireTypeScript(t)
+		t.Fatal("missing Node.js was accepted")
+	}
+	for _, strict := range []string{"0", "1"} {
+		t.Run("strict="+strict, func(t *testing.T) {
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestTypeScriptRequirementBehavior$", "-test.v")
+			cmd.Env = append(os.Environ(), "EFFECTGO_TEST_REQUIRE_TYPESCRIPT=1", "EFFECTGO_STRICT_CROSS_LANGUAGE="+strict, "PATH="+t.TempDir())
+			out, err := cmd.CombinedOutput()
+			if strict == "1" {
+				if err == nil || !strings.Contains(string(out), "cross-language dependency missing") {
+					t.Fatalf("strict dependency check must fail: %v\n%s", err, out)
+				}
+			} else if err != nil || !strings.Contains(string(out), "--- SKIP:") {
+				t.Fatalf("ordinary go test must skip without Node.js: %v\n%s", err, out)
+			}
+		})
 	}
 }
 
-// tsconfigGolden compiles the golden file alone. The lib list is needed by the
-// effect declarations: DOM and ESNext.Disposable are used by effect's d.ts files
-// when only the generated file is compiled.
+// tsconfigGolden compiles the generated mapping fixtures alone. The lib list is
+// needed by effect's declarations when only the generated file is compiled.
 const tsconfigGolden = `{
   "compilerOptions": {
     "target": "ES2022",
@@ -63,32 +90,19 @@ const tsconfigGolden = `{
 }
 `
 
-// TestGoldenCompiles: the golden file compiles with tsc against effect@4.0.x as
-// installed in examples/web/ts. Without node, or without that install, the test
-// is skipped.
+// TestGoldenCompiles generates every mapping fixture and compiles the current
+// output against Effect as installed in examples/web/ts. Without Node.js or that
+// dependency install, the test is skipped unless strict cross-language checks
+// are enabled.
 func TestGoldenCompiles(t *testing.T) {
-	node, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node is not installed; install Node.js to run the tsc check of the golden file")
-	}
-	nm, err := filepath.Abs("../examples/web/ts/node_modules")
+	node, tsc, nm := requireTypeScript(t)
+	src, err := generate(t, "testdata/mod", "./golden/...")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tsc := filepath.Join(nm, "typescript", "bin", "tsc")
-	if _, err := os.Stat(tsc); err != nil {
-		t.Skipf("no typescript at %s: run npm install in examples/web/ts to run the tsc check", tsc)
-	}
-	src, err := os.ReadFile(goldenFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := filepath.Join(t.TempDir(), "tsgolden")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	dir := t.TempDir()
 	files := map[string]string{
-		"api.gen.ts":    string(src),
+		"api.gen.ts":    src,
 		"package.json":  `{"name":"tsgolden","private":true,"type":"module"}` + "\n",
 		"tsconfig.json": tsconfigGolden,
 	}
@@ -100,8 +114,8 @@ func TestGoldenCompiles(t *testing.T) {
 	if err := os.Symlink(nm, filepath.Join(dir, "node_modules")); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(node, tsc, "--noEmit", "-p", filepath.Join(dir, "tsconfig.json"))
+	cmd := exec.CommandContext(t.Context(), node, tsc, "--noEmit", "-p", filepath.Join(dir, "tsconfig.json"))
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("tsc --noEmit on the golden file failed: %v\n%s", err, strings.TrimSpace(string(out)))
+		t.Fatalf("tsc --noEmit on the generated mapping fixtures failed: %v\n%s", err, strings.TrimSpace(string(out)))
 	}
 }

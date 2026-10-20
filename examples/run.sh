@@ -53,8 +53,8 @@ echo "lines with Effect<: $n"
 
 fail=0
 
-section "web, standalone: effectgo ./... (expected 0 findings)"
-(cd "$here/web" && "$bin" ./...); rc=$?; echo "exit $rc"
+section "web, standalone: effectgo -test=false ./... (expected 0 findings; tests inject unmapped failures)"
+(cd "$here/web" && "$bin" -test=false ./...); rc=$?; echo "exit $rc"
 [ "$rc" -eq 0 ] || fail=1
 
 section "web, generated TypeScript: effectgo ts -name contacts ./... against web/ts/api.gen.ts"

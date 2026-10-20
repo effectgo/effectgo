@@ -297,6 +297,44 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_, _ = w.Write(buf.Bytes())
 }
 
+// writeOutputHeaders preserves header and cookie values declared by outputs.
+func writeOutputHeaders(w http.ResponseWriter, output any) {
+	v := reflect.ValueOf(output)
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return
+	}
+	t := v.Type()
+	for index := range t.NumField() {
+		name := t.Field(index).Tag.Get("header")
+		if name == "" {
+			continue
+		}
+		value := v.Field(index)
+		if !value.CanInterface() {
+			continue
+		}
+		if value.Kind() == reflect.Pointer {
+			if value.IsNil() {
+				continue
+			}
+			value = value.Elem()
+		}
+		switch item := value.Interface().(type) {
+		case http.Cookie:
+			w.Header().Add(name, item.String())
+		case string:
+			w.Header().Add(name, item)
+		case []string:
+			for _, entry := range item {
+				w.Header().Add(name, entry)
+			}
+		}
+	}
+}
+
 func encodeJSON(buf *bytes.Buffer, v any) error {
 	enc := json.NewEncoder(buf)
 	enc.SetEscapeHTML(false)
@@ -364,23 +402,87 @@ func register[In, Out any](r *Router, method, pattern string, h func(context.Con
 	if h == nil {
 		panic(fmt.Sprintf("web: %s %s: nil handler", method, pattern))
 	}
+	status := http.StatusOK
+	outputType := reflect.TypeFor[Out]()
+	noContent := outputType == reflect.TypeFor[NoContent]()
+	redirect := outputType == reflect.TypeFor[RedirectResponse]()
+	file := outputType == reflect.TypeFor[FileResponse]()
+	stream := outputType == reflect.TypeFor[StreamResponse]()
+	wrappedJSON := outputType.Implements(reflect.TypeFor[jsonResponse]())
+	if noContent {
+		status = http.StatusNoContent
+	} else if redirect {
+		status = http.StatusFound
+	}
+	statusSpecified, jsonBody, jsonBodyEmpty, jsonBodyBestEffort, jsonBodyExact, formBody := false, false, false, false, false, false
+	var successStatuses []int
 	for _, opt := range opts {
 		if opt.validate == nil {
-			panic("web: invalid zero RouteOption")
+			panic(fmt.Sprintf("web: %s %s: route option: invalid zero RouteOption", method, pattern))
 		}
 		if err := opt.validate(); err != nil {
-			panic(fmt.Sprintf("web: %s %s: external error: %v", method, pattern, err))
+			panic(fmt.Sprintf("web: %s %s: route option: %v", method, pattern, err))
+		}
+		if opt.status != 0 {
+			if statusSpecified {
+				panic("web: SuccessStatus specified more than once")
+			}
+			status, statusSpecified = opt.status, true
+		}
+		successStatuses = append(successStatuses, opt.statuses...)
+		jsonBody = jsonBody || opt.jsonBody
+		jsonBodyEmpty = jsonBodyEmpty || opt.jsonBodyEmpty
+		jsonBodyBestEffort = jsonBodyBestEffort || opt.jsonBodyBestEffort
+		jsonBodyExact = jsonBodyExact || opt.jsonBodyExact
+		formBody = formBody || opt.formBody
+	}
+	if len(successStatuses) > 0 && !file && !stream && !wrappedJSON {
+		panic("web: alternative success statuses require a response with HTTP metadata")
+	}
+	if len(successStatuses) > 0 && wrappedJSON {
+		output := reflect.New(outputType).Elem()
+		if outputType.Kind() == reflect.Pointer {
+			output = reflect.New(outputType.Elem())
+		}
+		if output.Interface().(jsonResponse).responseProxy() {
+			panic("web: ProxyResponse requires a single success status")
 		}
 	}
-	if err := schema.Compile[Out](); err != nil {
-		panic(fmt.Sprintf("web: %s %s: output: %v", method, pattern, err))
+	for _, code := range append(successStatuses, status) {
+		if redirect {
+			if !redirectStatus(code) {
+				panic("web: RedirectResponse requires a redirect success status")
+			}
+		} else if noContent {
+			if code != http.StatusNoContent {
+				panic("web: NoContent requires status 204")
+			}
+		} else if code < 200 || code > 299 || ((code == http.StatusNoContent || code == http.StatusResetContent) && !file && !wrappedJSON) {
+			panic("web: invalid success status for response type")
+		}
 	}
-	in, err := newInputPlan[In](method, pattern)
+	if !file && !stream && !redirect && !wrappedJSON {
+		if err := schema.Compile[Out](); err != nil {
+			panic(fmt.Sprintf("web: %s %s: output: %v", method, pattern, err))
+		}
+	}
+	in, err := newInputPlan[In](method, pattern, jsonBody)
 	if err != nil {
 		panic(fmt.Sprintf("web: %s %s: %v", method, pattern, err))
 	}
+	in.jsonBodyEmpty = jsonBodyEmpty
+	in.jsonBodyBestEffort = jsonBodyBestEffort
+	in.jsonBodyExact = jsonBodyExact
+	in.formBody = formBody
+	if formBody && len(in.formFields) == 0 {
+		panic("web: FormBody requires multipart fields")
+	}
+	if jsonBody && len(in.formFields) != 0 {
+		panic("web: JSONBody cannot be combined with multipart input")
+	}
 	r.mux.HandleFunc(method+" "+pattern, func(w http.ResponseWriter, req *http.Request) {
-		v, err := in.decode(w, req, r.maxBody)
+		v, cleanup, err := in.decodeWithCleanup(w, req, r.maxBody)
+		defer cleanup()
 		if err != nil {
 			r.encodeError(w, req, err)
 			return
@@ -390,12 +492,61 @@ func register[In, Out any](r *Router, method, pattern string, h func(context.Con
 			r.encodeError(w, req, err)
 			return
 		}
-		if reflect.TypeFor[Out]() == reflect.TypeFor[NoContent]() {
-			w.WriteHeader(http.StatusNoContent)
+		if noContent {
+			w.WriteHeader(status)
+			return
+		}
+		switch output := any(out).(type) {
+		case FileResponse:
+			if output.Status == 0 {
+				output.Status = status
+			}
+			if err := r.sendFile(w, req, output); err != nil {
+				r.responseFailure(w, req, err)
+			}
+			return
+		case StreamResponse:
+			if err := r.sendCallbackStream(w, req, status, output); err != nil {
+				r.responseFailure(w, req, err)
+			}
+			return
+		case RedirectResponse:
+			if strings.ContainsAny(output.Location, "\r\n") {
+				r.responseFailure(w, req, errors.New("web: invalid redirect location"))
+				return
+			}
+			http.Redirect(w, req, output.Location, status)
+			return
+		}
+		responseStatus := status
+		var body any = out
+		var headers http.Header
+		proxy := false
+		if output, ok := any(out).(jsonResponse); ok {
+			body, headers = output.responseBody(), output.responseHeaders()
+			proxy = output.responseProxy()
+			if code := output.responseStatus(); code != 0 {
+				responseStatus = code
+			}
+			if proxy && (responseStatus < 100 || responseStatus > 999 || output.responseStatus() != 0 && responseStatus == status) {
+				r.responseFailure(w, req, errors.New("web: invalid proxy response status"))
+				return
+			}
+			if !proxy && (responseStatus < 200 || responseStatus > 599) {
+				r.responseFailure(w, req, errors.New("web: invalid response status"))
+				return
+			}
+		}
+		if proxy && responseStatus < 200 || responseStatus == http.StatusNoContent || responseStatus == http.StatusResetContent || responseStatus == http.StatusNotModified {
+			if err := setResponseHeaders(w, headers); err != nil {
+				r.responseFailure(w, req, err)
+				return
+			}
+			w.WriteHeader(responseStatus)
 			return
 		}
 		var buf bytes.Buffer
-		if err := encodeJSON(&buf, out); err != nil {
+		if err := encodeJSON(&buf, body); err != nil {
 			r.logger.LogAttrs(req.Context(), slog.LevelError, "encode response failed",
 				slog.String("request_id", RequestIDFrom(req.Context())),
 				slog.String("route", req.Pattern),
@@ -404,8 +555,18 @@ func register[In, Out any](r *Router, method, pattern string, h func(context.Con
 			r.encodeError(w, req, InternalError{})
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		writeOutputHeaders(w, out)
+		if err := setResponseHeaders(w, headers); err != nil {
+			r.responseFailure(w, req, err)
+			return
+		}
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		w.WriteHeader(responseStatus)
+		if proxy && req.Method == http.MethodHead {
+			return
+		}
 		_, _ = w.Write(buf.Bytes())
 	})
 }
@@ -442,7 +603,7 @@ func bodyObject(body []byte) (map[string]json.RawMessage, error) {
 	}
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(trimmed, &obj); err != nil || obj == nil {
-		return nil, &schema.DecodeError{Issues: []schema.Issue{{Path: []string{}, Code: schema.CodeType, Message: "expected object, got " + jsonWord(trimmed)}}}
+		return nil, &schema.DecodeError{Issues: []schema.Issue{{Path: []string{}, Code: schema.CodeType, Message: "expected object, got " + jsonWord(trimmed), Source: "body", Value: json.RawMessage(trimmed)}}}
 	}
 	return obj, nil
 }

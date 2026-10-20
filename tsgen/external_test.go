@@ -13,12 +13,7 @@ import (
 // including two distinct errors sharing status 503. Compilation alone cannot
 // catch a schema that still requires the wire _tag.
 func TestExternalErrorsDecode(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is not installed; install examples/web/ts dependencies to run the HTTP decoder check")
-	}
-	if _, err := os.Stat("../examples/web/ts/node_modules/typescript/bin/tsc"); err != nil {
-		t.Skip("install examples/web/ts dependencies to run the HTTP decoder check")
-	}
+	node, tsc, nm := requireTypeScript(t)
 	api, err := generate(t, "testdata/mod", "./golden/external")
 	if err != nil {
 		t.Fatal(err)
@@ -43,10 +38,6 @@ func TestExternalErrorsDecode(t *testing.T) {
 	}))
 	defer server.Close()
 	dir := t.TempDir()
-	nm, err := filepath.Abs("../examples/web/ts/node_modules")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Symlink(nm, filepath.Join(dir, "node_modules")); err != nil {
 		t.Fatal(err)
 	}
@@ -83,8 +74,8 @@ console.log("decoded external 401/503 errors and numeric int64 beyond 2^53; reje
 			t.Fatal(err)
 		}
 	}
-	for _, args := range [][]string{{filepath.Join(nm, "typescript/bin/tsc"), "-p", filepath.Join(dir, "tsconfig.json")}, {filepath.Join(dir, "check.js")}} {
-		cmd := exec.CommandContext(t.Context(), "node", args...)
+	for _, args := range [][]string{{tsc, "-p", filepath.Join(dir, "tsconfig.json")}, {filepath.Join(dir, "check.js")}} {
+		cmd := exec.CommandContext(t.Context(), node, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%v: %v\n%s", args, err, out)
 		} else {
@@ -94,21 +85,12 @@ console.log("decoded external 401/503 errors and numeric int64 beyond 2^53; reje
 }
 
 func TestCookieBrowserTransport(t *testing.T) {
-	if _, err := exec.LookPath("node"); err != nil {
-		t.Skip("node is not installed; install examples/web/ts dependencies to run the browser transport check")
-	}
-	if _, err := os.Stat("../examples/web/ts/node_modules/typescript/bin/tsc"); err != nil {
-		t.Skip("install examples/web/ts dependencies to run the browser transport check")
-	}
+	node, tsc, nm := requireTypeScript(t)
 	api, err := generate(t, "testdata/mod", "./golden/cookies")
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	nm, err := filepath.Abs("../examples/web/ts/node_modules")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Symlink(nm, filepath.Join(dir, "node_modules")); err != nil {
 		t.Fatal(err)
 	}
@@ -143,8 +125,8 @@ console.log("browser cookie transport used credentials include without a Cookie 
 			t.Fatal(err)
 		}
 	}
-	for _, args := range [][]string{{filepath.Join(nm, "typescript/bin/tsc"), "-p", filepath.Join(dir, "tsconfig.json")}, {filepath.Join(dir, "check.js")}} {
-		cmd := exec.CommandContext(t.Context(), "node", args...)
+	for _, args := range [][]string{{tsc, "-p", filepath.Join(dir, "tsconfig.json")}, {filepath.Join(dir, "check.js")}} {
+		cmd := exec.CommandContext(t.Context(), node, args...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("%v: %v\n%s", args, err, out)
 		} else {

@@ -164,12 +164,38 @@ func (c *checker) route(call *ast.CallExpr, method string, in, out types.Type) {
 	if isConst {
 		text = method + " " + pattern
 	}
-	c.checkInput(call.Pos(), text, method, pattern, isConst, in)
-	c.schemaRoot(call.Pos(), "route "+text+": output "+c.typeString(out), out)
+	jsonBody := false
+	for _, option := range call.Args[3:] {
+		if invocation, ok := option.(*ast.CallExpr); ok {
+			fn, _ := calleeOf(c.pass, invocation)
+			if fn != nil && fn.Pkg() != nil && fn.Pkg().Path() == webPath {
+				switch fn.Name() {
+				case "JSONBody", "JSONBodyEmpty", "JSONBodyBestEffort", "JSONBodyExact":
+					jsonBody = true
+				}
+			}
+		}
+	}
+	c.checkInput(call.Pos(), text, method, pattern, isConst, in, jsonBody)
+	out = types.Unalias(out)
+	if named, ok := out.(*types.Named); ok && named.Obj().Pkg() != nil && named.Obj().Pkg().Path() == webPath {
+		switch named.Obj().Name() {
+		case "FileResponse", "StreamResponse", "RedirectResponse":
+			return
+		case "Response":
+			if named.TypeArgs().Len() == 1 {
+				out = named.TypeArgs().At(0)
+			}
+		}
+	}
+	shape := rtshape.Describe(out, rtshape.Options{Qualifier: c.qualifier(), JSONOutput: true})
+	for _, p := range shape.Problems {
+		c.problem(p, site{pos: call.Pos(), text: "route " + text + ": output " + c.typeString(out)})
+	}
 }
 
 // checkInput mirrors rt/web newInputPlan.
-func (c *checker) checkInput(pos token.Pos, route, method, pattern string, patConst bool, in types.Type) {
+func (c *checker) checkInput(pos token.Pos, route, method, pattern string, patConst bool, in types.Type, jsonBody bool) {
 	if _, ok := in.(*types.TypeParam); ok {
 		return
 	}
@@ -186,9 +212,13 @@ func (c *checker) checkInput(pos token.Pos, route, method, pattern string, patCo
 		c.routeProblem(pos, route, fmt.Sprintf("input %s must be a struct or web.NoInput", c.typeString(in)))
 		return
 	}
-	c.schemaRoot(pos, "route "+route+": input "+c.typeString(in), in)
+	shape := rtshape.Describe(in, rtshape.Options{Qualifier: c.qualifier(), Sealed: c.sealedMessage, Multipart: true, JSONBody: jsonBody})
+	for _, problem := range shape.Problems {
+		c.problem(problem, site{pos: pos, text: "route " + route + ": input " + c.typeString(in)})
+	}
+	c.checkMultipart(pos, route, method, in, st)
 
-	readsBody := method == "POST" || method == "PUT" || method == "PATCH"
+	readsBody := method == "POST" || method == "PUT" || method == "PATCH" || method == "DELETE"
 	var wild []string
 	if patConst {
 		wild = nameOfPattern(pattern)
@@ -205,7 +235,7 @@ func (c *checker) checkInput(pos token.Pos, route, method, pattern string, patCo
 		pathName, hasPath := tag.Lookup("path")
 		queryName, hasQuery := tag.Lookup("query")
 		if !hasPath && !hasQuery {
-			if jsonTag != "-" && bodyField == nil {
+			if jsonTag != "-" && tag.Get("header") == "" && tag.Get("cookie") == "" && tag.Get("form") == "" && bodyField == nil {
 				bodyField = f
 			}
 			continue
@@ -245,7 +275,39 @@ func (c *checker) checkInput(pos token.Pos, route, method, pattern string, patCo
 		}
 	}
 	if bodyField != nil && !readsBody {
-		c.routeProblem(pos, route, fmt.Sprintf("%s takes no body, but field %s has no path or query tag; read it with query:\"name\", or use POST, PUT or PATCH", method, bodyField.Name()))
+		c.routeProblem(pos, route, fmt.Sprintf("%s takes no body, but field %s has no input location tag; read it from the URL or use POST, PUT, PATCH or DELETE", method, bodyField.Name()))
+	}
+}
+
+func (c *checker) checkMultipart(pos token.Pos, route, method string, in types.Type, st *types.Struct) {
+	forms := map[string]bool{}
+	hasJSON := false
+	for i := range st.NumFields() {
+		if !st.Field(i).Exported() {
+			continue
+		}
+		tag := reflect.StructTag(st.Tag(i))
+		if name, ok := tag.Lookup("form"); ok {
+			if forms[name] {
+				c.routeProblem(pos, route, "multipart form name "+name+" is repeated")
+			}
+			forms[name] = true
+		} else if tag.Get("json") != "-" && tag.Get("path") == "" && tag.Get("query") == "" && tag.Get("header") == "" && tag.Get("cookie") == "" {
+			hasJSON = true
+		}
+	}
+	if len(forms) == 0 {
+		return
+	}
+	shape := rtshape.Describe(in, rtshape.Options{Qualifier: c.qualifier(), Multipart: true})
+	for _, p := range shape.Problems {
+		c.problem(p, site{pos: pos, text: "route " + route + ": input " + c.typeString(in)})
+	}
+	if hasJSON {
+		c.routeProblem(pos, route, "multipart file fields cannot be mixed with JSON body fields")
+	}
+	if method != "POST" && method != "PUT" && method != "PATCH" && method != "DELETE" {
+		c.routeProblem(pos, route, method+" takes no body, but the input has form fields")
 	}
 }
 

@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+## 0.1.0 - 2026-10-20
+
+- Reject ExternalError contracts during generation when runtime schema registration cannot accept them; retain strict input decoding and JSON output semantics.
+- Omit explicit undefined object keys before generated JSON payload encoding, including nested DTOs, while preserving null, scalar values, array positions and special objects.
+- Add opt-in HTTP finding and unresolved-route failure policies with machine-readable coverage, preserving default CLI exit behavior.
+- Require real TypeScript compilation and HTTP decoding in the release gate; missing cross-language dependencies fail the release check. Run each discovered CLI/generator test in a fresh race-enabled process to bound accumulated analysis metadata under the shared memory cap.
+- Share source verification and pin updates across applications, retaining exact build-input inventories, file hashes, platform binary hashes and runtime provenance checks.
+- Clarify current JSON mappings, custom error contracts and route-option diagnostics.
+
+- Add bounded multipart uploads to `rt/web` using required `web.File` and optional `*web.File` fields with `form` tags.
+- Generate Effect 4.0.4 multipart `FormData` clients and reject unsupported mixed upload contracts during analysis and generation.
+- Exercise upload metadata, binary contents, malformed multipart boundaries, duplicate/missing parts and request-size limits over HTTP.
+- Preserve output header/cookie fields already used by dogfood applications, including cookie security attributes and repeated response headers.
+- Analyze production web example sources separately from deliberate fault-injection test handlers in the example acceptance script.
+- Add explicit success statuses, typed JSON response metadata, owned file streams, callback-scoped streams and redirects; preserve range/conditional responses and provider headers.
+- Preserve declared `encoding/json` request semantics, exact single-value framing, DELETE bodies and scalar multipart fields without changing URL-field ownership or request-size limits.
+- Generate native Effect success/status and binary codecs, distinct instantiated generic schemas, and explicit middleware error envelopes; verify current generated clients through TypeScript compilation and real HTTP decoding.
+- Honor encoding/json byte slices in schema analysis and validate multipart null/omission boundaries with executable Effect schemas.
+- Describe embedded and anonymous JSON response structs with encoding/json field names, dominance, nil embedded-pointer omission and inline Effect schemas; reject ambiguous output fields while retaining strict schema input restrictions.
+- Extend the generated-client TypeScript/HTTP decode regression to cover inherited fields and anonymous nested rows encoded by Go's JSON encoder.
+- Retain declared HTTP validation sources and owned rejected-value evidence without adding them to default error JSON; bound repeated embedded-type traversal by distinct types and fields rather than embedding paths.
+
 ## 0.0.2 - 2026-10-17
 
 - Document optional header/cookie pointer semantics and Huma-to-rt/web envelope migration.

@@ -24,11 +24,9 @@ Build the binary from a clone with `go build -o bin/effectgo ./cmd/effectgo` (Go
 | `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any (exit 3 is success here, see [Exit codes](#exit-codes)) |
 | `effectgo openapi [-merge spec.json \| -check spec.json] ./...` | error responses of each route | a fragment (JSON), a merged document (JSON), or a drift report (text) |
 | `effectgo ts [-o FILE] [-name NAME] ./...` | the routes of `rt/web` as a TypeScript client (effect/http-api, effect@4.0.4) | the file on stdout, or in `FILE`; a generation error exits 1 with its position |
-| `effectgo http-gin [-json] [-all] [-mappers] ./...` | Gin responses against their error sets | text, or one JSON object per finding |
-| `effectgo http-huma [-json] [-all] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding |
-| `effectgo http [-json] [-all] ./...` | both HTTP checks, one list | text, or one JSON object per finding |
-
-The HTTP checks are described in [HTTP checks](../guide/http-checks.md); the OpenAPI command there too.
+| `effectgo http-gin [-json] [-all] [-mappers] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Gin responses against their error sets | text, or one JSON object per finding; optional machine-readable coverage on stderr |
+| `effectgo http-huma [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding; optional machine-readable coverage on stderr |
+| `effectgo http [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | both HTTP checks, one list | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 
 ## Flags
 
@@ -92,6 +90,9 @@ The output is deterministic. A type that rt cannot describe, a recursive type, t
 | `-json` | one JSON object per finding (the shared schema, see below) |
 | `-all` | also print `info` findings |
 | `-mappers` | list the detected sink and status mappers on stderr |
+| `-fail-on=none\|high\|medium\|leak\|info` | exit 3 when a finding at or above the selected threshold exists; default `none` keeps the historical exit 0 |
+| `-fail-unresolved` | exit 3 when route coverage contains an unresolved route; default false |
+| `-coverage=json` | write one machine-readable coverage object to stderr; stdout keeps the existing finding stream |
 | `-stubs`, `-errset.engine` | as above |
 
 ### http-huma
@@ -100,11 +101,18 @@ The output is deterministic. A type that rt cannot describe, a recursive type, t
 |---|---|
 | `-json` | one JSON object per finding; the coverage summary goes to stderr |
 | `-all` | also print `info` findings |
+| `-fail-on=none\|high\|medium\|leak\|info` | exit 3 when a finding at or above the selected threshold exists; `leak` has no Huma findings and is accepted for shared scripts |
+| `-fail-unresolved` | exit 3 when route coverage contains an unresolved route; default false |
+| `-coverage=json` | write one machine-readable coverage object to stderr; stdout keeps the existing finding stream |
 | `-stubs`, `-errset.engine` | as above |
 
 ### http
 
-`-json`, `-all`, `-stubs` and `-errset.engine`, with the meaning above, for both adapters over one package load.
+`-json`, `-all`, `-stubs` and `-errset.engine`, with the meaning above, for both adapters over one package load. `-fail-on`, `-fail-unresolved` and `-coverage=json` apply to the union; coverage contains separate `gin` and `huma` objects.
+
+`-fail-on` is a severity threshold in the order `high`, `medium`, `leak`, `info`; selecting `medium` also fails for `high`, and selecting `info` fails for every finding. `leak` is a Gin category rather than a numeric severity, and is included explicitly in the order so a leak can be gated without changing finding JSON. Any invalid value, including an invalid `-coverage` format, is a usage error (exit 2).
+
+Coverage JSON is a separate object on stderr. It includes route counts (`routes`, `resolved`, `unresolved`), finding counts, and framework-specific counters; Huma includes variant status counters. When present, `unresolved_routes` carries positions and reasons. Gin only collects registrations whose handler it resolves: non-constant paths and unresolved group prefixes count as unresolved, while variable handlers and wrappers may fall outside the collected route set. A constant empty path is a resolved root route. Gin coverage includes a `limit` message stating this boundary. A zero unresolved count does not prove every registration was collected.
 
 ## Exit codes
 
@@ -114,9 +122,9 @@ The output is deterministic. A type that rt cannot describe, a recursive type, t
 | `go vet -vettool=…` | no diagnostics | diagnostics were reported (go vet's convention) | — | — |
 | `effectgo sig` | — | a run error | a usage error, as above | a signature was printed. This is a success, not a diagnostic: a script that tests for a non-zero exit must accept 3 |
 | `effectgo openapi` | success | `-check` found a missing code, or the run failed | usage error | — |
-| `http`, `http-gin`, `http-huma` | the run completed (findings do not change the status) | a load or analysis error | usage error | — |
+| `http`, `http-gin`, `http-huma` | the run completed with no selected gate violation | a load or analysis error | usage error, including an invalid gate value | selected `-fail-on` severity or `-fail-unresolved` coverage policy was violated |
 
-The HTTP checks report their findings and exit 0; they are for reading and for JSON consumers, not for gating a build. The `openapi -check` exit 1 is the gate.
+The HTTP checks report their findings and exit 0 by default. `-fail-on` and `-fail-unresolved` opt into exit 3 as a gate; `-coverage=json` only changes the coverage stream and does not itself fail the run. The `openapi -check` exit 1 is the separate OpenAPI gate.
 
 ## Flags after the package patterns
 

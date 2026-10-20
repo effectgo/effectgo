@@ -37,10 +37,6 @@ type bodyOnGet struct {
 	ID   int    `path:"id"`
 }
 
-type bodyOnDelete struct {
-	Name string `json:"name"`
-}
-
 type queryStruct struct {
 	Q Inner `query:"q"`
 }
@@ -64,7 +60,6 @@ type wildcardNoField struct {
 func handlePath(ctx context.Context, in pathMismatch) (Out, error)       { return Out{}, nil }
 func handleNotScalar(ctx context.Context, in notScalar) (Out, error)     { return Out{}, nil }
 func handleBodyGet(ctx context.Context, in bodyOnGet) (Out, error)       { return Out{}, nil }
-func handleBodyDelete(ctx context.Context, in bodyOnDelete) (Out, error) { return Out{}, nil }
 func handleQueryStruct(ctx context.Context, in queryStruct) (Out, error) { return Out{}, nil }
 func handleBoth(ctx context.Context, in bothTags) (Out, error)           { return Out{}, nil }
 func handleDash(ctx context.Context, in dashPath) (Out, error)           { return Out{}, nil }
@@ -80,7 +75,6 @@ func Routes(r *web.Router) {
 	web.Get(r, "/items/{other}", handlePath)       // want `GET /items/\{other\}: field ID has path:"id", but the pattern has no \{id\}`
 	web.Get(r, "/list/{ids}", handleNotScalar)     // want `path field Ids must be a scalar`
 	web.Get(r, "/body/{id}", handleBodyGet)        // want `GET takes no body, but field Name`
-	web.Delete(r, "/body", handleBodyDelete)       // want `DELETE takes no body, but field Name`
 	web.Get(r, "/q", handleQueryStruct)            // want `query field Q must be a scalar or a slice of scalars, got Inner`
 	web.Get(r, "/both", handleBoth)                // want `has both path and query tags`
 	web.Get(r, "/dash", handleDash)                // want `has a path or query tag but json:"-"`

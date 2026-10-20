@@ -2,9 +2,45 @@
 // source: module github.com/faintghost/effectgo/examples/web; packages: github.com/faintghost/effectgo/examples/web
 // target: effect@4.0.4 (effect/http-api is unstable in 4.x)
 
-import { Schema } from "effect"
+import { Schema, SchemaGetter } from "effect"
 import { HttpApi, HttpApiEndpoint, HttpApiGroup } from "effect/http-api"
 import type { HttpClientError } from "effect/http"
+
+function omitUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    let copy: unknown[] | undefined
+    for (let i = 0; i < value.length; i++) {
+      const item = omitUndefined(value[i])
+      if (item !== value[i]) {
+        copy ??= value.slice()
+        copy[i] = item
+      }
+    }
+    return (copy ?? value) as T
+  }
+  if (value === null || typeof value !== "object") return value
+  const prototype = Object.getPrototypeOf(value)
+  if (prototype !== Object.prototype && prototype !== null) return value
+  const record = value as Record<string, unknown>
+  let copy: Record<string, unknown> | undefined
+  for (const key of Object.keys(record)) {
+    const item = omitUndefined(record[key])
+    if (item === undefined || item !== record[key]) {
+      const target: Record<string, unknown> = copy ??= Object.setPrototypeOf({ ...record }, prototype)
+      if (item === undefined) delete target[key]
+      else Object.defineProperty(target, key, { value: item, enumerable: true, configurable: true, writable: true })
+    }
+  }
+  return (copy ?? value) as T
+}
+
+function jsonRequest<S extends Schema.Constraint>(schema: S) {
+  // Normalize before the original schema encodes; its checks and inferred input type remain authoritative.
+  return Schema.decodeTo<Schema.Codec<S["Type"]>, S>(Schema.Unknown as Schema.Codec<S["Type"]>, {
+    decode: SchemaGetter.passthrough(),
+    encode: SchemaGetter.transform((value: S["Type"]) => omitUndefined(value)),
+  })(schema)
+}
 
 export class BodyTooLarge extends Schema.TaggedError<BodyTooLarge>()(
   "BodyTooLarge",
@@ -75,7 +111,7 @@ export const Api = HttpApi.make("contacts").add(
       error: [ContactNotFound, DecodeError, InternalError],
     }),
     HttpApiEndpoint.post("updateContact", "/api/contact", {
-      payload: ContactInput,
+      payload: jsonRequest(ContactInput),
       success: Contact,
       error: [ValidationError, ContactNotFound, DecodeError, BodyTooLarge, InternalError],
     }),

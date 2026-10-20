@@ -182,6 +182,8 @@ Message examples: `missing cases in type switch on Shape: Square, Triangle` and 
 
 Checks the types that flow into rt: the input and output type arguments of `web.Get`, `Post`, `Put`, `Patch` and `Delete`, and the type argument of `schema.Decode` and `schema.Compile`. It follows every struct, slice element, map value and pointer reachable from them. A type that never reaches rt is not checked, so a `schema:"..."` tag of another library (gorilla/schema) is not a finding. A call in a `_test.go` file is not checked: a test registers bad routes on purpose, as errset exempts a closure in a test.
 
+Route outputs use `encoding/json` field selection, including anonymous struct fields and promoted embedded fields. Ignored and dominated fields are skipped; response `schema` tags are not input validation. Equally dominant fields with one JSON name are rejected as `ambiguous output json name "N"; encoding/json omits all equally dominant fields; rename or tag a field`. Schema-mode inputs and `schema.Decode`/`Compile` retain the restrictions below, including the prohibition on embedded fields.
+
 | Message | When |
 |---|---|
 | `field S.F: schema tag "T": unknown rule "R"; the rules are email, max, min, nonempty, pattern, singleline, trim` | a rule that `rt/schema` does not have |

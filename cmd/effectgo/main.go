@@ -6,9 +6,9 @@
 //	effectgo sig ./...                              inferred Effect<A, E, R> signatures
 //	effectgo openapi [-merge|-check spec.json] ./... OpenAPI error responses of the routes
 //	effectgo ts [-o FILE] [-name NAME] ./...        TypeScript client (effect/http-api) of the routes
-//	effectgo http-gin [-json] [-all] [-mappers] ./... Gin responses against the error sets
-//	effectgo http-huma [-json] [-all] ./...         Huma routes: variants that reach HTTP 500
-//	effectgo http [-json] [-all] ./...              the gin and Huma adapters over one load, one list
+//	effectgo http-gin [-json] [-all] [-mappers] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...
+//	effectgo http-huma [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...
+//	effectgo http [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...
 //	go vet -vettool=$(which effectgo) ./...         go vet, cached correctly (see identity)
 //
 // Flags: -stubs (shared by effects and errset; falls back to $EFFECTGO_STUBS),

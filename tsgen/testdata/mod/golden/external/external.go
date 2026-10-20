@@ -53,8 +53,8 @@ type Result struct {
 }
 
 type Input struct {
-    Mode *string `query:"mode" json:"mode,omitempty"`
-    Seq  *int64  `query:"seq" json:"seq,omitempty"`
+	Mode *string `query:"mode" json:"mode,omitempty"`
+	Seq  *int64  `query:"seq" json:"seq,omitempty"`
 }
 
 func Read(_ context.Context, in Input) (Result, error) {

@@ -31,9 +31,10 @@ var severityOrder = map[string]int{"high": 0, "medium": 1, "leak": 2, "info": 3}
 // httpSummary counts what each adapter saw. The info counts include the info
 // findings that are not printed (without -all).
 type httpSummary struct {
-	ginHandlers, ginRoutes   int
-	humaRoutes, humaResolved int
-	gin, huma                map[string]int // findings per severity
+	ginHandlers, ginRoutes    int
+	humaRoutes, humaResolved  int
+	gin, huma                 map[string]int // findings per severity
+	ginCoverage, humaCoverage httpCoverage
 }
 
 // runHTTP implements `effectgo http [-json] [-all] [-stubs ...] [packages]`. It
@@ -45,6 +46,7 @@ func runHTTP(args []string) int {
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
 	jsonOut := fs.Bool("json", false, "one JSON object per line (the shared HTTP schema)")
 	all := fs.Bool("all", false, "also print the info findings (opaque ?, fresh new@ and foreign-kind variants)")
+	opts := bindHTTPOptions(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -73,10 +75,24 @@ func runHTTP(args []string) int {
 	} else {
 		printHTTPText(os.Stdout, out)
 	}
-	fmt.Fprintf(os.Stderr, "effectgo http: gin handlers=%d routes=%d high=%d medium=%d leak=%d info=%d; huma routes=%d resolved=%d high=%d medium=%d info=%d\n",
-		sum.ginHandlers, sum.ginRoutes, sum.gin["high"], sum.gin["medium"], sum.gin["leak"], sum.gin["info"],
-		sum.humaRoutes, sum.humaResolved, sum.huma["high"], sum.huma["medium"], sum.huma["info"])
-	return 0
+	if opts.Coverage == "json" {
+		if err := writeCoverageJSON(os.Stderr, httpUnionCoverage(sum)); err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo http: %v\n", err)
+			return 1
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "effectgo http: gin handlers=%d routes=%d high=%d medium=%d leak=%d info=%d; huma routes=%d resolved=%d high=%d medium=%d info=%d\n",
+			sum.ginHandlers, sum.ginRoutes, sum.gin["high"], sum.gin["medium"], sum.gin["leak"], sum.gin["info"],
+			sum.humaRoutes, sum.humaResolved, sum.huma["high"], sum.huma["medium"], sum.huma["info"])
+	}
+	counts := map[string]int{}
+	for severity, count := range sum.gin {
+		counts[severity] += count
+	}
+	for severity, count := range sum.huma {
+		counts[severity] += count
+	}
+	return gateHTTP(opts, counts, sum.ginCoverage.Unresolved+sum.humaCoverage.Unresolved)
 }
 
 // collectHTTP loads the packages once, runs both adapters on that load, and
@@ -123,6 +139,8 @@ func collectHTTP(patterns []string, all bool) ([]httpFinding, httpSummary, error
 		// huma.Finding has the same fields, in the same order, as httpFinding.
 		out = append(out, httpFinding(f))
 	}
+	sum.ginCoverage = ginCoverage(gRun, sum.gin)
+	sum.humaCoverage = humaCoverage(hRep)
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i], out[j]
 		if ra, rb := rankOf(a.Severity), rankOf(b.Severity); ra != rb {

@@ -453,9 +453,6 @@ func TestRegistrationPanics(t *testing.T) {
 	mustPanicWith(t, "takes no body", func() {
 		Get(New(), "/x", func(context.Context, inBodyOnGet) (NoContent, error) { return NoContent{}, nil })
 	})
-	mustPanicWith(t, "takes no body", func() {
-		Delete(New(), "/x", func(context.Context, inBodyOnGet) (NoContent, error) { return NoContent{}, nil })
-	})
 	mustPanicWith(t, "must be a scalar", func() {
 		Post(New(), "/x/{p}", func(context.Context, inNonScalarPath) (NoContent, error) { return NoContent{}, nil })
 	})

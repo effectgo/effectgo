@@ -104,7 +104,7 @@ func TestDeterministic(t *testing.T) {
 		patterns []string
 	}{
 		{"../examples/web", []string{"./..."}},
-		{"testdata/mod", goldenPatterns},
+		{"testdata/mod", []string{"./golden/..."}},
 	} {
 		a, err := generate(t, in.dir, in.patterns...)
 		if err != nil {

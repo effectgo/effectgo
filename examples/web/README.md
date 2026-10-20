@@ -83,10 +83,10 @@ The three migration boundaries are explicit:
 - Huma's `struct { Body Envelope }` is a transport wrapper. Return the envelope
   itself from `rt/web`, with a `Data` field tagged `json:"data"`, to keep
   `{"data": ...}` at the top level. `rt/web` JSON-encodes the entire return value;
-  it does not unwrap `Body`. Huma output header/cookie fields also do not become
-  response headers automatically. Use `http.ResponseWriter` middleware for
-  headers and `http.SetCookie` for response cookies, with the existing security
-  attributes preserved; document these separately in the OpenAPI response.
+  it does not unwrap `Body`. Response headers use `header:"Name"` fields of type
+  `string`, `[]string` or `http.Cookie` (including optional pointers). Add `json:"-"`
+  to exclude them from the body. Cookie security attributes are preserved;
+  document response headers separately in OpenAPI.
 - `WithErrorEncoder` owns status, body, and Content-Type. The example keeps
   200/401 as `application/json` and 500 as `application/problem+json`, redacts
   internal errors, and checks actual HTTP responses against manual OpenAPI

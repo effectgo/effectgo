@@ -14,6 +14,7 @@
 package rtshape
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"go/types"
 	"reflect"
@@ -48,8 +49,9 @@ const (
 type Type struct {
 	Go   types.Type
 	Cat  Category
-	Name string // the name of a named type, "" otherwise
+	Name string // schema identifier; instantiated named types include a stable digest
 	Pkg  string // the import path of a named type's package, "" otherwise
+	Key  string // fully qualified Go type identity, including instantiated arguments
 	// RuleCat is the category that schema rules see (rt/schema categoryOf on the
 	// type without its pointers): "string", "int", "uint", "float", "slice",
 	// "map", or "" when no rule applies to the kind.
@@ -67,17 +69,21 @@ type Type struct {
 
 // Field is one field rt reads.
 type Field struct {
-	Var       *types.Var
-	Name      string // the Go name
-	JSON      string // the json name; the Go name when the tag gives none
-	Omitempty bool   // json:",omitempty"
-	Path      string // the path tag, "" when there is none
-	Query     string // the query tag, "" when there is none
-	Header    string // the header tag, "" when there is none
-	Cookie    string // the cookie tag, "" when there is none
-	Rules     []Rule // the schema rules that parsed and fit the field
-	Optional  bool   // the field is declared with a pointer type
-	Type      *Type  // the field's type; with Optional, the type the pointer points to
+	Var        *types.Var
+	Name       string // the Go name
+	JSON       string // the json name; the Go name when the tag gives none
+	Omitempty  bool   // json:",omitempty"
+	OmitParent bool   // a nil embedded pointer can omit this promoted field
+	JSONString bool   // encoding/json's ,string option for scalar fields
+	Path       string // the path tag, "" when there is none
+	Query      string // the query tag, "" when there is none
+	Header     string // the header tag, "" when there is none
+	Cookie     string // the cookie tag, "" when there is none
+	Form       string // multipart field name
+	File       bool   // multipart web.File rather than a scalar field
+	Rules      []Rule // the schema rules that parsed and fit the field
+	Optional   bool   // the field is declared with a pointer type
+	Type       *Type  // the field's type; with Optional, the type the pointer points to
 }
 
 // Rule is one parsed schema rule, such as max=200.
@@ -98,13 +104,23 @@ type Problem struct {
 
 // Shape is the description of one root type.
 type Shape struct {
-	Root     *Type
-	Types    []*Type   // every struct and enum reached, once each, in first-seen order
-	Problems []Problem // in the order the walk found them
+	Root       *Type
+	Types      []*Type   // every struct and enum reached, once each, in first-seen order
+	Problems   []Problem // in the order the walk found them
+	JSONOutput bool      // encoding/json output rather than schema input
 }
 
 // Options configure Describe.
 type Options struct {
+	// Multipart includes file inputs tagged form:"name" json:"-". JSON-only
+	// callers leave it false so ignored fields retain their existing meaning.
+	Multipart bool
+	// JSONBody describes encoding/json input rather than schema validation.
+	// Byte slices are opaque JSON values; schema validation still rejects them.
+	JSONBody bool
+	// JSONOutput follows encoding/json field promotion and dominance. Schema
+	// input keeps its stricter field and tag rules.
+	JSONOutput bool
 	// Qualifier names the types in messages. Nil qualifies by full path.
 	Qualifier types.Qualifier
 	// Sealed is called for every named type the walk visits. It returns the
@@ -116,7 +132,8 @@ type Options struct {
 
 // Describe describes t and everything reachable from it.
 func Describe(t types.Type, opt Options) *Shape {
-	b := &builder{opt: opt, shape: &Shape{}, memo: map[string]*Type{}}
+	t = types.Unalias(t)
+	b := &builder{opt: opt, root: t, shape: &Shape{JSONOutput: opt.JSONOutput}, memo: map[string]*Type{}}
 	b.shape.Root = b.typ(t, nil, "")
 	return b.shape
 }
@@ -194,6 +211,7 @@ func BasicKind(b *types.Basic) reflect.Kind {
 // builder holds the state of one Describe call.
 type builder struct {
 	opt   Options
+	root  types.Type
 	shape *Shape
 	memo  map[string]*Type // struct and enum types, by TypeString without a qualifier
 }
@@ -212,6 +230,7 @@ func (b *builder) typeString(t types.Type) string {
 // typ describes a type and everything reachable from it. owner and where are the
 // field that holds the type, for the problems found here.
 func (b *builder) typ(t types.Type, owner *types.Var, where string) *Type {
+	t = types.Unalias(t)
 	if isNamed(t, "time", "Time") {
 		return &Type{Go: t, Cat: CatTime, RuleCat: ""}
 	}
@@ -227,6 +246,10 @@ func (b *builder) typ(t types.Type, owner *types.Var, where string) *Type {
 		if p := n.Obj().Pkg(); p != nil {
 			out.Pkg = p.Path()
 		}
+		out.Key = types.TypeString(n, nil)
+		if n.TypeArgs().Len() > 0 {
+			out.Name += fmt.Sprintf("_%x", sha256.Sum256([]byte(out.Key)))
+		}
 		out.MarshalJSON = hasMethod(n, "MarshalJSON", 0, 2)
 		out.UnmarshalJSON = hasMethod(n, "UnmarshalJSON", 1, 1)
 		out.MarshalText = hasMethod(n, "MarshalText", 0, 2)
@@ -235,6 +258,18 @@ func (b *builder) typ(t types.Type, owner *types.Var, where string) *Type {
 				b.problem(owner, where, msg)
 			}
 		}
+	}
+	if b.opt.JSONOutput && (out.MarshalJSON || out.MarshalText) {
+		out.Cat = CatAny // the encoding method owns the wire shape
+		if _, ok := t.Underlying().(*types.Struct); ok {
+			out.Cat = CatStruct
+			b.shape.Types = append(b.shape.Types, out)
+		}
+		return out
+	}
+	if b.opt.JSONBody && out.UnmarshalJSON && t != b.root {
+		out.Cat = CatAny // the decoder, rather than exported fields, determines the wire type
+		return out
 	}
 	switch u := t.Underlying().(type) {
 	case *types.Basic:
@@ -259,6 +294,10 @@ func (b *builder) typ(t types.Type, owner *types.Var, where string) *Type {
 		return out
 	case *types.Slice:
 		if eb, ok := u.Elem().Underlying().(*types.Basic); ok && eb.Kind() == types.Uint8 {
+			if b.opt.JSONBody {
+				out.Cat = CatAny // encoding/json accepts base64 strings and byte arrays
+				return out
+			}
 			out.Cat = CatUnsupported
 			b.problem(owner, where, "byte slices are not supported; use a string or json.RawMessage")
 			return out
@@ -281,7 +320,11 @@ func (b *builder) typ(t types.Type, owner *types.Var, where string) *Type {
 		out.Cat = CatStruct
 		b.memo[key] = out
 		b.shape.Types = append(b.shape.Types, out)
-		b.structFields(out, t, u)
+		if b.opt.JSONOutput {
+			b.outputFields(out, t, u)
+		} else {
+			b.structFields(out, t, u)
+		}
 		return out
 	case *types.Interface:
 		if !u.Empty() {
@@ -309,6 +352,61 @@ func (b *builder) structFields(out *Type, t types.Type, st *types.Struct) {
 	for i := range st.NumFields() {
 		f := st.Field(i)
 		tag := reflect.StructTag(st.Tag(i))
+		if b.opt.JSONBody && out.UnmarshalJSON && tag.Get("path") == "" && tag.Get("query") == "" && tag.Get("header") == "" && tag.Get("cookie") == "" {
+			continue // the root custom decoder consumes its own opaque body
+		}
+		if form, ok := tag.Lookup("form"); b.opt.Multipart && t == b.root && ok && f.Exported() {
+			where := "field " + name + "." + f.Name()
+			ft := types.Unalias(f.Type())
+			optional := false
+			if p, ok := ft.(*types.Pointer); ok {
+				optional, ft = true, types.Unalias(p.Elem())
+			}
+			file := isNamed(ft, "github.com/faintghost/effectgo/rt/web", "File")
+			jsonName, _, _ := strings.Cut(tag.Get("json"), ",")
+			if form == "" || file && tag.Get("json") != "-" || !file && jsonName != form {
+				b.problem(f, where, `multipart fields require a nonempty form tag and a matching json name; files require json:"-" and web.File or *web.File`)
+				continue
+			}
+			_, hasSchema := tag.Lookup("schema")
+			_, hasPath := tag.Lookup("path")
+			_, hasQuery := tag.Lookup("query")
+			_, hasHeader := tag.Lookup("header")
+			_, hasCookie := tag.Lookup("cookie")
+			if f.Embedded() || file && hasSchema || hasPath || hasQuery || hasHeader || hasCookie {
+				b.problem(f, where, "multipart file cannot be embedded or have schema or other input location tags")
+				continue
+			}
+			var typ *Type
+			if file {
+				typ = &Type{Go: ft, Cat: CatAny}
+			} else {
+				base := ft
+				if slice, ok := ft.Underlying().(*types.Slice); ok && !optional {
+					base = slice.Elem()
+				}
+				basic, ok := base.Underlying().(*types.Basic)
+				if !ok || !supportedBasic(basic) {
+					b.problem(f, where, "multipart value requires a scalar, a pointer to a scalar, or a slice of scalars")
+					continue
+				}
+				if slice, ok := ft.Underlying().(*types.Slice); ok {
+					if basic, ok := slice.Elem().Underlying().(*types.Basic); ok && basic.Kind() == types.Uint8 {
+						b.problem(f, where, "byte slices are not supported; use string or json.RawMessage")
+						continue
+					}
+					typ = &Type{Go: ft, Cat: CatSlice, Elem: b.typ(slice.Elem(), f, where), RuleCat: "slice"}
+				} else {
+					typ = b.typ(ft, f, where)
+				}
+			}
+			fld := &Field{Var: f, Name: f.Name(), JSON: form, Form: form, File: file, Optional: optional, Type: typ}
+			if !file {
+				b.rules(tag.Get("schema"), f, where, fld)
+			}
+			out.Fields = append(out.Fields, fld)
+			continue
+		}
 		if tag.Get("json") == "-" {
 			continue
 		}
@@ -333,16 +431,19 @@ func (b *builder) structFields(out *Type, t types.Type, st *types.Struct) {
 		}
 		jsonNames[jsonName] = true
 		fld := &Field{
-			Var:       f,
-			Name:      f.Name(),
-			JSON:      jsonName,
-			Omitempty: slices.Contains(strings.Split(opts, ","), "omitempty"),
-			Path:      tag.Get("path"),
-			Query:     tag.Get("query"),
-			Header:    tag.Get("header"),
-			Cookie:    tag.Get("cookie"),
+			Var:        f,
+			Name:       f.Name(),
+			JSON:       jsonName,
+			Omitempty:  slices.Contains(strings.Split(opts, ","), "omitempty"),
+			JSONString: slices.Contains(strings.Split(opts, ","), "string"),
+			Path:       tag.Get("path"),
+			Query:      tag.Get("query"),
+			Header:     tag.Get("header"),
+			Cookie:     tag.Get("cookie"),
 		}
-		b.rules(schemaTag, f, where, fld)
+		if !b.opt.JSONBody || t == b.root && (fld.Path != "" || fld.Query != "" || fld.Header != "" || fld.Cookie != "") {
+			b.rules(schemaTag, f, where, fld)
+		}
 		if p, ok := f.Type().(*types.Pointer); ok {
 			fld.Optional = true
 			fld.Type = b.typ(p.Elem(), f, where)

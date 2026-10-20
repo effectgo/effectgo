@@ -18,7 +18,7 @@ import (
 func TestSchematag(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), Analyzer,
 		"rtuse/good", "rtuse/tagbad", "rtuse/typebad", "rtuse/routebad", "rtuse/nonconst",
-		"rtuse/enumbad", "rtuse/cross", "gorilla/plain")
+		"rtuse/enumbad", "rtuse/cross", "rtuse/multipart", "rtuse/bodymodes", "gorilla/plain")
 }
 
 // The analyzer cannot import rt (a separate module), so its vocabulary is copied.

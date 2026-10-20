@@ -55,6 +55,13 @@ type Issue struct {
 	Path    []string `json:"path"`
 	Code    string   `json:"code"`
 	Message string   `json:"message"`
+	// Source is the declared HTTP location (path, query, header, cookie or body).
+	// It is empty for generic schema decoding. Value is the rejected value:
+	// schema decoding retains an owned json.RawMessage; HTTP conversion
+	// failures retain the original string (or repeated strings).
+	// Missing values are nil. Both fields are excluded from default JSON.
+	Source string `json:"-"`
+	Value  any    `json:"-"`
 }
 
 // DecodeError lists every issue found while decoding one value. It is a
@@ -142,29 +149,52 @@ var (
 //effectgo:allow panic
 func Decode[T any](data []byte) (T, error) {
 	var out T
-	if err := Compile[T](); err != nil {
+	err := DecodeInto(data, &out)
+	return out, err
+}
+
+// DecodeInto strictly decodes data into a nonnil pointer. It applies the same
+// rules and enum checks as Decode, and resets dst to zero on failure.
+// Like Decode, it panics if the destination type cannot be compiled.
+//
+//effectgo:allow panic
+func DecodeInto(data []byte, dst any) error {
+	target := reflect.ValueOf(dst)
+	if !target.IsValid() || target.Kind() != reflect.Pointer || target.IsNil() {
+		return fmt.Errorf("schema: destination must be a nonnil pointer")
+	}
+	t := target.Type().Elem()
+	if err := CompileType(t); err != nil {
 		panic(err)
 	}
+	v := target.Elem()
+	v.SetZero()
 	if !json.Valid(data) {
 		var v any
 		err := json.Unmarshal(data, &v)
-		return out, &DecodeError{Issues: []Issue{{Path: []string{}, Code: CodeSyntax, Message: err.Error()}}}
+		return &DecodeError{Issues: []Issue{{Path: []string{}, Code: CodeSyntax, Message: err.Error()}}}
 	}
 	d := &decoder{}
-	v := reflect.New(reflect.TypeFor[T]()).Elem()
 	d.decode(v, data, nil)
 	if len(d.issues) > 0 {
-		return out, &DecodeError{Issues: d.issues}
+		v.SetZero()
+		return &DecodeError{Issues: d.issues}
 	}
-	res, _ := v.Interface().(T)
-	return res, nil
+	return nil
 }
 
 // Compile checks that T can be decoded: every field type is supported, every
 // schema tag is in the vocabulary and fits its field type, and every named
 // pattern is registered. A successful check is cached.
 func Compile[T any]() error {
-	t := reflect.TypeFor[T]()
+	return CompileType(reflect.TypeFor[T]())
+}
+
+// CompileType checks and caches a runtime type using the same plans as Compile.
+func CompileType(t reflect.Type) error {
+	if t == nil {
+		return fmt.Errorf("schema: type must not be nil")
+	}
 	if _, ok := compiled.Load(t); ok {
 		return nil
 	}
@@ -232,8 +262,12 @@ type decoder struct {
 	issues []Issue
 }
 
-func (d *decoder) add(code, msg string) {
-	d.issues = append(d.issues, Issue{Path: copyPath(d.path), Code: code, Message: msg})
+func (d *decoder) add(code, msg string, raw []byte) {
+	var value any
+	if raw != nil {
+		value = json.RawMessage(bytes.Clone(raw))
+	}
+	d.issues = append(d.issues, Issue{Path: copyPath(d.path), Code: code, Message: msg, Value: value})
 }
 
 // decode decodes raw into dst, which must be settable, and applies rules and
@@ -261,7 +295,7 @@ func (d *decoder) decode(dst reflect.Value, raw []byte, rules []rule) {
 		return
 	}
 	if isNull(raw) {
-		d.add(CodeType, "expected "+describe(t)+", got null")
+		d.add(CodeType, "expected "+describe(t)+", got null", raw)
 		return
 	}
 	var ok bool
@@ -290,10 +324,10 @@ func (d *decoder) decode(dst reflect.Value, raw []byte, rules []rule) {
 			continue
 		}
 		if code, msg, failed := r.check(dst); failed {
-			d.add(code, msg)
+			d.add(code, msg, raw)
 		}
 	}
-	d.enumCheck(dst)
+	d.enumCheck(dst, raw)
 }
 
 // scalar decodes a value whose Go type json.Unmarshal checks exactly: numbers
@@ -301,9 +335,9 @@ func (d *decoder) decode(dst reflect.Value, raw []byte, rules []rule) {
 func (d *decoder) scalar(dst reflect.Value, raw []byte) bool {
 	if err := json.Unmarshal(raw, dst.Addr().Interface()); err != nil {
 		if dst.Type() == timeType {
-			d.add(CodeType, "expected RFC 3339 time, got "+jsonKind(raw))
+			d.add(CodeType, "expected RFC 3339 time, got "+jsonKind(raw), raw)
 		} else {
-			d.add(CodeType, "expected "+describe(dst.Type())+", got "+jsonKind(raw))
+			d.add(CodeType, "expected "+describe(dst.Type())+", got "+jsonKind(raw), raw)
 		}
 		return false
 	}
@@ -316,7 +350,7 @@ func (d *decoder) scalar(dst reflect.Value, raw []byte) bool {
 func (d *decoder) structValue(dst reflect.Value, raw []byte) bool {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
-		d.add(CodeType, "expected object, got "+jsonKind(raw))
+		d.add(CodeType, "expected object, got "+jsonKind(raw), raw)
 		return false
 	}
 	p := mustPlan(dst.Type())
@@ -325,7 +359,7 @@ func (d *decoder) structValue(dst reflect.Value, raw []byte) bool {
 		if !ok {
 			if !f.optional() {
 				d.path = append(d.path, f.name)
-				d.add(CodeMissing, "required field is missing")
+				d.add(CodeMissing, "required field is missing", nil)
 				d.path = d.path[:len(d.path)-1]
 			}
 			continue
@@ -343,7 +377,7 @@ func (d *decoder) structValue(dst reflect.Value, raw []byte) bool {
 	sort.Strings(unknown)
 	for _, k := range unknown {
 		d.path = append(d.path, k)
-		d.add(CodeUnknown, "unknown field")
+		d.add(CodeUnknown, "unknown field", obj[k])
 		d.path = d.path[:len(d.path)-1]
 	}
 	return true
@@ -356,7 +390,7 @@ func (d *decoder) structValue(dst reflect.Value, raw []byte) bool {
 func (d *decoder) sliceValue(dst reflect.Value, raw []byte) bool {
 	var items []json.RawMessage
 	if err := json.Unmarshal(raw, &items); err != nil {
-		d.add(CodeType, "expected array, got "+jsonKind(raw))
+		d.add(CodeType, "expected array, got "+jsonKind(raw), raw)
 		return false
 	}
 	s := reflect.MakeSlice(dst.Type(), len(items), len(items))
@@ -376,7 +410,7 @@ func (d *decoder) sliceValue(dst reflect.Value, raw []byte) bool {
 func (d *decoder) mapValue(dst reflect.Value, raw []byte) bool {
 	var obj map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &obj); err != nil {
-		d.add(CodeType, "expected object, got "+jsonKind(raw))
+		d.add(CodeType, "expected object, got "+jsonKind(raw), raw)
 		return false
 	}
 	keys := make([]string, 0, len(obj))
@@ -399,16 +433,16 @@ func (d *decoder) mapValue(dst reflect.Value, raw []byte) bool {
 
 // enumCheck calls Valid on a decoded value whose type implements Enum, through
 // the interface, whose method is pure by contract (see Enum).
-func (d *decoder) enumCheck(dst reflect.Value) {
+func (d *decoder) enumCheck(dst reflect.Value, raw []byte) {
 	t := dst.Type()
 	switch {
 	case t.Implements(enumType):
 		if !dst.Interface().(Enum).Valid() {
-			d.add(CodeEnum, "unknown value")
+			d.add(CodeEnum, "unknown value", raw)
 		}
 	case reflect.PointerTo(t).Implements(enumType):
 		if !dst.Addr().Interface().(Enum).Valid() {
-			d.add(CodeEnum, "unknown value")
+			d.add(CodeEnum, "unknown value", raw)
 		}
 	}
 }

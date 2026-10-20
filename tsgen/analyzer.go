@@ -70,16 +70,25 @@ type Result struct {
 // Route is one registered route. Problems are the reasons the generator cannot
 // write the route; each is a message with its position.
 type Route struct {
-	Method    string
-	Pattern   string // the Go pattern, e.g. /api/contacts/{id}
-	Group     string // lower camel case: the receiver type, or the package name
-	Name      string // lower camel case: the handler name
-	Pos       string
-	In        *rtshape.Shape // nil for web.NoInput
-	Out       *rtshape.Shape // nil for web.NoContent
-	NoContent bool
-	Errors    []ErrRef // the error list: handled variants by status and name, then the framework's
-	Problems  []string
+	Method          string
+	Pattern         string // the Go pattern, e.g. /api/contacts/{id}
+	Group           string // lower camel case: the receiver type, or the package name
+	Name            string // lower camel case: the handler name
+	Pos             string
+	In              *rtshape.Shape // nil for web.NoInput
+	Out             *rtshape.Shape // nil for web.NoContent
+	NoContent       bool
+	Binary          bool // web.FileResponse or web.StreamResponse, not a JSON schema
+	File            bool // web.FileResponse, served with range support at status 200
+	Redirect        bool // web.RedirectResponse has an HTML body and a Location header
+	SuccessStatus   int
+	SuccessStatuses []int
+	Response        bool           // web.Response[T] carries body T and dynamic status metadata
+	ProxyFailure    *rtshape.Shape // web.ProxyResponse[S, F] has an independent failure schema, not a fixed error status
+	JSONBody        bool
+	JSONBodyEmpty   bool
+	Errors          []ErrRef // the error list: handled variants by status and name, then the framework's
+	Problems        []string
 }
 
 // ErrRef is one entry of an endpoint's error list.
@@ -171,18 +180,43 @@ func (st *state) route(call *ast.CallExpr, rule errset.RouteRule) {
 	r.Name = lowerCamel(fn.Name())
 	r.Group = lowerCamel(groupName(fn))
 
-	in, out := sig.Params().At(1).Type(), sig.Results().At(0).Type()
+	in, out := types.Unalias(sig.Params().At(1).Type()), types.Unalias(sig.Results().At(0).Type())
 	noInput := isNamed(in, webPath, "NoInput")
-	if !noInput {
-		r.In = st.describe(in, call.Pos(), &r)
-	}
 	r.NoContent = isNamed(out, webPath, "NoContent")
-	if !r.NoContent {
+	r.File = isNamed(out, webPath, "FileResponse")
+	r.Binary = r.File || isNamed(out, webPath, "StreamResponse")
+	r.Redirect = isNamed(out, webPath, "RedirectResponse")
+	r.SuccessStatus = 200
+	if r.NoContent {
+		r.SuccessStatus = 204
+	} else if r.Redirect {
+		r.SuccessStatus = 302
+	}
+	if isNamed(out, webPath, "Response") || isNamed(out, webPath, "ProxyResponse") {
+		args := out.(*types.Named).TypeArgs()
+		if isNamed(out, webPath, "ProxyResponse") {
+			r.ProxyFailure = st.describe(args.At(1), call.Pos(), &r)
+		} else {
+			r.Response = true
+		}
+		out = args.At(0)
+	}
+	r.Errors = st.errors(fn, &r, !noInput)
+	st.routeOptions(call, &r)
+	if !noInput {
+		r.In = rtshape.Describe(in, rtshape.Options{Qualifier: st.qualifier(), Multipart: true, JSONBody: r.JSONBody})
+		if r.JSONBody {
+			validation := *r.In
+			validation.Types = nil // compatibility bodies are inlined, never strict declarations
+			st.record(&validation, call.Pos(), &r)
+		} else {
+			st.record(r.In, call.Pos(), &r)
+		}
+	}
+	if !r.NoContent && !r.Redirect && !r.Binary {
 		r.Out = st.describe(out, call.Pos(), &r)
 	}
 	st.checkPath(&r, noInput)
-	r.Errors = st.errors(fn, &r, !noInput)
-	st.externalErrors(call, &r)
 }
 
 // checkPath checks the input against the pattern and method, as rt/web does at
@@ -208,6 +242,21 @@ func (st *state) checkPath(r *Route, noInput bool) {
 		return
 	}
 	paths := map[string]bool{}
+	forms := map[string]bool{}
+	hasJSON := false
+	for _, f := range r.In.Root.Fields {
+		if f.Form != "" {
+			if forms[f.Form] {
+				r.Problems = append(r.Problems, r.Pos+": multipart form name "+f.Form+" is repeated")
+			}
+			forms[f.Form] = true
+		} else if f.Path == "" && f.Query == "" && f.Header == "" && f.Cookie == "" {
+			hasJSON = true
+		}
+	}
+	if len(forms) > 0 && hasJSON {
+		r.Problems = append(r.Problems, r.Pos+": multipart file fields cannot be mixed with JSON body fields")
+	}
 	for _, f := range r.In.Root.Fields {
 		if f.Path != "" {
 			paths[f.Path] = true
@@ -215,7 +264,7 @@ func (st *state) checkPath(r *Route, noInput bool) {
 				r.Problems = append(r.Problems, r.Pos+": path field "+f.Name+" has no {"+f.Path+"} in "+r.Pattern)
 			}
 		}
-		if f.Path == "" && f.Query == "" && f.Header == "" && f.Cookie == "" && r.Method != "POST" && r.Method != "PUT" && r.Method != "PATCH" {
+		if f.Path == "" && f.Query == "" && f.Header == "" && f.Cookie == "" && r.Method != "POST" && r.Method != "PUT" && r.Method != "PATCH" && r.Method != "DELETE" {
 			r.Problems = append(r.Problems, r.Pos+": "+r.Method+" takes no body, but field "+f.Name+" has no input location tag")
 		}
 	}
@@ -257,7 +306,7 @@ func (st *state) errors(fn *types.Func, r *Route, hasInput bool) []ErrRef {
 	if hasInput {
 		framework = append(framework, struct{ path, name string }{schemaPath, "DecodeError"})
 	}
-	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" {
+	if r.Method == "POST" || r.Method == "PUT" || r.Method == "PATCH" || r.Method == "DELETE" {
 		framework = append(framework, struct{ path, name string }{webPath, "BodyTooLarge"})
 	}
 	framework = append(framework, struct{ path, name string }{webPath, "InternalError"})
@@ -316,19 +365,18 @@ func (st *state) statusOf(n *types.Named, r *Route) int {
 
 // describe describes a type of a route and records its named structs.
 func (st *state) describe(t types.Type, pos token.Pos, r *Route) *rtshape.Shape {
-	shape := rtshape.Describe(t, rtshape.Options{Qualifier: st.qualifier()})
+	shape := rtshape.Describe(t, rtshape.Options{Qualifier: st.qualifier(), JSONOutput: true})
 	st.record(shape, pos, r)
 	return shape
 }
 
 // describeNamed describes a named error type and records its structs.
 func (st *state) describeNamed(n *types.Named, r *Route) {
-	st.record(rtshape.Describe(n, rtshape.Options{Qualifier: st.qualifier()}), n.Obj().Pos(), r)
+	st.record(rtshape.Describe(n, rtshape.Options{Qualifier: st.qualifier(), JSONOutput: true}), n.Obj().Pos(), r)
 }
 
-// record turns the problems of a shape into messages with their positions, flags
-// an anonymous struct, and adds the named structs to the declarations.
-func (st *state) record(shape *rtshape.Shape, pos token.Pos, r *Route) {
+// recordProblems adds positioned shape diagnostics without declaring schemas.
+func (st *state) recordProblems(shape *rtshape.Shape, pos token.Pos, r *Route) {
 	for _, p := range shape.Problems {
 		at := pos
 		if p.Owner != nil {
@@ -340,15 +388,28 @@ func (st *state) record(shape *rtshape.Shape, pos token.Pos, r *Route) {
 		}
 		r.Problems = append(r.Problems, st.pos(at)+": "+msg)
 	}
+}
+
+// record turns shape problems into messages and adds named struct declarations.
+func (st *state) record(shape *rtshape.Shape, pos token.Pos, r *Route) {
+	st.recordProblems(shape, pos, r)
 	for _, t := range shape.Types {
-		if t.Cat == rtshape.CatStruct && t.Name == "" {
+		if t.Cat == rtshape.CatStruct && t.Name == "" && !shape.JSONOutput {
 			r.Problems = append(r.Problems, st.pos(pos)+": an anonymous struct cannot be a TypeScript schema; name it")
 		}
-		if t.Cat != rtshape.CatStruct || t.Name == "" || st.decls[t.Pkg+"."+t.Name] {
+		if t.Cat != rtshape.CatStruct || t.Name == "" || st.decls[t.Key] {
 			continue
 		}
-		st.decls[t.Pkg+"."+t.Name] = true
-		key := t.Pkg + "." + t.Name
+		st.decls[t.Key] = true
+		key := t.Key
+		// A multipart endpoint uses its own form fields; named declarations
+		// must retain the JSON shape when the type is reused in another body.
+		for _, f := range t.Fields {
+			if f.Form != "" {
+				t = rtshape.Describe(t.Go, rtshape.Options{Qualifier: st.qualifier()}).Root
+				break
+			}
+		}
 		st.out.Decls = append(st.out.Decls, Decl{Key: key, Name: t.Name, Pos: st.pos(t.Go.(*types.Named).Obj().Pos()), Type: t})
 	}
 }

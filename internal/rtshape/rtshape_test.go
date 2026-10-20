@@ -307,6 +307,36 @@ type Root struct {
 	}
 }
 
+func TestJSONBodyByteSlices(t *testing.T) {
+	src := `package p
+type Bytes []byte
+type Alias = Bytes
+type Nested struct{ Payload Alias }
+type Root struct {
+	Payload []byte
+	Nested *Nested
+}`
+	jsonBody := describe(t, src, Options{JSONBody: true})
+	if len(jsonBody.Problems) != 0 {
+		t.Fatalf("JSON body problems %q, want none", messages(jsonBody))
+	}
+	payload := field(t, jsonBody.Root, "Payload").Type
+	named := field(t, field(t, jsonBody.Root, "Nested").Type, "Payload").Type
+	for _, typ := range []*Type{payload, named} {
+		if typ.Cat != CatAny {
+			t.Errorf("JSON byte slice category %s, want any", typ.Cat)
+		}
+	}
+	if named.Name != "Bytes" || named.Pkg != "example.com/p" {
+		t.Errorf("named byte slice metadata: name %q package %q", named.Name, named.Pkg)
+	}
+	schema := describe(t, src, Options{})
+	wantProblem(t, schema, "byte slices are not supported")
+	if len(schema.Problems) != 2 {
+		t.Errorf("schema problems %q, want both byte slices rejected", messages(schema))
+	}
+}
+
 func TestEmbeddedFieldIsAProblem(t *testing.T) {
 	s := describe(t, `package p
 type Inner struct{ X int }

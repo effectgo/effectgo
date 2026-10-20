@@ -78,10 +78,11 @@ type MapperInfo struct {
 
 // Route is one registered Gin route whose handler could be resolved.
 type Route struct {
-	Method     string
-	Path       string // "" when the path is not a constant
-	HandlerPos string
-	Pos        string
+	Method         string
+	Path           string // best available path; may be empty for a valid root route
+	PathUnresolved string // reason the full path is unknown; empty when resolved
+	HandlerPos     string
+	Pos            string
 }
 
 // Result is the ResultType of the analyzer.
@@ -168,10 +169,11 @@ type analyzer struct {
 	findings []Finding // reach and leak findings, before dedupe
 }
 
-// groupDef is a router group variable: g := base.Group("prefix").
+// groupDef is a router group variable: g := base.Group(prefix).
 type groupDef struct {
-	base   ast.Expr
-	prefix string
+	base       ast.Expr
+	prefix     string
+	unresolved string
 }
 
 // loadSinks reads the sink rules of the stub files of the pass's package.

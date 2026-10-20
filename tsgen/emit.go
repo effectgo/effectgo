@@ -15,8 +15,9 @@ import (
 const Target = "effect@4.0.4"
 
 // reserved are the names the generated file itself declares.
-var reserved = map[string]bool{"Api": true, "TransportError": true, "Schema": true, "HttpApi": true,
-	"HttpApiGroup": true, "HttpApiEndpoint": true, "HttpApiSchema": true, "HttpClientError": true, "BrowserFetchHttpClient": true}
+var reserved = map[string]bool{"Api": true, "TransportError": true, "Schema": true, "SchemaGetter": true,
+	"HttpApi": true, "HttpApiGroup": true, "HttpApiEndpoint": true, "HttpApiSchema": true,
+	"HttpClientError": true, "BrowserFetchHttpClient": true, "jsonRequest": true, "omitUndefined": true}
 
 // Generate writes the TypeScript file for the results of the packages of one run.
 // api is the name given to HttpApi.make, module is the module path and packages
@@ -62,11 +63,14 @@ func Generate(results []Result, api, module string, packages []string) (string, 
 	fmt.Fprintf(&b, "// source: module %s; packages: %s\n", module, strings.Join(sortedCopy(packages), ", "))
 	fmt.Fprintf(&b, "// target: %s (effect/http-api is unstable in 4.x)\n", Target)
 	b.WriteString("\n")
+	effectImports := "Schema"
 	if e.usesCookies {
-		b.WriteString(`import { Layer, Schema } from "effect"` + "\n")
-	} else {
-		b.WriteString(`import { Schema } from "effect"` + "\n")
+		effectImports = "Layer, " + effectImports
 	}
+	if e.usesJSONPayload {
+		effectImports += ", SchemaGetter"
+	}
+	fmt.Fprintf(&b, "import { %s } from \"effect\"\n", effectImports)
 	imports := "HttpApi, HttpApiEndpoint, HttpApiGroup"
 	if e.usesNoContent {
 		imports += ", HttpApiSchema"
@@ -88,6 +92,9 @@ func Generate(results []Result, api, module string, packages []string) (string, 
 		b.WriteString("  Layer.provide(Layer.succeed(FetchHttpClient.RequestInit, { credentials: \"include\" })),\n")
 		b.WriteString(")\n\n")
 	}
+	if e.usesJSONPayload {
+		b.WriteString(jsonRequestBoundary)
+	}
 	b.WriteString(body)
 	return b.String(), nil
 }
@@ -106,13 +113,14 @@ func routeHasCookies(r Route) bool {
 
 // emitter holds the state of one generation.
 type emitter struct {
-	decls         map[string]Decl  // every named struct, by key
-	classes       map[string]int   // the error types of the error lists, by key, with their status
-	untagged      map[string]bool  // external wire errors acquire _tag only after decoding
-	usage         map[string]uint8 // bit 1: a request type; bit 2: a response type
-	errs          []string
-	usesNoContent bool
-	usesCookies   bool
+	decls           map[string]Decl  // every named struct, by key
+	classes         map[string]int   // the error types of the error lists, by key, with their status
+	untagged        map[string]bool  // external wire errors acquire _tag only after decoding
+	usage           map[string]uint8 // bit 1: a request type; bit 2: a response type
+	errs            []string
+	usesNoContent   bool
+	usesCookies     bool
+	usesJSONPayload bool
 }
 
 // checkNames reports the names that two types share, and the names the generator
@@ -210,7 +218,7 @@ func (e *emitter) refs(t *rtshape.Type) []string {
 		switch t.Cat {
 		case rtshape.CatStruct:
 			if t.Name != "" {
-				out = append(out, t.Pkg+"."+t.Name)
+				out = append(out, t.Key)
 				return
 			}
 			for _, f := range t.Fields {
@@ -241,7 +249,7 @@ func (e *emitter) markUsage(routes []Route) {
 			return // written as its wire schema; its fields are not on the wire
 		}
 		if t.Cat == rtshape.CatStruct && t.Name != "" {
-			k := t.Pkg + "." + t.Name
+			k := t.Key
 			e.usage[k] |= bit
 			if seen[k] {
 				return
@@ -254,7 +262,7 @@ func (e *emitter) markUsage(routes []Route) {
 		mark(t.Elem, bit, seen)
 	}
 	for _, r := range routes {
-		if r.In != nil {
+		if r.In != nil && !r.JSONBody {
 			if bodyOnly(r.In.Root) {
 				mark(r.In.Root, 1, map[string]bool{}) // the payload is this type
 			} else {
@@ -267,6 +275,9 @@ func (e *emitter) markUsage(routes []Route) {
 		}
 		if r.Out != nil {
 			mark(r.Out.Root, 2, map[string]bool{})
+		}
+		if r.ProxyFailure != nil {
+			mark(r.ProxyFailure.Root, 2, map[string]bool{})
 		}
 		for _, er := range r.Errors {
 			if d, ok := e.decls[er.Key]; ok {
@@ -420,26 +431,75 @@ func (e *emitter) endpoint(b *strings.Builder, r Route) {
 		opts = append(opts, e.fieldLines(clientHeaders, true, false, "        ")...)
 		opts = append(opts, "      }),")
 	}
-	if len(body) > 0 {
-		if _, c, custom := wire(r.In.Root, true); custom && clientParts == 0 {
-			opts = append(opts, "      "+c)
-			opts = append(opts, "      payload: Schema.Unknown,")
-		} else if clientParts == 0 && r.In.Root.Name != "" {
-			opts = append(opts, "      payload: "+r.In.Root.Name+",")
-		} else {
+	if len(body) > 0 || r.JSONBody && r.In != nil && r.In.Root.UnmarshalJSON {
+		if len(body) > 0 && body[0].Form != "" {
+			e.usesNoContent = true // HttpApiSchema also owns the multipart encoding annotation.
 			opts = append(opts, "      payload: Schema.Struct({")
 			opts = append(opts, e.fieldLines(body, true, true, "        ")...)
-			opts = append(opts, "      }),")
+			opts = append(opts, "      }).pipe(HttpApiSchema.asMultipart()),")
+		} else if r.JSONBody {
+			e.usesJSONPayload = true
+			payload := e.jsonPayload(r.In.Root, body)
+			if _, comment, custom := wire(r.In.Root, true); custom {
+				opts = append(opts, "      "+comment)
+			}
+			if r.JSONBodyEmpty {
+				payload = "Schema.UndefinedOr(" + payload + ")"
+			}
+			opts = append(opts, "      payload: jsonRequest("+payload+"),")
+		} else if _, c, custom := wire(r.In.Root, true); custom && clientParts == 0 {
+			e.usesJSONPayload = true
+			opts = append(opts, "      "+c)
+			opts = append(opts, "      payload: jsonRequest(Schema.Unknown),")
+		} else if clientParts == 0 && r.In.Root.Name != "" {
+			e.usesJSONPayload = true
+			opts = append(opts, "      payload: jsonRequest("+r.In.Root.Name+"),")
+		} else {
+			e.usesJSONPayload = true
+			opts = append(opts, "      payload: jsonRequest(Schema.Struct({")
+			opts = append(opts, e.fieldLines(body, true, true, "        ")...)
+			opts = append(opts, "      })),")
 		}
 	}
 	success := "HttpApiSchema.NoContent"
 	if r.NoContent {
 		e.usesNoContent = true
+	} else if r.Binary {
+		e.usesNoContent = true
+		success = "Schema.Uint8Array.pipe(HttpApiSchema.asUint8Array())"
+	} else if r.Redirect {
+		e.usesNoContent = true
+		success = `Schema.String.pipe(HttpApiSchema.asText({ contentType: "text/html" }))`
 	} else {
 		success = e.expr(r.Out.Root, false)
 		if c := wireComment(r.Out.Root, false); c != "" {
 			opts = append(opts, "      "+c)
 		}
+	}
+	statuses := r.SuccessStatuses
+	if len(statuses) == 0 {
+		statuses = []int{r.SuccessStatus}
+	}
+	var successes []string
+	for _, status := range statuses {
+		schema := success
+		if status == 204 || status == 205 || status == 304 {
+			e.usesNoContent = true
+			if status == 204 {
+				schema = "HttpApiSchema.NoContent"
+			} else {
+				schema = fmt.Sprintf("HttpApiSchema.Empty(%d)", status)
+			}
+		} else if status != 0 && status != 200 {
+			e.usesNoContent = true
+			schema += fmt.Sprintf(".pipe(HttpApiSchema.status(%d))", status)
+		}
+		successes = append(successes, schema)
+	}
+	if len(successes) == 1 {
+		success = successes[0]
+	} else {
+		success = "[" + strings.Join(successes, ", ") + "]"
 	}
 	opts = append(opts, "      success: "+success+",")
 	var errs []string
@@ -529,7 +589,31 @@ func (e *emitter) fieldLines(fields []*rtshape.Field, req, body bool, indent str
 
 // fieldExpr is the schema of a field, with its checks on the base type.
 func (e *emitter) fieldExpr(f *rtshape.Field, req bool, checks string) string {
+	if f.Form != "" {
+		base := "Schema.File"
+		if !f.File {
+			base = e.expr(f.Type, true) + checks
+		}
+		if f.Optional {
+			return "Schema.optionalKey(" + base + ")"
+		}
+		return base
+	}
 	base := e.expr(f.Type, req) + checks
+	if !req && f.JSONString {
+		if _, _, custom := wire(f.Type, false); !custom {
+			switch f.Type.Cat {
+			case rtshape.CatString, rtshape.CatInt, rtshape.CatFloat, rtshape.CatBool, rtshape.CatEnum:
+				base = "Schema.String"
+			}
+		}
+	}
+	if !req && f.OmitParent {
+		if f.Optional && !f.Omitempty {
+			base = "Schema.NullOr(" + base + ")"
+		}
+		return "Schema.optionalKey(" + base + ")"
+	}
 	switch {
 	case f.Optional && req:
 		return "Schema.optionalKey(Schema.NullOr(" + base + "))"
@@ -573,7 +657,10 @@ func (e *emitter) expr(t *rtshape.Type, req bool) string {
 		}
 		return "Schema.Literals([" + strings.Join(lits, ", ") + "])"
 	case rtshape.CatStruct:
-		return t.Name
+		if t.Name != "" {
+			return t.Name
+		}
+		return "Schema.Struct({\n" + strings.Join(e.fieldLines(t.Fields, req, req, "  "), "\n") + "\n})"
 	case rtshape.CatSlice:
 		s := "Schema.Array(" + e.expr(t.Elem, req) + ")"
 		if req {

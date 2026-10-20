@@ -116,7 +116,7 @@ Findings are graded by severity. `info` is hidden unless `-all`:
 
 A route whose method or path is not a constant, or whose handler is not a literal or a resolvable function, is reported as unresolved with the reason. Nothing is guessed.
 
-Output: text by default, grouped by severity; `-json` prints one object per finding, and the coverage summary goes to stderr. The integration fixture used by the tests shows a route that carries a Huma 404 through two local variables and writes a Gin response with a constant 500:
+Output: text by default, grouped by severity; `-json` prints one object per finding, and the coverage summary goes to stderr. `-fail-on=none|high|medium|leak|info` optionally exits 3 when findings meet the selected threshold (`none` preserves exit 0); `-fail-unresolved` optionally exits 3 when coverage has unresolved routes. `-coverage=json` emits one machine-readable coverage object on stderr while preserving the old finding stream on stdout. Invalid values are usage errors (exit 2). The integration fixture used by the tests shows a route that carries a Huma 404 through two local variables and writes a Gin response with a constant 500:
 
 ```sh
 $ effectgo http-gin -all ./app          # the Gin check on the same fixture
@@ -150,6 +150,8 @@ Severities:
 | `info` | `?` or `new@` reaches a 5xx response; hidden unless `-all` |
 | `leak` | a response body carries `err.Error()` or an error formatted into a string |
 
+For Gin, a registered route with a non-constant path or an unresolved group prefix is counted as unresolved in coverage, including a constant suffix below a dynamic group. A constant empty path remains a resolved root route. Registrations whose handler cannot be resolved are outside the analyzer's collected route set, so the check does not claim they were resolved; `-coverage=json` exposes the collected counts and unresolved route records.
+
 The leak check is the one most likely to matter in review: `c.JSON(500, gin.H{"message": err.Error()})` sends a database or file-system message to the client. The check reads the body argument and up to two levels of composite literal.
 
 Measured on three real Gin services (static evidence; from the journal). order-mgmt had 396 handlers and 9 detected sink mappers. With the first engine it reported 83 high, 136 medium, 300 info and 67 leak findings; with the default flow-sensitive engine, 48 high, 78 medium and 274 info. In the manual sample of 15 leak findings across the three services, 9 were likely bugs and 6 were intended; the reading is in the [Gin journal](../journal/08-p2-gin-adapter.md).
@@ -162,7 +164,7 @@ Measured on three real Gin services (static evidence; from the journal). order-m
 {"severity","framework","route","handler","pos","variant","status","via","reason"}
 ```
 
-`framework` is `gin` or `huma`. The output is the union of `http-gin -json -all` and `http-huma -json -all`, and each subcommand still works on its own.
+`framework` is `gin` or `huma`. The output is the union of `http-gin -json -all` and `http-huma -json -all`, and each subcommand still works on its own. The combined command accepts the same `-fail-on`, `-fail-unresolved` and `-coverage=json` options; the coverage JSON has separate `gin` and `huma` objects. `leak` is a Gin finding category included in the threshold order between `medium` and `info`; Huma has no leak findings.
 
 ## net/http handlers
 
