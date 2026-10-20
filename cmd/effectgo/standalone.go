@@ -44,9 +44,14 @@ func registerStandaloneFlags() {
 	flag.BoolVar(&includeTests, "test", true, "analyze the test files too, as go vet does; -test=false skips them")
 	flag.BoolVar(&jsonOut, "json", false, "print the diagnostics as JSON on stdout (the driver's format, not the HTTP schema)")
 	flag.IntVar(&contextLines, "c", -1, "print this many lines of source context around each diagnostic")
+	bindAnalyzerFlags(flag.CommandLine)
+}
+
+// bindAnalyzerFlags shares the analyzers' native flags across CLI drivers.
+func bindAnalyzerFlags(fs *flag.FlagSet) {
 	for _, a := range standaloneAnalyzers {
 		a.Flags.VisitAll(func(f *flag.Flag) {
-			flag.CommandLine.Var(f.Value, a.Name+"."+f.Name, f.Usage)
+			fs.Var(f.Value, a.Name+"."+f.Name, f.Usage)
 		})
 	}
 }

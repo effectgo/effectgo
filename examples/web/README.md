@@ -61,6 +61,22 @@ cd examples/web
 
 `examples/run.sh` checks that the committed file matches the generator, and fails when it does not.
 
+The unreleased shared checker uses the same built binary. From this example directory:
+
+```sh
+../../bin/effectgo contract -format=json ./...
+../../bin/effectgo ts -name contacts -o ts/api.gen.ts ./...
+npm --prefix ts run typecheck
+go test -run TestMigrationHTTPContract -count=1 .
+```
+
+`contract` checks production sources; `go test` exercises the actual migration responses.
+Native analyzer findings always cause exit 3. HTTP findings use the selected severity
+gate, while `-fail-unresolved` additionally rejects detected coverage gaps. The Huma
+adapter can collect these `rt/web` registrations through shared route stubs and report
+an unknown default mapping; this is not complete native route coverage. See
+[Contract checks](../../docs/guide/contract-checks.md) for the report and exit contract.
+
 ## Migrating a Huma execution handler
 
 [migration_test.go](migration_test.go) is a runnable migration example using

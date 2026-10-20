@@ -42,14 +42,16 @@ GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/
 - `effectgo sig ./...` prints `Effect<A, E, R>` for each function.
 - `effectgo openapi`, `http-gin`, `http-huma` and `http` check HTTP error responses against the error sets.
 - `effectgo ts -name NAME ./...` writes the TypeScript client of the `rt/web` routes (effect/http-api).
+- The unreleased `effectgo contract` command provides one shared text or JSON report for the six static analyzers and HTTP checks. See [Contract checks](docs/guide/contract-checks.md) and [the CLI reference](docs/reference/cli.md#contract).
 
+The released command behavior is documented for `v0.1.0`; contract reporting is unreleased work and may change before the next release.
 Release validation: install the locked example dependencies, then run `bash scripts/release-check.sh`; see [releasing](docs/guide/releasing.md). Generated-client compilation and HTTP decoding are mandatory at this gate.
 
 To update an application's pinned source, run `node scripts/pin-source.mjs /path/to/app` from a verified source checkout. This records a release candidate; add `--release v0.1.0` only from the clean tagged release. Applications keep their own lock and thin `scripts/effectgo-source.mjs` entry point; the verifier is copied unchanged from the framework release.
 
 ## Documentation
 
-- [Getting started](docs/guide/getting-started.md): install, the first run, reading the output.
+- [Contract checks](docs/guide/contract-checks.md): the unreleased shared text/JSON report and CI gates.
 - [Contract mode](docs/guide/contract-mode.md): writing new code with contracts.
 - [Editor integration](docs/guide/editor.md): golangci-lint, VS Code, Neovim.
 - [HTTP checks](docs/guide/http-checks.md): the Huma, Gin and Fuego/OpenAPI checks.

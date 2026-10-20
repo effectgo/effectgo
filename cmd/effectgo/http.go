@@ -99,11 +99,16 @@ func runHTTP(args []string) int {
 // returns the printed findings sorted by severity, then position (route, then
 // variant, break ties). Info findings are included only when all is set.
 func collectHTTP(patterns []string, all bool) ([]httpFinding, httpSummary, error) {
-	cwd := mustGetwd()
 	graph, err := analyzeHTTP(patterns, ginhttp.Analyzer, huma.Analyzer)
 	if err != nil {
 		return nil, httpSummary{}, err
 	}
+	return collectHTTPFromGraph(graph, all)
+}
+
+// collectHTTPFromGraph classifies adapter results without loading packages again.
+func collectHTTPFromGraph(graph *checker.Graph, all bool) ([]httpFinding, httpSummary, error) {
+	cwd := mustGetwd()
 	gFindings, gRun, err := ginFromGraph(graph)
 	if err != nil {
 		return nil, httpSummary{}, err
@@ -175,6 +180,9 @@ func analyzeHTTP(patterns []string, analyzers ...*analysis.Analyzer) (*checker.G
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		return nil, err
+	}
+	if len(pkgs) == 0 {
+		return nil, fmt.Errorf("%v matched no packages", patterns)
 	}
 	if packages.PrintErrors(pkgs) > 0 {
 		return nil, fmt.Errorf("the packages do not load")

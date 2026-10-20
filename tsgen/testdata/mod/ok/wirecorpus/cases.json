@@ -1,0 +1,7 @@
+[
+  {"name":"omission","payload":{"name":"","enabled":false,"count":0,"nested":{"flag":false,"count":0},"items":[{"flag":false,"count":0}],"lookup":{"empty":{"flag":false,"count":0}}},"go_status":200,"client_accepts":true,"response":{"value":"","null":null,"nested":{"flag":false,"count":0},"items":[{"flag":false,"count":0}],"lookup":{"empty":{"flag":false,"count":0}}}},
+  {"name":"explicit-null","payload":{"name":"null","enabled":false,"count":0,"optional":null,"nested":{"optional":null,"flag":false,"count":0},"items":[],"lookup":{"nil":null}},"go_status":200,"client_accepts":true,"response":{"value":"null","null":null,"nested":{"flag":false,"count":0},"lookup":{"nil":null}}},
+  {"name":"unknown-key","payload":{"name":"unknown","enabled":false,"count":0,"nested":{"flag":false,"count":0},"items":[],"lookup":{},"unknown":"strip me"},"go_status":400,"client_accepts":true,"response":{"value":"unknown","null":null,"nested":{"flag":false,"count":0},"lookup":{}}},
+  {"name":"missing-required","payload":{"enabled":false,"count":0,"nested":{"flag":false,"count":0},"items":[],"lookup":{}},"go_status":400,"client_accepts":false},
+  {"name":"wrong-type","payload":{"name":"bad","enabled":false,"count":"0","nested":{"flag":false,"count":0},"items":[],"lookup":{}},"go_status":400,"client_accepts":false}
+]
