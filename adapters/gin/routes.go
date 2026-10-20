@@ -17,21 +17,21 @@ var routeMethods = map[string]string{
 
 const groupKey = "(*github.com/gin-gonic/gin.RouterGroup).Group"
 
-// isGroupCall reports whether call is x.Group("const"), and returns the prefix
-// and the receiver x.
-func (a *analyzer) isGroupCall(call *ast.CallExpr) (string, ast.Expr, bool) {
+// isGroupCall reads a group call without treating a dynamic prefix as empty.
+func (a *analyzer) isGroupCall(call *ast.CallExpr) (groupDef, bool) {
 	if keyOf(calleeOf(a.info, call)) != groupKey || len(call.Args) != 1 {
-		return "", nil, false
+		return groupDef{}, false
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
-		return "", nil, false
+		return groupDef{}, false
 	}
-	prefix, ok := constString(a.info, call.Args[0])
-	if !ok {
-		return "", nil, false
+	prefix, constant := constString(a.info, call.Args[0])
+	g := groupDef{base: sel.X, prefix: prefix}
+	if !constant {
+		g.unresolved = "router group prefix is not a constant string"
 	}
-	return prefix, sel.X, true
+	return g, true
 }
 
 // collectGroups records the router group variables: g := base.Group("prefix").
@@ -46,13 +46,13 @@ func (a *analyzer) collectGroups() {
 			if !ok {
 				return true
 			}
-			prefix, base, ok := a.isGroupCall(call)
+			group, ok := a.isGroupCall(call)
 			if !ok {
 				return true
 			}
 			if id, ok := as.Lhs[0].(*ast.Ident); ok {
 				if obj := a.objOf(id); obj != nil {
-					a.groups[obj] = groupDef{base: base, prefix: prefix}
+					a.groups[obj] = group
 				}
 			}
 			return true
@@ -60,23 +60,34 @@ func (a *analyzer) collectGroups() {
 	}
 }
 
-// prefixOf returns the constant path prefix of a router expression ("" for the
-// engine or an unknown receiver).
-func (a *analyzer) prefixOf(e ast.Expr, depth int) string {
+// prefixOf keeps the legacy display prefix and separately reports unknown parts.
+func (a *analyzer) prefixOf(e ast.Expr, depth int) (string, string) {
 	if depth > 32 {
-		return ""
+		return "", "router group prefix exceeds resolution depth"
 	}
+	var group groupDef
+	var ok bool
 	switch x := ast.Unparen(e).(type) {
 	case *ast.Ident:
-		if g, ok := a.groups[a.objOf(x)]; ok {
-			return a.prefixOf(g.base, depth+1) + g.prefix
-		}
+		group, ok = a.groups[a.objOf(x)]
 	case *ast.CallExpr:
-		if prefix, base, ok := a.isGroupCall(x); ok {
-			return a.prefixOf(base, depth+1) + prefix
-		}
+		group, ok = a.isGroupCall(x)
 	}
-	return ""
+	if ok {
+		prefix, reason := a.prefixOf(group.base, depth+1)
+		if reason == "" {
+			reason = group.unresolved
+		}
+		return prefix + group.prefix, reason
+	}
+	typ := a.info.TypeOf(e)
+	if p, ok := typ.(*types.Pointer); ok {
+		typ = p.Elem()
+	}
+	if named, ok := types.Unalias(typ).(*types.Named); ok && named.Obj().Pkg() != nil && named.Obj().Pkg().Path() == ginPkg && named.Obj().Name() == "Engine" {
+		return "", ""
+	}
+	return "", "router group prefix is not resolved"
 }
 
 // routesIn records the routes registered under a declaration whose handler
@@ -99,13 +110,17 @@ func (a *analyzer) routesIn(d ast.Decl) {
 		if handler == "" {
 			return true
 		}
-		path, ok := constString(a.info, call.Args[0])
-		if ok {
-			path = a.prefixOf(sel.X, 0) + path
+		path, constant := constString(a.info, call.Args[0])
+		reason := ""
+		if constant {
+			var prefix string
+			prefix, reason = a.prefixOf(sel.X, 0)
+			path = prefix + path
 		} else {
 			path = ""
+			reason = "path is not a constant string"
 		}
-		a.res.Routes = append(a.res.Routes, Route{Method: method, Path: path, HandlerPos: handler, Pos: a.posStr(call.Pos())})
+		a.res.Routes = append(a.res.Routes, Route{Method: method, Path: path, PathUnresolved: reason, HandlerPos: handler, Pos: a.posStr(call.Pos())})
 		return true
 	})
 }

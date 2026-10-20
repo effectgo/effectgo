@@ -43,7 +43,7 @@ linters:
     custom:
       effectgo:
         type: module
-        description: effectgo analyzers (effects, errset, mustuse, exhaustive, directive)
+        description: effectgo analyzers (effects, errset, mustuse, exhaustive, schematag, directive)
         settings: {}
 ```
 

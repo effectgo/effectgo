@@ -3,3 +3,9 @@ route fake.Get GET 1 2
 route fake.Post POST 1 2
 route fake.Put PUT 1 2
 route fake.Delete DELETE 1 2
+
+# Route rules for the test package rtfake, which has the shape of rt/web's
+# route functions (rt/web/web.go:300-305): the router is argument 0, the pattern
+# argument 1 and the handler argument 2; the functions are generic.
+route rtfake.Get GET 1 2
+route rtfake.Post POST 1 2

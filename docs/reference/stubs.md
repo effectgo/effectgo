@@ -18,7 +18,7 @@ A stub file describes code that effectgo does not analyze, the way a `.d.ts` fil
 | `effects <target> <effects>` | 3 | effects | the effects of a call; `pure` means none; an item may be `via:<argIndex>.<Method>`, the effects of a method call on an argument. Effect names: see [Effects](effects.md#effect-names) |
 | `errors <target> <variants>` | 3 | errset | the error set of a call; `none` means no error can occur |
 | `status <target> <code \| arg:N>` | 3 | errset, huma adapter | the HTTP status that an error carries (see below) |
-| `route <pkg.Func> <METHOD \| @N.Field> <pathArg \| @N.Field> <handlerArg>` | 5 | openapi, huma adapter | a route registration call |
+| `route <pkg.Func> <METHOD \| @N.Field> <pathArg \| @N.Field> <handlerArg>` | 5 | errset (route check), openapi, huma adapter | a route registration call |
 | `errdefault <pkgpath> passthrough=iface:<pkg.Iface>,fallback=<code>` | 3 | huma adapter | the default errmap of the routes of a package |
 | `sink <target> status=<argIndex> [body=<argIndex>]` | 3 or 4 | gin adapter | a call that writes an HTTP response |
 
@@ -148,7 +148,7 @@ route github.com/go-fuego/fuego.Put PUT 1 2
 route github.com/danielgtaylor/huma/v2.Register @1.Method @1.Path 2
 ```
 
-`@N.Field` reads field `Field` of the composite literal that is argument N. A path given as `@N.Field` is read the same way. The OpenAPI analyzer uses only constant indexes and skips rules with field references.
+`@N.Field` reads field `Field` of the composite literal that is argument N. A path given as `@N.Field` is read the same way. The OpenAPI analyzer uses only constant indexes and skips rules with field references. The route check of errset (see [Route handlers](analyzers.md#route-handlers)) reads only the rules with a constant method and path.
 
 ### `errdefault`
 
@@ -217,10 +217,11 @@ Which stdlib interface methods are modelled: the list on the generated page is t
 
 | File | Load it when | Covers |
 |---|---|---|
-| `stubs/stdlib.stubs` | always (it is part of the zero configuration) | `error.Error` pure; `fmt.Stringer`; `io` copy and read functions; `io` constructors; `context` (`Err` errors, `CancelFunc`); database/sql `Row`, `Rows`, `Result` and their errors; `io/fs` getters; `net/http` `ResponseWriter` (`Header` pure, `Write` and `WriteHeader` net), `Flusher.Flush`, `Hijacker.Hijack`, and the helpers `Error`, `NotFound`, `Redirect` (net), `ServeFile` (fs and net), `ServeContent` and `ServeFileFS` (net and unknown); `strconv` parse errors; `net/url.Parse`; the always-nil writers `bytes.Buffer`, `strings.Builder` and `hash.Hash.Write` (`none`, with source lines in the file) |
+| `stubs/stdlib.stubs` | always (it is part of the zero configuration) | `error.Error` pure; `fmt.Stringer`; `io` copy and read functions; `io` constructors; `context` (`Err` errors, `CancelFunc`); database/sql `Row`, `Rows`, `Result` and their errors; `io/fs` getters; `net/http` `ResponseWriter` (`Header` pure, `Write` and `WriteHeader` net), `Flusher.Flush`, `Hijacker.Hijack`, and the helpers `Error`, `NotFound`, `Redirect` (net), `ServeFile` (fs and net), `ServeContent` and `ServeFileFS` (net and unknown); `reflect.Type` methods (all pure; the ones that panic on a misuse are noted in the file); `strconv` parse errors; `net/url.Parse`; the always-nil writers `bytes.Buffer`, `strings.Builder` and `hash.Hash.Write` (`none`, with source lines in the file) |
 | `stubs/pgx.stubs` | the service uses pgx v5 | the pool, connection, `Tx`, `Rows`, `Row`, `BatchResults` methods as `db`, and the sentinels `pgx.ErrNoRows`, `pgx.ErrTxClosed`, `pgx.ErrTxCommitRollback` |
 | `stubs/gin.stubs` | the service uses gin | response writers and body readers as `net`; query, header and context-state readers as `pure`; the `sink` rules of the Gin check |
 | `stubs/huma.stubs` | the service uses Huma v2 | `huma.NewError` (pure, a package-level variable); the 40 status constructors (`status`); `NewError` (`arg:0`); the route functions; the default errmap (`errdefault`) |
+| `stubs/rt.stubs` | the service uses `rt/web` (this repository's runtime) | the five route functions `Get`, `Post`, `Put`, `Patch`, `Delete` as `route` rules (generic, keyed by origin), and as `effects` rules: registration panics, and does not run the handler; `web.New`, `WithMiddleware`, `WithErrorEncoder`, `WithLogger` and `ErrorBody` are pure; `WithPanicHandler` and `WithMaxBody` panic on misuse. Each rule cites its line in `rt/web/web.go`. The middleware that `New` calls is a caller's function value, outside these rules |
 | `stubs/fuego.stubs` | the service uses Fuego | the `Body()` rule (`errors`, with the unclassified `?` kept), status rules, the route functions, and the `StatusCode` rules |
 
 Each shipped file's header gives the module version it was checked against, and each rule cites `file:line` in its comment. Judgment calls are explained in the comments: for example, `sql.Result` methods are pure, `sql.Rows.Scan` is `db`, `io.Closer.Close` stays `unknown`, and `io.Writer.Write`, `io.Reader.Read` are deliberately not listed. The shipped files are also embedded in the binary, so a plain install needs no files on disk.

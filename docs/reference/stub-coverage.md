@@ -245,9 +245,35 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 | `(*github.com/jackc/pgx/v5/pgxpool.Pool).BeginTx` | `errors` | `?` | 118 |
 | `(*github.com/jackc/pgx/v5/pgxpool.Pool).Ping` | `errors` | `?` | 119 |
 
+## `rt.stubs`
+
+17 rules, grouped under 1 package heading(s).
+
+### `github.com/faintghost/effectgo/rt/web`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `github.com/faintghost/effectgo/rt/web.Get` | `route` | `GET; path argument 1; handler argument 2` | 11 |
+| `github.com/faintghost/effectgo/rt/web.Post` | `route` | `POST; path argument 1; handler argument 2` | 12 |
+| `github.com/faintghost/effectgo/rt/web.Put` | `route` | `PUT; path argument 1; handler argument 2` | 13 |
+| `github.com/faintghost/effectgo/rt/web.Patch` | `route` | `PATCH; path argument 1; handler argument 2` | 14 |
+| `github.com/faintghost/effectgo/rt/web.Delete` | `route` | `DELETE; path argument 1; handler argument 2` | 15 |
+| `github.com/faintghost/effectgo/rt/web.New` | `effects` | `pure` | 28 |
+| `github.com/faintghost/effectgo/rt/web.WithMiddleware` | `effects` | `pure` | 29 |
+| `github.com/faintghost/effectgo/rt/web.WithErrorEncoder` | `effects` | `pure` | 30 |
+| `github.com/faintghost/effectgo/rt/web.WithLogger` | `effects` | `pure` | 31 |
+| `github.com/faintghost/effectgo/rt/web.WithPanicHandler` | `effects` | `panic` | 32 |
+| `github.com/faintghost/effectgo/rt/web.WithMaxBody` | `effects` | `panic` | 33 |
+| `github.com/faintghost/effectgo/rt/web.Get` | `effects` | `panic` | 41 |
+| `github.com/faintghost/effectgo/rt/web.Post` | `effects` | `panic` | 42 |
+| `github.com/faintghost/effectgo/rt/web.Put` | `effects` | `panic` | 43 |
+| `github.com/faintghost/effectgo/rt/web.Patch` | `effects` | `panic` | 44 |
+| `github.com/faintghost/effectgo/rt/web.Delete` | `effects` | `panic` | 45 |
+| `github.com/faintghost/effectgo/rt/web.ErrorBody` | `effects` | `pure` | 51 |
+
 ## `stdlib.stubs`
 
-139 rules, grouped under 22 package heading(s).
+178 rules, grouped under 23 package heading(s).
 
 ### `bufio`
 
@@ -280,10 +306,10 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(*bytes.Buffer).Write` | `errors` | `none` | 347 |
-| `(*bytes.Buffer).WriteString` | `errors` | `none` | 348 |
-| `(*bytes.Buffer).WriteByte` | `errors` | `none` | 349 |
-| `(*bytes.Buffer).WriteRune` | `errors` | `none` | 350 |
+| `(*bytes.Buffer).Write` | `errors` | `none` | 401 |
+| `(*bytes.Buffer).WriteString` | `errors` | `none` | 402 |
+| `(*bytes.Buffer).WriteByte` | `errors` | `none` | 403 |
+| `(*bytes.Buffer).WriteRune` | `errors` | `none` | 404 |
 
 ### `context`
 
@@ -294,8 +320,8 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 | `(context.Context).Err` | `effects` | `pure` | 202 |
 | `(context.Context).Value` | `effects` | `pure` | 203 |
 | `(context.CancelFunc)` | `effects` | `pure` | 209 |
-| `(context.Context).Err` | `errors` | `context.Canceled,context.DeadlineExceeded` | 314 |
-| `context.Cause` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 320 |
+| `(context.Context).Err` | `errors` | `context.Canceled,context.DeadlineExceeded` | 368 |
+| `context.Cause` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 374 |
 
 ### `database/sql`
 
@@ -309,10 +335,10 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 | `(*database/sql.Rows).Scan` | `effects` | `db` | 228 |
 | `(*database/sql.Rows).Close` | `effects` | `db` | 229 |
 | `(*database/sql.Rows).Err` | `effects` | `pure` | 230 |
-| `(*database/sql.Row).Scan` | `errors` | `database/sql.ErrNoRows,?` | 325 |
-| `(*database/sql.Rows).Err` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 332 |
-| `(*database/sql.Tx).Commit` | `errors` | `database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?` | 336 |
-| `(*database/sql.Tx).Rollback` | `errors` | `database/sql.ErrTxDone,?` | 337 |
+| `(*database/sql.Row).Scan` | `errors` | `database/sql.ErrNoRows,?` | 379 |
+| `(*database/sql.Rows).Err` | `errors` | `context.Canceled,context.DeadlineExceeded,?` | 386 |
+| `(*database/sql.Tx).Commit` | `errors` | `database/sql.ErrTxDone,context.Canceled,context.DeadlineExceeded,?` | 390 |
+| `(*database/sql.Tx).Rollback` | `errors` | `database/sql.ErrTxDone,?` | 391 |
 
 ### `encoding/binary`
 
@@ -387,7 +413,7 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(hash.Hash).Write` | `errors` | `none` | 364 |
+| `(hash.Hash).Write` | `errors` | `none` | 418 |
 
 ### `html/template`
 
@@ -458,7 +484,7 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `net/url.Parse` | `errors` | `type:net/url.Error` | 310 |
+| `net/url.Parse` | `errors` | `type:net/url.Error` | 364 |
 
 ### `predeclared (error)`
 
@@ -466,23 +492,67 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 |---|---|---|---|
 | `(error).Error` | `effects` | `pure` | 17 |
 
+### `reflect`
+
+| Target | Verb | Value | Line |
+|---|---|---|---|
+| `(reflect.Type).Align` | `effects` | `pure` | 307 |
+| `(reflect.Type).FieldAlign` | `effects` | `pure` | 308 |
+| `(reflect.Type).Size` | `effects` | `pure` | 309 |
+| `(reflect.Type).String` | `effects` | `pure` | 310 |
+| `(reflect.Type).Kind` | `effects` | `pure` | 311 |
+| `(reflect.Type).Name` | `effects` | `pure` | 312 |
+| `(reflect.Type).PkgPath` | `effects` | `pure` | 313 |
+| `(reflect.Type).NumMethod` | `effects` | `pure` | 314 |
+| `(reflect.Type).MethodByName` | `effects` | `pure` | 315 |
+| `(reflect.Type).Comparable` | `effects` | `pure` | 316 |
+| `(reflect.Type).CanSeq` | `effects` | `pure` | 317 |
+| `(reflect.Type).CanSeq2` | `effects` | `pure` | 318 |
+| `(reflect.Type).Methods` | `effects` | `pure` | 319 |
+| `(reflect.Type).Method` | `effects` | `pure` | 321 |
+| `(reflect.Type).Bits` | `effects` | `pure` | 322 |
+| `(reflect.Type).ChanDir` | `effects` | `pure` | 323 |
+| `(reflect.Type).IsVariadic` | `effects` | `pure` | 324 |
+| `(reflect.Type).Elem` | `effects` | `pure` | 325 |
+| `(reflect.Type).Key` | `effects` | `pure` | 326 |
+| `(reflect.Type).Field` | `effects` | `pure` | 327 |
+| `(reflect.Type).FieldByIndex` | `effects` | `pure` | 328 |
+| `(reflect.Type).FieldByName` | `effects` | `pure` | 329 |
+| `(reflect.Type).FieldByNameFunc` | `effects` | `pure` | 330 |
+| `(reflect.Type).Fields` | `effects` | `pure` | 331 |
+| `(reflect.Type).Len` | `effects` | `pure` | 332 |
+| `(reflect.Type).NumField` | `effects` | `pure` | 333 |
+| `(reflect.Type).In` | `effects` | `pure` | 334 |
+| `(reflect.Type).NumIn` | `effects` | `pure` | 335 |
+| `(reflect.Type).NumOut` | `effects` | `pure` | 336 |
+| `(reflect.Type).Out` | `effects` | `pure` | 337 |
+| `(reflect.Type).Ins` | `effects` | `pure` | 338 |
+| `(reflect.Type).Outs` | `effects` | `pure` | 339 |
+| `(reflect.Type).Implements` | `effects` | `pure` | 340 |
+| `(reflect.Type).AssignableTo` | `effects` | `pure` | 341 |
+| `(reflect.Type).ConvertibleTo` | `effects` | `pure` | 342 |
+| `(reflect.Type).OverflowComplex` | `effects` | `pure` | 343 |
+| `(reflect.Type).OverflowFloat` | `effects` | `pure` | 344 |
+| `(reflect.Type).OverflowInt` | `effects` | `pure` | 345 |
+| `(reflect.Type).OverflowUint` | `effects` | `pure` | 346 |
+
 ### `strconv`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `strconv.Atoi` | `errors` | `type:strconv.NumError` | 305 |
-| `strconv.ParseInt` | `errors` | `type:strconv.NumError` | 306 |
-| `strconv.ParseUint` | `errors` | `type:strconv.NumError` | 307 |
-| `strconv.ParseBool` | `errors` | `type:strconv.NumError` | 308 |
+| `strconv.Atoi` | `errors` | `type:strconv.NumError` | 359 |
+| `strconv.ParseInt` | `errors` | `type:strconv.NumError` | 360 |
+| `strconv.ParseUint` | `errors` | `type:strconv.NumError` | 361 |
+| `strconv.ParseBool` | `errors` | `type:strconv.NumError` | 362 |
 
 ### `strings`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `(*strings.Builder).Write` | `errors` | `none` | 356 |
-| `(*strings.Builder).WriteString` | `errors` | `none` | 357 |
-| `(*strings.Builder).WriteByte` | `errors` | `none` | 358 |
-| `(*strings.Builder).WriteRune` | `errors` | `none` | 359 |
+| `(*strings.Builder).Write` | `errors` | `none` | 410 |
+| `(*strings.Builder).WriteString` | `errors` | `none` | 411 |
+| `(*strings.Builder).WriteByte` | `errors` | `none` | 412 |
+| `(*strings.Builder).WriteRune` | `errors` | `none` | 413 |
 
 ### `text/tabwriter`
 

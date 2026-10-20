@@ -291,6 +291,60 @@ effects net/http.ServeFile fs,net
 effects net/http.ServeContent net,unknown
 effects net/http.ServeFileFS net,unknown
 
+# reflect.Type. The methods are called through the interface, so each rule is
+# the interface contract of the method (without it a call is unknown). Each is
+# pure: it reads the type descriptor and writes nothing. Checked against the Go
+# 1.26.9 source under $GOROOT/src/reflect (the line is the method's declaration).
+#
+# Several methods panic on a misuse: a wrong Kind, a nil or non-interface
+# argument, or an index out of range. The panic is a caller error, as for
+# bytes.Buffer.Write (in the errors section below) and gin's Context.Error: it
+# is not charged as the builtin panic effect. Each rule names the panic in its
+# comment, so a caller that relies on the Kind check it makes first can see what
+# it is relying on.
+#
+# Pure, no panic:
+effects (reflect.Type).Align pure               # type.go:622
+effects (reflect.Type).FieldAlign pure          # type.go:624
+effects (reflect.Type).Size pure                # type.go:609
+effects (reflect.Type).String pure              # type.go:601
+effects (reflect.Type).Kind pure                # type.go:626
+effects (reflect.Type).Name pure                # type.go:725
+effects (reflect.Type).PkgPath pure             # type.go:710
+effects (reflect.Type).NumMethod pure           # type.go:636
+effects (reflect.Type).MethodByName pure        # type.go:678
+effects (reflect.Type).Comparable pure          # type.go:1499
+effects (reflect.Type).CanSeq pure              # type.go:904; Elem is called only on a Pointer kind, where it cannot fail
+effects (reflect.Type).CanSeq2 pure             # type.go:932; the same
+effects (reflect.Type).Methods pure             # type.go:973; returns a closure, which calls Method on indexes in range
+# Pure, but each panics on a misuse (see the header); the rule does not charge it.
+effects (reflect.Type).Method pure              # type.go:644; panics on an index out of range for a non-interface type (type.go:651)
+effects (reflect.Type).Bits pure                # type.go:611; panics on a nil Type and on a non-arithmetic kind (type.go:613, 617)
+effects (reflect.Type).ChanDir pure             # type.go:748; panics unless the kind is Chan
+effects (reflect.Type).IsVariadic pure          # type.go:852; panics unless the kind is Func
+effects (reflect.Type).Elem pure                # type.go:768, elem at type.go:760-765; panics unless the kind is Array, Chan, Map, Pointer or Slice
+effects (reflect.Type).Key pure                 # map.go:15; panics unless the kind is Map
+effects (reflect.Type).Field pure               # type.go:772; panics unless the kind is Struct, or i is out of range
+effects (reflect.Type).FieldByIndex pure        # type.go:780; panics unless the kind is Struct
+effects (reflect.Type).FieldByName pure         # type.go:788; panics unless the kind is Struct
+effects (reflect.Type).FieldByNameFunc pure     # type.go:796; panics unless the kind is Struct
+effects (reflect.Type).Fields pure              # type.go:960; panics unless the kind is Struct; the iteration calls Field
+effects (reflect.Type).Len pure                 # type.go:804; panics unless the kind is Array
+effects (reflect.Type).NumField pure            # type.go:812; panics unless the kind is Struct
+effects (reflect.Type).In pure                  # type.go:820; panics unless the kind is Func, or i is out of range
+effects (reflect.Type).NumIn pure               # type.go:828; panics unless the kind is Func
+effects (reflect.Type).NumOut pure              # type.go:836; panics unless the kind is Func
+effects (reflect.Type).Out pure                 # type.go:844; panics unless the kind is Func, or i is out of range
+effects (reflect.Type).Ins pure                 # type.go:983; panics unless the kind is Func
+effects (reflect.Type).Outs pure                # type.go:996; panics unless the kind is Func
+effects (reflect.Type).Implements pure          # type.go:1474; panics on a nil or non-interface argument (type.go:1476, 1479)
+effects (reflect.Type).AssignableTo pure        # type.go:1484; panics on a nil argument
+effects (reflect.Type).ConvertibleTo pure       # type.go:1492; panics on a nil argument
+effects (reflect.Type).OverflowComplex pure     # type.go:860; panics unless the kind is a complex kind
+effects (reflect.Type).OverflowFloat pure       # type.go:871; panics unless the kind is a float kind
+effects (reflect.Type).OverflowInt pure         # type.go:882; panics unless the kind is an int kind
+effects (reflect.Type).OverflowUint pure        # type.go:893; panics unless the kind is a uint kind
+
 ## ---- errors rules (errset) -----------------------------------------------
 
 # Stub rules for a few standard library functions. Each rule was checked

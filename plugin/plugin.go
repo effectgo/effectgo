@@ -1,6 +1,6 @@
 // Package plugin is the golangci-lint module plugin of effectgo: it exposes the
-// contract, must-use and directive analyzers (effects, errset, mustuse, exhaustive,
-// directive) to golangci-lint v2, and through it to editors. It is built into a golangci-lint binary with `golangci-lint custom`
+// contract, must-use, sealed-switch, schema-tag and directive analyzers (effects, errset,
+// mustuse, exhaustive, schematag, directive) to golangci-lint v2, and through it to editors. It is built into a golangci-lint binary with `golangci-lint custom`
 // (see docs/guide/editor.md); the report-only flags
 // and the HTTP subcommands are not part of it.
 //
@@ -36,6 +36,7 @@ import (
 	"github.com/faintghost/effectgo/exhaustive"
 	"github.com/faintghost/effectgo/internal/stubs"
 	"github.com/faintghost/effectgo/mustuse"
+	"github.com/faintghost/effectgo/schematag"
 )
 
 // analyzers is the set of analyzers that the editors run. To expose another
@@ -45,6 +46,7 @@ var analyzers = []*analysis.Analyzer{
 	errset.Analyzer,
 	mustuse.Analyzer,
 	exhaustive.Analyzer,
+	schematag.Analyzer,
 	directive.Analyzer,
 }
 

@@ -13,7 +13,13 @@ func (*BusyError) Error() string { return "busy" }
 //effectgo:errmap
 func Mapper(err error) error {
 	if _, ok := errors.AsType[*BusyError](err); ok {
-		return err
+		return busy{}
 	}
 	return err
 }
+
+// busy is the status that Mapper gives BusyError (a passthrough would keep none).
+type busy struct{}
+
+func (busy) Error() string   { return "busy" }
+func (busy) StatusCode() int { return 409 }

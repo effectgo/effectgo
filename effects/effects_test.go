@@ -36,6 +36,14 @@ func TestCrossPackage(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "domain")
 }
 
+// TestEnumContractAcrossPackages covers the pure contract of an interface method
+// implemented by a type of another package. enumuser imports the interface's
+// package and is checked. enumplain does not import it and is not checked (a
+// known gap, pinned here: its Valid is listed with the findings it would need).
+func TestEnumContractAcrossPackages(t *testing.T) {
+	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "enumdef", "enumuser", "enumplain")
+}
+
 func TestRecursion(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), effects.Analyzer, "rec")
 }

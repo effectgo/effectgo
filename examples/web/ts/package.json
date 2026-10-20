@@ -1,0 +1,19 @@
+{
+  "name": "effectgo-web-ts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "M0 spike: hand-written target of effectgo ts for examples/web",
+  "scripts": {
+    "client": "tsx client.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.0.4",
+    "effect": "4.0.4"
+  },
+  "devDependencies": {
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

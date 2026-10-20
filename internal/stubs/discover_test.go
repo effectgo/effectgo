@@ -146,8 +146,8 @@ func TestModuleRoot(t *testing.T) {
 func TestShippedFilesParse(t *testing.T) {
 	unconfigured(t)
 	srcs := mustSources(t, t.TempDir())
-	if len(srcs) != 5 {
-		t.Fatalf("want 5 shipped stub files, got %d: %v", len(srcs), names(srcs))
+	if len(srcs) != 6 {
+		t.Fatalf("want 6 shipped stub files, got %d: %v", len(srcs), names(srcs))
 	}
 	for _, s := range srcs {
 		if _, err := Parse(s.Name, s.Data); err != nil {

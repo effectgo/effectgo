@@ -119,6 +119,7 @@ func (p *pkgState) loadStubs() error {
 		}
 	}
 	p.loadStatusStubs(statusRules)
+	p.loadRoutes(rules)
 	p.stubs = map[string]errSet{}
 	for _, r := range errRules {
 		set := errSet{}

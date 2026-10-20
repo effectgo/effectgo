@@ -26,6 +26,28 @@ effectgo is one Go module, `github.com/faintghost/effectgo`, with one binary (`c
 
 The examples are separate Go modules with their own `go.mod`; `go test ./...` at the root does not run them. `examples/run.sh` runs the binary on them and is the acceptance script.
 
+## Repository layout
+
+```text
+cmd/effectgo/       CLI and subcommand wiring
+<analyzer>/         public go/analysis packages: effects, errset, mustuse,
+                    exhaustive, signature, openapi, adapters, schematag, tsgen
+internal/           shared implementation details and test-only infrastructure
+plugin/              golangci-lint module plugin
+stubs/              embedded default effect/error/route rules
+rt/                 separate standard-library-only runtime module
+examples/            independent example modules and acceptance script
+docs/               user guide, reference, design, and historical journal
+site/               documentation website source and deployment configuration
+```
+
+The top-level analyzer packages are deliberate public seams used by the CLI,
+plugin, and analyzer tests. `internal/` contains implementation shared across
+those seams. `rt/` remains a separate module so applications importing the
+runtime do not pull the analyzer toolchain into their dependency graph. Build
+outputs are ephemeral and belong in the ignored `bin/` path; they are never
+part of the repository layout.
+
 ## The pipeline
 
 1. **Load.** The driver (multichecker, `go vet`, golangci-lint, or the `openapi` loader) loads packages with type information and syntax.

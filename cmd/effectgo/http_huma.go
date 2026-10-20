@@ -22,7 +22,7 @@ import (
 
 // runHTTPHuma implements `effectgo http-huma [flags] [packages]`. It returns the
 // exit status: 0 on success, 1 when the packages do not load or the analysis
-// fails, 2 on a usage error. Findings do not change the status.
+// fails, 2 on a usage error. Findings do not change the status unless a gate is selected.
 func runHTTPHuma(args []string) int {
 	fs := flag.NewFlagSet("effectgo http-huma", flag.ContinueOnError)
 	bindEngine(fs)
@@ -30,6 +30,7 @@ func runHTTPHuma(args []string) int {
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
 	jsonOut := fs.Bool("json", false, "print one JSON object per finding (the schema shared with the other HTTP adapters)")
 	all := fs.Bool("all", false, "also print info findings (?, new@, foreign and unresolved-kind variants)")
+	opts := bindHTTPOptions(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -53,12 +54,25 @@ func runHTTPHuma(args []string) int {
 			fmt.Fprintf(os.Stderr, "effectgo http-huma: %v\n", err)
 			return 1
 		}
-		// The coverage goes to stderr so that stdout stays one JSON object per line.
-		huma.WriteText(os.Stderr, rep, *all)
-		return 0
+		if opts.Coverage == "json" {
+			if err := writeCoverageJSON(os.Stderr, humaCoverage(rep)); err != nil {
+				fmt.Fprintf(os.Stderr, "effectgo http-huma: %v\n", err)
+				return 1
+			}
+		} else {
+			// The coverage goes to stderr so that stdout stays one JSON object per line.
+			huma.WriteText(os.Stderr, rep, *all)
+		}
+		return gateHTTP(opts, rep.Stats.BySeverity, len(rep.Stats.Unresolved))
 	}
 	huma.WriteText(os.Stdout, rep, *all)
-	return 0
+	if opts.Coverage == "json" {
+		if err := writeCoverageJSON(os.Stderr, humaCoverage(rep)); err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo http-huma: %v\n", err)
+			return 1
+		}
+	}
+	return gateHTTP(opts, rep.Stats.BySeverity, len(rep.Stats.Unresolved))
 }
 
 // analyzeHuma loads the packages, runs the Huma analyzer on them, and returns

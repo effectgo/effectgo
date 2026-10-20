@@ -42,9 +42,10 @@ func runHTTPGin(args []string) int {
 	bindEngine(fs)
 	fs.StringVar(&stubs.Flag, "stubs", stubs.Flag,
 		"comma-separated stub files; falls back to $"+stubs.Env+" when empty")
-	jsonOut := fs.Bool("json", false, "one JSON object per line (the shared HTTP schema)")
+	jsonOut := fs.Bool("json", false, "one JSON object per finding (the shared HTTP schema)")
 	all := fs.Bool("all", false, "also print the info findings (opaque ? and fresh new@ errors)")
 	mappers := fs.Bool("mappers", false, "list the detected sink and status mappers on stderr")
+	opts := bindHTTPOptions(fs)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -87,16 +88,24 @@ func runHTTPGin(args []string) int {
 	} else {
 		printHTTPText(os.Stdout, out)
 	}
-	fmt.Fprintf(os.Stderr, "effectgo http-gin: handlers=%d mappers=%d routes=%d high=%d medium=%d info=%d leak=%d\n",
-		res.Handlers, len(res.Mappers), len(res.Routes), counts["high"], counts["medium"], counts["info"], counts["leak"])
-	return 0
+	if opts.Coverage == "json" {
+		if err := writeCoverageJSON(os.Stderr, ginCoverage(res, counts)); err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo http-gin: %v\n", err)
+			return 1
+		}
+	} else {
+		fmt.Fprintf(os.Stderr, "effectgo http-gin: handlers=%d mappers=%d routes=%d high=%d medium=%d info=%d leak=%d\n",
+			res.Handlers, len(res.Mappers), len(res.Routes), counts["high"], counts["medium"], counts["info"], counts["leak"])
+	}
+	return gateHTTP(opts, counts, res.Unresolved)
 }
 
 // ginRun is the aggregate of the adapter's results over the packages.
 type ginRun struct {
-	Handlers int
-	Mappers  []ginhttp.MapperInfo
-	Routes   []ginhttp.Route
+	Handlers   int
+	Mappers    []ginhttp.MapperInfo
+	Routes     []ginhttp.Route
+	Unresolved int
 	// mapped is the set of variant keys that have a non-5xx explicit mapping.
 	mapped map[string]bool
 	// routeOf joins a handler position to its route, "METHOD path".
@@ -136,6 +145,9 @@ func ginFromGraph(graph *checker.Graph) ([]ginhttp.Finding, *ginRun, error) {
 		}
 	}
 	for _, rt := range run.Routes {
+		if rt.PathUnresolved != "" {
+			run.Unresolved++
+		}
 		key := rt.HandlerPos
 		if _, dup := run.routeOf[key]; !dup {
 			path := rt.Path

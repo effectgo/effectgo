@@ -244,7 +244,7 @@ func v3Update(svc *domain.Service) func(fuego.ContextWithBody[updateReq]) (domai
 }
 ```
 
-The handler's error set (for a constructor, the set of the returned literal) must be covered by the errmap. A variant is covered when its key is mapped, or when it is an interface target whose methods it implements. Every uncovered variant is reported as an HTTP 500 finding:
+The handler's error set (for a constructor, the set of the returned literal) must be covered by the errmap. A variant is covered when its key is mapped, when it is an interface target whose methods it implements, or when a rule of the errmap gives it a known status: the first rule that matches it returns a constant status, or it is a passthrough (`return err`) and the variant carries a constant status of its own (a `StatusCode` method or a status stub). A passthrough does not cover a variant that has no status of its own: a plain error type, a sentinel or a fresh error is sent as 500, so it is reported even when `errors.Is` names it. A variant with a dynamic `StatusCode` is neither covered nor reported by a passthrough, because its value decides the status; `-errset.statuses` shows it as `default`. Every other uncovered variant is reported as an HTTP 500 finding:
 
 ```text
 handler v3Update may return domain.ErrConflict (via Service.Update → Store.checkTitle), which errmap httpres.ToHTTPError does not map → HTTP 500

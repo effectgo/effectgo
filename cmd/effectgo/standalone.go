@@ -17,6 +17,7 @@ import (
 	"github.com/faintghost/effectgo/exhaustive"
 	"github.com/faintghost/effectgo/internal/hidden"
 	"github.com/faintghost/effectgo/mustuse"
+	"github.com/faintghost/effectgo/schematag"
 )
 
 // The standalone run, effectgo ./... It is not the multichecker: that driver
@@ -28,7 +29,7 @@ import (
 
 // standaloneAnalyzers are the analyzers of the standalone run. signature runs
 // only under effectgo sig.
-var standaloneAnalyzers = []*analysis.Analyzer{effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, directive.Analyzer}
+var standaloneAnalyzers = []*analysis.Analyzer{effects.Analyzer, errset.Analyzer, mustuse.Analyzer, exhaustive.Analyzer, schematag.Analyzer, directive.Analyzer}
 
 var (
 	includeTests bool

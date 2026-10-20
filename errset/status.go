@@ -584,7 +584,10 @@ func (p *pkgState) errmapBranches(u *fnUnit) []Branch {
 		}
 	}
 	out := b.out
-	if b.def != nil && !b.done {
+	// The default is the last rule, and it is kept when an unconditional return
+	// ends the body too: that return is the default (emit sets def for it), so
+	// dropping it when done loses a passthrough or a constant status.
+	if b.def != nil {
 		out = append(out, *b.def)
 	}
 	return out
