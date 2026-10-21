@@ -2,6 +2,8 @@
 
 Entry point for coding agents. Two readers are covered: an agent using effectgo in a Go project, and an agent changing effectgo itself. The human-readable documentation is in [docs/](docs/index.md); this file points into it and does not repeat it.
 
+For contract reporting read [Contract checks](docs/guide/contract-checks.md); for release or consumer source/runtime upgrades read [Releasing](docs/guide/releasing.md). Both are included in the Nimbus site and its agent Markdown outputs.
+
 ## Part 1: using effectgo in a Go project
 
 effectgo infers the errors (E) and side effects (R) of each function and checks them against contracts written as `//effectgo:` comments. Full reference: [docs/reference/](docs/reference/directives.md). Workflow for new code: [docs/guide/contract-mode.md](docs/guide/contract-mode.md).

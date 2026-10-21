@@ -1,6 +1,6 @@
 ---
 title: Framework (proposal)
-description: How effectgo grows from an analyzer into a development framework: a small runtime for typed HTTP handlers and schemas, the analyzer as its compiler, and generated Effect TS clients with typed errors.
+description: "How effectgo grows from an analyzer into a development framework: a small runtime for typed HTTP handlers and schemas, the analyzer as its compiler, and generated Effect TS clients with typed errors."
 ---
 
 Status: **proposal**, 2026-10-15. Nothing here is implemented. The first user is the Go port of novastar-marketing (`/root/pp/novastar/novastar-marketing/go`).
