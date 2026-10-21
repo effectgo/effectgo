@@ -5,7 +5,7 @@ description: "Run the complete Go, runtime and Effect TypeScript release gate, t
 
 A release candidate must pass `scripts/release-check.sh`. The script checks the current checkout and exits on the first failure. It does not install tools, change dependency versions, commit, tag, push or publish a release.
 
-Current candidate: `v0.2.0-rc.1` ([GitHub Release](https://github.com/FaintGhost/effectgo/releases/tag/v0.2.0-rc.1)). Consumer locks must identify the exact tag, source tree digest, runtime manifest, and validated binary; the deployed `v0.1.0` remains the production baseline until consumer signoff completes.
+Current stable release: `v0.2.0` ([GitHub Release](https://github.com/FaintGhost/effectgo/releases/tag/v0.2.0)). Consumer locks must identify the exact tag, source tree digest, runtime manifest, and validated binary. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them.
 
 ## Prepare the toolchain
 
@@ -78,6 +78,6 @@ node /path/to/app/scripts/effectgo-source.mjs binary /path/to/effectgo/bin/effec
 
 The updater verifies the old runtime before replacing its owned files and copies the verifier without application-specific changes. It records exact source/runtime inventories and hashes, and checks the runtime `SOURCE.json` descriptor against the lock. Extra Go/stub build inputs and symbolic links are rejected. Binary inputs must have the declared Linux ELF64 architecture; their hashes are recorded, so release preparation must also run the native CLI and compare its version. Cross-built binaries require their target-platform smoke check before promotion.
 
-An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.1.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
+An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.2.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
 
 Tagging, publishing artifacts and changing application locks are separate, explicit release actions. This check produces no release and provides no deployment or production signoff.

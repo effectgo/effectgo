@@ -1,9 +1,9 @@
 ---
 title: Contract checks
-description: The candidate shared report for static analyzers and HTTP route checks.
+description: The shared report for static analyzers and HTTP route checks.
 ---
 
-`effectgo contract` is the shared report command introduced in `v0.2.0-rc.1`. It loads each package once, runs the six static analyzers (`effects`, `errset`, `mustuse`, `exhaustive`, `schematag`, and `directive`), and runs the Gin and Huma checks over the same load. Its default package pattern is `./...`. The report schema remains a candidate contract until `v0.2.0`.
+`effectgo contract` is the shared report command released in `v0.2.0` after the `v0.2.0-rc.1` preview. It loads each package once, runs the six static analyzers (`effects`, `errset`, `mustuse`, `exhaustive`, `schematag`, and `directive`), and runs the Gin and Huma checks over the same load. Its default package pattern is `./...`. The JSON report uses `schema_version: 1`.
 
 The other commands retain their existing output and exit behavior. Use `effectgo ./...` or `go vet -vettool=$(which effectgo) ./...` for native analyzer paths; use `http-gin`, `http-huma`, and `http` when you need their existing standalone reports. The shared command lets CI integrations consume one wire format.
 

@@ -120,7 +120,7 @@ effectgo -effects.report -errset.report -errset.witness ./...
 
 See [Command line](../reference/cli.md#flags).
 
-The candidate `effectgo contract` command introduced in `v0.2.0-rc.1` combines the six native analyzers with the Gin and Huma checks and emits a shared text or JSON report. Native diagnostics always use exit 3; the shared report uses exit 1 for load errors and exit 2 for usage errors. See [Contract checks](contract-checks.md).
+The `effectgo contract` command released in `v0.2.0` combines the six native analyzers with the Gin and Huma checks and emits a shared text or JSON report. Native diagnostics always use exit 3; the shared report uses exit 1 for load errors and exit 2 for usage errors. See [Contract checks](contract-checks.md).
 
 ## Next steps
 

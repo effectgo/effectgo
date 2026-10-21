@@ -11,9 +11,9 @@ One binary, `effectgo`, runs in these ways:
 | go vet | `go vet -vettool=$(which effectgo) ./...` | the same six analyzers, through `go vet` |
 | sig | `effectgo sig ./...` | signatures only |
 | subcommands | `effectgo openapi`, `ts`, `http-gin`, `http-huma`, `http` | the OpenAPI, TypeScript and HTTP checks |
-| shared contract (candidate) | `effectgo contract [patterns]` | the six static analyzers and Gin/Huma checks over one package load |
+| shared contract | `effectgo contract [patterns]` | the six static analyzers and Gin/Huma checks over one package load |
 
-The golangci-lint plugin is another integration; see [Editor integration](../guide/editor.md). The shared contract command was introduced in `v0.2.0-rc.1` with a candidate report schema; the other command behaviors remain unchanged.
+The golangci-lint plugin is another integration; see [Editor integration](../guide/editor.md). The shared contract command is released in `v0.2.0` with JSON `schema_version: 1`; the other command behaviors remain unchanged.
 
 ## Subcommands
 
@@ -26,7 +26,7 @@ The golangci-lint plugin is another integration; see [Editor integration](../gui
 | `effectgo http-gin [-json] [-all] [-mappers] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Gin responses against their error sets | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo http-huma [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo http [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | both HTTP checks, one list | text, or one JSON object per finding; optional machine-readable coverage on stderr |
-| `effectgo contract [-format=text\|json] [-all] [-fail-on=…] [-fail-unresolved] [-coverage=json] [patterns]` | shared six-analyzer and Gin/Huma report (candidate) | text or one JSON document; see [Contract checks](../guide/contract-checks.md) |
+| `effectgo contract [-format=text\|json] [-all] [-fail-on=…] [-fail-unresolved] [-coverage=json] [patterns]` | shared six-analyzer and Gin/Huma report | text or one JSON document; see [Contract checks](../guide/contract-checks.md) |
 
 ## Flags
 
