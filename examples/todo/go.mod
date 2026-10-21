@@ -1,4 +1,4 @@
-module github.com/faintghost/effectgo/examples/todo
+module github.com/effectgo/effectgo/examples/todo
 
 go 1.26.5
 

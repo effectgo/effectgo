@@ -5,7 +5,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/faintghost/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/internal/rtshape"
 )
 
 // The outer unknown codec admits the unchanged inferred input type to the

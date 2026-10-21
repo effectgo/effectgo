@@ -7,12 +7,10 @@ This page takes you from nothing installed to a first diagnostic. It assumes a G
 
 ## Install
 
-The repository is private, so the module proxy cannot serve it. Build from a clone, the verified route:
+Install the CLI from the public module at the current stable version:
 
-```text
-git clone <the repository URL> effectgo
-cd effectgo
-go install ./cmd/effectgo
+```sh
+go install github.com/effectgo/effectgo/cmd/effectgo@v0.3.0
 ```
 
 `go install` puts the binary in `$GOBIN`, or in `$GOPATH/bin` when `GOBIN` is not set (verified with `GOBIN` pointed at a scratch directory). Make sure that directory is on your `PATH`. If you do not want it installed, build a local copy instead:
@@ -21,13 +19,13 @@ go install ./cmd/effectgo
 go build -o bin/effectgo ./cmd/effectgo
 ```
 
-To install from the module path without a clone, the module proxy must be bypassed for the private path. Set `GOPRIVATE` and let the go command fetch the module directly, with git credentials that can read the repository:
+Applications using the runtime add its separate module from their own module root:
 
-```text
-GOPRIVATE=github.com/faintghost/* go install github.com/faintghost/effectgo/cmd/effectgo@latest
+```sh
+go get github.com/effectgo/effectgo/rt@v0.3.0
 ```
 
-That route was not run from the build environment, because the repository is not reachable from there. The clone route is the verified one.
+To work from source, clone `https://github.com/effectgo/effectgo` and run `go install ./cmd/effectgo` in the checkout. The public module route replaces the historical private-repository setup; it needs no `GOPRIVATE` or repository credentials. Release download and indexing checks are described in [Releasing effectgo](releasing.md#publish-the-go-modules-and-documentation).
 
 If `go build` fails with an error about version control information (the module sits below a directory that git cannot read), add `-buildvcs=false`: `go build -buildvcs=false ./...`. `go vet` and `go test` are not affected. This was seen while evaluating effectgo on a service in a nested directory.
 

@@ -6,7 +6,7 @@ package omit
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // OmitOut is the response of GET /api/omit.

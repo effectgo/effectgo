@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/faintghost/effectgo/rt/schema"
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 type Detail struct {

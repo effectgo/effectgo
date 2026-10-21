@@ -1,3 +1,3 @@
-module github.com/faintghost/effectgo/rt
+module github.com/effectgo/effectgo/rt
 
 go 1.26

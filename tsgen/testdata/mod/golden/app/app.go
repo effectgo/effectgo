@@ -4,7 +4,7 @@ package app
 
 import (
 	"example.com/tsbad/golden/catalog"
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Routes registers the catalog routes.

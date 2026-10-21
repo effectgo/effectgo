@@ -20,8 +20,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
 
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/dirparse"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/dirparse"
 )
 
 // Directive marks a named type as must-use.

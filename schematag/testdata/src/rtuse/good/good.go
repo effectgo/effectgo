@@ -8,8 +8,8 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/faintghost/effectgo/rt/schema"
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 func init() {

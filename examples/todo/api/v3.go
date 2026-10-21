@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/faintghost/effectgo/examples/todo/domain"
-	"github.com/faintghost/effectgo/examples/todo/httpres"
+	"github.com/effectgo/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/httpres"
 	"github.com/go-fuego/fuego"
 )
 

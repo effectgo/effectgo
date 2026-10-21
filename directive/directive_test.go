@@ -5,7 +5,7 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/faintghost/effectgo/directive"
+	"github.com/effectgo/effectgo/directive"
 )
 
 // The placements that some analyzer reads stay silent here; the other analyzers'

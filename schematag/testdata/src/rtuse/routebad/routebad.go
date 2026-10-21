@@ -7,7 +7,7 @@ package routebad
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Inner is a struct, so it is not a scalar query value.

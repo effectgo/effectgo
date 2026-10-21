@@ -5,7 +5,7 @@ package schematag
 // rt/schema/schema.go; the analyzer itself uses rtshape.
 
 import (
-	"github.com/faintghost/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/internal/rtshape"
 )
 
 // ruleSpec is one rule of a schema tag (rtshape.RuleSpec with unexported fields).

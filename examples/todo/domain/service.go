@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/faintghost/effectgo/examples/todo/result"
+import "github.com/effectgo/effectgo/examples/todo/result"
 
 // Service is the todo API over a Store.
 type Service struct {

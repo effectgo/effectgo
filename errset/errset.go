@@ -45,10 +45,10 @@ import (
 	"golang.org/x/tools/go/ssa"
 	"golang.org/x/tools/go/types/typeutil"
 
-	"github.com/faintghost/effectgo/internal/dirparse"
-	"github.com/faintghost/effectgo/internal/goroot"
-	"github.com/faintghost/effectgo/internal/hidden"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/dirparse"
+	"github.com/effectgo/effectgo/internal/goroot"
+	"github.com/effectgo/effectgo/internal/hidden"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // Kinds of variant.

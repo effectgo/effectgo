@@ -1,4 +1,4 @@
-module github.com/faintghost/effectgo
+module github.com/effectgo/effectgo
 
 go 1.26.0
 

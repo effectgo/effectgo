@@ -23,6 +23,12 @@ test('pin and verify reject modified, additional, linked and inconsistent build 
   verifySource(root, 'tooling');
   const lock = JSON.parse(readFileSync(resolve(root, 'effectgo.lock.json'), 'utf8'));
   assert.equal(lock.snapshot_kind, 'release-candidate');
+  const license = resolve(runtime, 'LICENSE');
+  const licenseBytes = readFileSync(license);
+  assert.equal(licenseBytes.toString(), readFileSync(resolve(source, 'rt/LICENSE'), 'utf8'));
+  writeFileSync(license, 'modified license\n');
+  assert.throws(() => verifySource(root, 'runtime'));
+  writeFileSync(license, licenseBytes);
   const goMod = resolve(runtime, 'go.mod');
   const original = readFileSync(goMod);
   writeFileSync(goMod, 'module modified\n');

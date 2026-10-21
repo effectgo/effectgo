@@ -1,4 +1,4 @@
-# Stub rules for github.com/faintghost/effectgo/rt/web (the rt module in this
+# Stub rules for github.com/effectgo/effectgo/rt/web (the rt module in this
 # repository; it has no version tag, so the rules are checked against the
 # source at rt/web/web.go).
 #
@@ -8,11 +8,11 @@
 # *Router, argument 1 the pattern (the path) and argument 2 the handler, counted
 # from 0. The method is fixed by the function: Get is GET, Post POST, Put PUT,
 # Patch PATCH and Delete DELETE.
-route github.com/faintghost/effectgo/rt/web.Get GET 1 2       # web.go:337
-route github.com/faintghost/effectgo/rt/web.Post POST 1 2     # web.go:342
-route github.com/faintghost/effectgo/rt/web.Put PUT 1 2       # web.go:347
-route github.com/faintghost/effectgo/rt/web.Patch PATCH 1 2   # web.go:352
-route github.com/faintghost/effectgo/rt/web.Delete DELETE 1 2 # web.go:357
+route github.com/effectgo/effectgo/rt/web.Get GET 1 2       # web.go:337
+route github.com/effectgo/effectgo/rt/web.Post POST 1 2     # web.go:342
+route github.com/effectgo/effectgo/rt/web.Put PUT 1 2       # web.go:347
+route github.com/effectgo/effectgo/rt/web.Patch PATCH 1 2   # web.go:352
+route github.com/effectgo/effectgo/rt/web.Delete DELETE 1 2 # web.go:357
 
 # Effects of the registration and option functions of rt/web. A stub applies at
 # every call site, so the rules replace what the analysis would see through the
@@ -25,12 +25,12 @@ route github.com/faintghost/effectgo/rt/web.Delete DELETE 1 2 # web.go:357
 # here is the middleware given to WithMiddleware, which New wraps around the
 # handler; that middleware is a function value of the caller and its effects are
 # not in this rule. The error encoder and the logger are called at request time.
-effects github.com/faintghost/effectgo/rt/web.New pure
-effects github.com/faintghost/effectgo/rt/web.WithMiddleware pure         # web.go:69 r.mw = append(r.mw, mw...)
-effects github.com/faintghost/effectgo/rt/web.WithErrorEncoder pure      # web.go:75 r.encodeErr = fn
-effects github.com/faintghost/effectgo/rt/web.WithLogger pure            # web.go:81 r.logger = l
-effects github.com/faintghost/effectgo/rt/web.WithPanicHandler panic     # web.go:93-96 panics on a nil function; then r.panicFn = fn
-effects github.com/faintghost/effectgo/rt/web.WithMaxBody panic          # web.go:104-107 panics when n <= 0; then r.maxBody = n
+effects github.com/effectgo/effectgo/rt/web.New pure
+effects github.com/effectgo/effectgo/rt/web.WithMiddleware pure         # web.go:69 r.mw = append(r.mw, mw...)
+effects github.com/effectgo/effectgo/rt/web.WithErrorEncoder pure      # web.go:75 r.encodeErr = fn
+effects github.com/effectgo/effectgo/rt/web.WithLogger pure            # web.go:81 r.logger = l
+effects github.com/effectgo/effectgo/rt/web.WithPanicHandler panic     # web.go:93-96 panics on a nil function; then r.panicFn = fn
+effects github.com/effectgo/effectgo/rt/web.WithMaxBody panic          # web.go:104-107 panics when n <= 0; then r.maxBody = n
 
 # The route functions register the route and return. register (web.go:363) panics on
 # a nil handler, an output or input that schema.Compile rejects, a bad pattern, and
@@ -38,14 +38,14 @@ effects github.com/faintghost/effectgo/rt/web.WithMaxBody panic          # web.g
 # the handler is stored in the mux's closure, and runs per request. The check
 # cache of schema.Compile is not an effect in the taxonomy (rt/schema keeps the
 # package pure), so it is not listed.
-effects github.com/faintghost/effectgo/rt/web.Get panic                   # web.go:337
-effects github.com/faintghost/effectgo/rt/web.Post panic                  # web.go:342
-effects github.com/faintghost/effectgo/rt/web.Put panic                   # web.go:347
-effects github.com/faintghost/effectgo/rt/web.Patch panic                 # web.go:352
-effects github.com/faintghost/effectgo/rt/web.Delete panic                # web.go:357
+effects github.com/effectgo/effectgo/rt/web.Get panic                   # web.go:337
+effects github.com/effectgo/effectgo/rt/web.Post panic                  # web.go:342
+effects github.com/effectgo/effectgo/rt/web.Put panic                   # web.go:347
+effects github.com/effectgo/effectgo/rt/web.Patch panic                 # web.go:352
+effects github.com/effectgo/effectgo/rt/web.Delete panic                # web.go:357
 
 # ErrorBody (web.go:250) encodes an error with json.Marshal and reflection, and reads
 # its status through the statusError interface. The StatusCode and MarshalJSON of
 # the error are methods of the caller's type and are not included here; the rule
 # states the framework's own effects, and it writes nothing (the caller writes).
-effects github.com/faintghost/effectgo/rt/web.ErrorBody pure             # web.go:250
+effects github.com/effectgo/effectgo/rt/web.ErrorBody pure             # web.go:250

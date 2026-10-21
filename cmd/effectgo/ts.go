@@ -9,7 +9,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/faintghost/effectgo/tsgen"
+	"github.com/effectgo/effectgo/tsgen"
 )
 
 // runTS implements `effectgo ts [-o FILE] [-name NAME] [packages]`. It returns the

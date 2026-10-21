@@ -9,23 +9,23 @@ The plugin exposes `effects`, `errset`, `mustuse`, `exhaustive` and `directive`.
 
 ## 1. Build a golangci-lint binary with the plugin
 
-The plugin is `github.com/faintghost/effectgo/plugin`. golangci-lint builds it into a custom binary with `golangci-lint custom`, from a `.custom-gcl.yml` in the current directory. The shipped example is `examples/editor/.custom-gcl.yml`:
+The plugin is `github.com/effectgo/effectgo/plugin`. golangci-lint builds it into a custom binary with `golangci-lint custom`, from a `.custom-gcl.yml` in the current directory. The shipped example is `examples/editor/.custom-gcl.yml`:
 
 ```yaml
 version: v2.14.0          # the golangci-lint version to build against
 name: custom-gcl
 destination: ../../bin    # a checkout path; the binary lands in ./bin (git-ignored)
 plugins:
-  - module: github.com/faintghost/effectgo
-    import: github.com/faintghost/effectgo/plugin
-    path: ../..           # the effectgo checkout; replace with `version: <tag>` outside it
+  - module: github.com/effectgo/effectgo
+    import: github.com/effectgo/effectgo/plugin
+    path: ../..           # the effectgo checkout; replace with `version: v0.3.0` outside it
 ```
 
 ```text
 cd examples/editor && golangci-lint custom     # writes <checkout>/bin/custom-gcl
 ```
 
-Outside the effectgo checkout, use `version: <effectgo tag>` instead of `path`. That route needs the module to be reachable through the Go proxy (or `GOPRIVATE`). It was not verified: the module is private, and it was built only from a local path.
+Outside the effectgo checkout, use `version: v0.3.0` instead of `path` to fetch the public module through the Go proxy. Historical plugin verification used a local checkout. Publishing the module does not establish that a proxy-based custom plugin build or an editor session has been verified.
 
 ## 2. Enable the plugin in the project
 

@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 type multipartTestPart struct {

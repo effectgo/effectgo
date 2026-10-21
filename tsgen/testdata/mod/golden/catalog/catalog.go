@@ -7,7 +7,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // GetIn is the path of GET and DELETE /api/items/{id}: no body, no query.

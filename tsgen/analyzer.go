@@ -22,14 +22,14 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/rtshape"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 const (
-	webPath    = "github.com/faintghost/effectgo/rt/web"
-	schemaPath = "github.com/faintghost/effectgo/rt/schema"
+	webPath    = "github.com/effectgo/effectgo/rt/web"
+	schemaPath = "github.com/effectgo/effectgo/rt/schema"
 )
 
 // HandlerFact is exported on every function of a package that has an error set.

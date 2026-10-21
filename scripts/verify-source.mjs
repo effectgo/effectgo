@@ -12,7 +12,7 @@ export function inventory(directory, prefix = '') {
     const name = prefix + entry.name;
     assert(!entry.isSymbolicLink(), `untracked source link: ${name}`);
     if (entry.isDirectory()) return inventory(resolve(directory, entry.name), name + '/');
-    return /\.(go|stubs)$/.test(entry.name) || ['go.mod', 'go.sum'].includes(entry.name) ? [name] : [];
+    return /\.(go|stubs)$/.test(entry.name) || ['go.mod', 'go.sum', 'LICENSE'].includes(entry.name) ? [name] : [];
   });
 }
 

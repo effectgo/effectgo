@@ -11,13 +11,13 @@ import (
 	"golang.org/x/tools/go/analysis/checker"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faintghost/effectgo/directive"
-	"github.com/faintghost/effectgo/effects"
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/exhaustive"
-	"github.com/faintghost/effectgo/internal/hidden"
-	"github.com/faintghost/effectgo/mustuse"
-	"github.com/faintghost/effectgo/schematag"
+	"github.com/effectgo/effectgo/directive"
+	"github.com/effectgo/effectgo/effects"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/exhaustive"
+	"github.com/effectgo/effectgo/internal/hidden"
+	"github.com/effectgo/effectgo/mustuse"
+	"github.com/effectgo/effectgo/schematag"
 )
 
 // The standalone run, effectgo ./... It is not the multichecker: that driver

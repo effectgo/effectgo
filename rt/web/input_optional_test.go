@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 func TestOptionalHeaderAndCookiePresence(t *testing.T) {

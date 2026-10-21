@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	ginhttp "github.com/faintghost/effectgo/adapters/gin"
+	ginhttp "github.com/effectgo/effectgo/adapters/gin"
 )
 
 func TestHTTPGateThresholds(t *testing.T) {

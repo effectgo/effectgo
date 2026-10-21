@@ -17,8 +17,8 @@ import (
 	"golang.org/x/tools/go/analysis/checker"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faintghost/effectgo/internal/stubs"
-	"github.com/faintghost/effectgo/openapi"
+	"github.com/effectgo/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/openapi"
 )
 
 // runOpenAPI implements `effectgo openapi [flags] [packages]`. It returns the

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	ginhttp "github.com/faintghost/effectgo/adapters/gin"
+	ginhttp "github.com/effectgo/effectgo/adapters/gin"
 )
 
 // run is a fixed aggregate: ErrA is mapped to 404 somewhere, ErrB is not.

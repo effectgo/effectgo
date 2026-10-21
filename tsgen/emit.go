@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/faintghost/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/internal/rtshape"
 )
 
 // Target is the exact Effect version used to validate generated clients.

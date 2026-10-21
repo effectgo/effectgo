@@ -7,8 +7,8 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/faintghost/effectgo/internal/stubs"
-	"github.com/faintghost/effectgo/openapi"
+	"github.com/effectgo/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/openapi"
 )
 
 func testdata(t *testing.T) string {

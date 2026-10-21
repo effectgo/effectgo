@@ -5,7 +5,7 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/faintghost/effectgo/signature"
+	"github.com/effectgo/effectgo/signature"
 )
 
 // TestSignature checks the Effect<A, E, R> line of every declared function.

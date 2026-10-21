@@ -125,10 +125,10 @@ func TestDeterministic(t *testing.T) {
 func TestRTNameConflict(t *testing.T) {
 	_, err := generate(t, "testdata/mod", "./bad/rtname")
 	wantErr(t, err,
-		"two types are named InternalError", "example.com/tsbad/bad/rtname.InternalError", "github.com/faintghost/effectgo/rt/web.InternalError",
-		"two types are named DecodeError", "example.com/tsbad/bad/rtname.DecodeError", "github.com/faintghost/effectgo/rt/schema.DecodeError",
-		"two types are named BodyTooLarge", "example.com/tsbad/bad/rtname.BodyTooLarge", "github.com/faintghost/effectgo/rt/web.BodyTooLarge",
-		"two types are named Issue", "example.com/tsbad/bad/rtname.Issue", "github.com/faintghost/effectgo/rt/schema.Issue")
+		"two types are named InternalError", "example.com/tsbad/bad/rtname.InternalError", "github.com/effectgo/effectgo/rt/web.InternalError",
+		"two types are named DecodeError", "example.com/tsbad/bad/rtname.DecodeError", "github.com/effectgo/effectgo/rt/schema.DecodeError",
+		"two types are named BodyTooLarge", "example.com/tsbad/bad/rtname.BodyTooLarge", "github.com/effectgo/effectgo/rt/web.BodyTooLarge",
+		"two types are named Issue", "example.com/tsbad/bad/rtname.Issue", "github.com/effectgo/effectgo/rt/schema.Issue")
 }
 
 // TestErrorListNoRepeat: a handler that returns the framework's InternalError lists

@@ -30,7 +30,7 @@ import (
 
 	"golang.org/x/tools/go/types/typeutil"
 
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // viaHit is an effect that a call site performs through a via item. w starts

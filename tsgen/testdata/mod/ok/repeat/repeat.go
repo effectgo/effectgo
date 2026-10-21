@@ -6,7 +6,7 @@ package repeat
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // In is the query of GET /api/repeat.

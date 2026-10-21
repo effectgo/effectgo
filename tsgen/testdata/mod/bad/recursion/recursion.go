@@ -4,7 +4,7 @@ package recursion
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Node is a list that refers to itself.

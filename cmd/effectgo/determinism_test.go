@@ -11,8 +11,8 @@ import (
 	"golang.org/x/tools/go/analysis/checker"
 	"golang.org/x/tools/go/packages"
 
-	"github.com/faintghost/effectgo/effects"
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/effects"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // TestOutputIndependentOfScheduling runs both analyzers over a module with

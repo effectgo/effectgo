@@ -1,3 +1,3 @@
-module github.com/faintghost/effectgo/examples/layers
+module github.com/effectgo/effectgo/examples/layers
 
 go 1.26

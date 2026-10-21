@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // These are alternatives, so absence must reach the handler rather than fail

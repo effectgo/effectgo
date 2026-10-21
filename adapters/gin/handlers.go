@@ -7,7 +7,7 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // handlersIn analyzes a declaration's own body when it is a handler, and every

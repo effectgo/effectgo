@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/faintghost/effectgo/examples/layers/infra"
+	"github.com/effectgo/effectgo/examples/layers/infra"
 )
 
 // Sync fetches a URL and prints the status. Declared to use net and stdio only.

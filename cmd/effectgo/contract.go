@@ -16,10 +16,10 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	ginhttp "github.com/faintghost/effectgo/adapters/gin"
-	huma "github.com/faintghost/effectgo/adapters/huma"
-	"github.com/faintghost/effectgo/internal/hidden"
-	"github.com/faintghost/effectgo/internal/stubs"
+	ginhttp "github.com/effectgo/effectgo/adapters/gin"
+	huma "github.com/effectgo/effectgo/adapters/huma"
+	"github.com/effectgo/effectgo/internal/hidden"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // contractReport is a versioned CLI format, separate from go vet and the legacy

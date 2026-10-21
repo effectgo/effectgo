@@ -2,7 +2,7 @@
 // and a Valid with the wrong signature.
 package enumbad
 
-import "github.com/faintghost/effectgo/rt/schema"
+import "github.com/effectgo/effectgo/rt/schema"
 
 // Kind is sealed and has no Valid.
 //

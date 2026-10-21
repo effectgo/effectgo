@@ -38,8 +38,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // ginPkg is the import path of the framework.

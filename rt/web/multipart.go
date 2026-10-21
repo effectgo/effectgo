@@ -11,7 +11,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 const multipartMemoryLimit int64 = 32 << 20

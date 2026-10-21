@@ -20,8 +20,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/faintghost/effectgo/internal/stubs"
-	shipped "github.com/faintghost/effectgo/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
+	shipped "github.com/effectgo/effectgo/stubs"
 )
 
 // outPath is the page the command writes, relative to the repository root.

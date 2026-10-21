@@ -10,9 +10,9 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/faintghost/effectgo/adapters/huma"
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/adapters/huma"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // fixtureOnce memoizes the one analysis of the fixture: analysistest analyzes

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/faintghost/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/domain"
 	"github.com/go-fuego/fuego"
 )
 

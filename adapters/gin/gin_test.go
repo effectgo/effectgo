@@ -8,9 +8,9 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	ginhttp "github.com/faintghost/effectgo/adapters/gin"
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/stubs"
+	ginhttp "github.com/effectgo/effectgo/adapters/gin"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // run analyzes the fixture packages with the shipped gin stubs and the project

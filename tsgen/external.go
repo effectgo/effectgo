@@ -6,7 +6,7 @@ import (
 	"go/types"
 	"slices"
 
-	"github.com/faintghost/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/internal/rtshape"
 )
 
 const routeOptionsHint = "expected direct web.ExternalError[E](), web.SuccessStatus(code), web.SuccessStatuses(codes...), web.SuccessStatusRange(first, last), web.JSONBody(), web.JSONBodyExact(), web.JSONBodyEmpty(), web.JSONBodyBestEffort(), or web.FormBody() calls"

@@ -5,7 +5,7 @@ package ptrs
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // PtrIn is the request body of PUT /api/ptrs.

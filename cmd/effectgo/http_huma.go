@@ -16,8 +16,8 @@ import (
 
 	"golang.org/x/tools/go/analysis/checker"
 
-	huma "github.com/faintghost/effectgo/adapters/huma"
-	"github.com/faintghost/effectgo/internal/stubs"
+	huma "github.com/effectgo/effectgo/adapters/huma"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // runHTTPHuma implements `effectgo http-huma [flags] [packages]`. It returns the

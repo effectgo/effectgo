@@ -126,7 +126,7 @@
   "paths": {
     "/v1/todos": {
       "get": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV1.v1List.func3`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV1.v1List.func3`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v1ListTodos",
         "parameters": [
           {
@@ -203,7 +203,7 @@
         "summary": "func3"
       },
       "post": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV1.v1Create.func1`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV1.v1Create.func1`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v1CreateTodo",
         "parameters": [
           {
@@ -287,7 +287,7 @@
     },
     "/v1/todos/{id}": {
       "delete": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV1.v1Delete.func6`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV1.v1Delete.func6`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v1DeleteTodo",
         "parameters": [
           {
@@ -366,7 +366,7 @@
         "summary": "func6"
       },
       "get": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV1.v1Get.func4`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV1.v1Get.func4`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v1GetTodo",
         "parameters": [
           {
@@ -445,7 +445,7 @@
         "summary": "func4"
       },
       "put": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV1.v1Update.func5`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV1.v1Update.func5`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v1UpdateTodo",
         "parameters": [
           {
@@ -537,7 +537,7 @@
     },
     "/v2/todos": {
       "get": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV2.NoBody[...].func10`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV2.NoBody[...].func10`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v2ListTodos",
         "parameters": [
           {
@@ -614,7 +614,7 @@
         "summary": "func10"
       },
       "post": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV2.WithBody[...].func7`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV2.WithBody[...].func7`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v2CreateTodo",
         "parameters": [
           {
@@ -698,7 +698,7 @@
     },
     "/v2/todos/{id}": {
       "delete": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV2.NoBody[...].func19`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV2.NoBody[...].func19`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v2DeleteTodo",
         "parameters": [
           {
@@ -777,7 +777,7 @@
         "summary": "func19"
       },
       "get": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV2.NoBody[...].func13`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV2.NoBody[...].func13`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v2GetTodo",
         "parameters": [
           {
@@ -856,7 +856,7 @@
         "summary": "func13"
       },
       "put": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV2.WithBody[...].func16`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV2.WithBody[...].func16`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v2UpdateTodo",
         "parameters": [
           {
@@ -948,7 +948,7 @@
     },
     "/v3/todos": {
       "get": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV3.v3List.func3`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV3.v3List.func3`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v3ListTodos",
         "parameters": [
           {
@@ -986,7 +986,7 @@
         "x-effectgo-handler": "v3List(...)"
       },
       "post": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV3.v3Create.func1`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV3.v3Create.func1`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v3CreateTodo",
         "parameters": [
           {
@@ -1083,7 +1083,7 @@
     },
     "/v3/todos/{id}": {
       "delete": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV3.v3Delete.func6`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV3.v3Delete.func6`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v3DeleteTodo",
         "parameters": [
           {
@@ -1155,7 +1155,7 @@
         "x-effectgo-handler": "v3Delete(...)"
       },
       "get": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV3.v3Get.func4`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV3.v3Get.func4`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v3GetTodo",
         "parameters": [
           {
@@ -1227,7 +1227,7 @@
         "x-effectgo-handler": "v3Get(...)"
       },
       "put": {
-        "description": "#### Controller: \n\n`github.com/faintghost/effectgo/examples/todo/api.registerV3.v3Update.func5`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
+        "description": "#### Controller: \n\n`github.com/effectgo/effectgo/examples/todo/api.registerV3.v3Update.func5`\n\n#### Middlewares:\n\n- `github.com/go-fuego/fuego.defaultLogger.middleware`\n\n---\n\n",
         "operationId": "v3UpdateTodo",
         "parameters": [
           {
@@ -1281,7 +1281,7 @@
                 }
               }
             },
-            "description": "Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via parseID)",
+            "description": "Bad Request: domain.ErrInvalid (via Service.Update → checkTitle); fuego.BadRequestError (via (Context).Body [stub])",
             "x-effectgo-errors": [
               {
                 "variant": "domain.ErrInvalid",
@@ -1289,7 +1289,7 @@
               },
               {
                 "variant": "fuego.BadRequestError",
-                "via": "parseID"
+                "via": "(Context).Body [stub]"
               }
             ]
           },

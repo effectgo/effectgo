@@ -362,7 +362,7 @@ func (b *builder) structFields(out *Type, t types.Type, st *types.Struct) {
 			if p, ok := ft.(*types.Pointer); ok {
 				optional, ft = true, types.Unalias(p.Elem())
 			}
-			file := isNamed(ft, "github.com/faintghost/effectgo/rt/web", "File")
+			file := isNamed(ft, "github.com/effectgo/effectgo/rt/web", "File")
 			jsonName, _, _ := strings.Cut(tag.Get("json"), ",")
 			if form == "" || file && tag.Get("json") != "-" || !file && jsonName != form {
 				b.problem(f, where, `multipart fields require a nonempty form tag and a matching json name; files require json:"-" and web.File or *web.File`)

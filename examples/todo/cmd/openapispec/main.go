@@ -8,8 +8,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/faintghost/effectgo/examples/todo/api"
-	"github.com/faintghost/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/api"
+	"github.com/effectgo/effectgo/examples/todo/domain"
 )
 
 func main() {

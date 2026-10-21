@@ -2,7 +2,7 @@
 package conflict
 
 import (
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 
 	"example.com/tsbad/bad/conflict/a"
 	"example.com/tsbad/bad/conflict/b"

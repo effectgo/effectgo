@@ -6,7 +6,7 @@ package mixed
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // MixedIn is the input of PUT /api/mixed/{id}?page=N.

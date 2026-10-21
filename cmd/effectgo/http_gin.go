@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/tools/go/analysis/checker"
 
-	ginhttp "github.com/faintghost/effectgo/adapters/gin"
-	"github.com/faintghost/effectgo/internal/stubs"
+	ginhttp "github.com/effectgo/effectgo/adapters/gin"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // httpFinding is one output record, in the shared schema of the HTTP checks.

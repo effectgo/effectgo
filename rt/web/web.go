@@ -29,7 +29,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 // NoInput is the input of a handler that takes nothing. The body is not read.
