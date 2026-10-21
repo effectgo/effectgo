@@ -45,7 +45,7 @@ Positions are relative to the working directory. A column of `0` means the adapt
 
 The shared command uses exit 0 when there are no native findings and no selected HTTP policy is violated, exit 1 for load, analysis or output errors, exit 2 for usage errors such as an invalid format, threshold or flag, and exit 3 when native diagnostics exist or an HTTP gate is violated. Native diagnostics, including explicitly requested analyzer report output, always produce exit 3; `-fail-on` does not control them. A report can contain advisory HTTP findings and still exit 0 when its policy permits them. `-coverage=json` alone never changes the exit status. `-h` prints usage and exits 0.
 
-For real generator and migration commands, see the [framework example](../../examples/web/README.md). It shows `effectgo ts`, `go test` for the migration contract, and the `rt/web` mounting API. Gin mounting is documented only where a project provides an actual Gin registration; this example uses `rt/web` and does not establish a Gin mounting command.
+For real generator and migration commands, see the [framework example](https://github.com/FaintGhost/effectgo/blob/main/examples/web/README.md). It shows `effectgo ts`, `go test` for the migration contract, and the `rt/web` mounting API. Gin mounting is documented only where a project provides an actual Gin registration; this example uses `rt/web` and does not establish a Gin mounting command.
 
 ## Local validation
 

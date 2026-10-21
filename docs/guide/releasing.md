@@ -65,7 +65,7 @@ A targeted run diagnoses a failure; the complete release gate must still pass af
 
 Update `VERSION` and the corresponding `CHANGELOG.md` entry deliberately. Record the candidate source revision, platform, gate command and exit status alongside the release review. Re-run the gate after changing the candidate's source or dependencies.
 
-Use the [source pinning tools](../../scripts/verify-source.mjs) to validate the actual consumer lock, generator source, runtime snapshot and optional generator binary. Their [behavior tests](../../scripts/source-tools.test.mjs) run in the gate. Keep each application's source/runtime lock tied to the exact candidate it consumes; a successful gate in this checkout does not itself update or validate a different application's installed snapshot.
+Use the [source pinning tools](https://github.com/FaintGhost/effectgo/blob/main/scripts/verify-source.mjs) to validate the actual consumer lock, generator source, runtime snapshot and optional generator binary. Their [behavior tests](https://github.com/FaintGhost/effectgo/blob/main/scripts/source-tools.test.mjs) run in the gate. Keep each application's source/runtime lock tied to the exact candidate it consumes; a successful gate in this checkout does not itself update or validate a different application's installed snapshot.
 
 From the checked framework source, update an existing application with:
 
