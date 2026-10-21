@@ -3,8 +3,8 @@ package domain
 import (
 	"strings"
 
-	"github.com/faintghost/effectgo/examples/layers/infra"
-	"github.com/faintghost/effectgo/examples/layers/repo"
+	"github.com/effectgo/effectgo/examples/layers/infra"
+	"github.com/effectgo/effectgo/examples/layers/repo"
 )
 
 // Todo is a single item.

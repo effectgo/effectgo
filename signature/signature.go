@@ -24,8 +24,8 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/faintghost/effectgo/effects"
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/effects"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // Analyzer prints one Effect<A, E, R> diagnostic per declared function.

@@ -5,7 +5,7 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/faintghost/effectgo/effects"
+	"github.com/effectgo/effectgo/effects"
 )
 
 // TestViaItems covers via items of the shipped stub rules (testdata/src/via):

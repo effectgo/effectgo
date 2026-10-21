@@ -5,7 +5,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // sinkMapperOf detects a sink mapper: a function with a *gin.Context parameter

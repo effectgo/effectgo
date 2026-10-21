@@ -25,7 +25,7 @@ import (
 	"go/constant"
 	"go/types"
 
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // funcKey is the stub key of a declared function or of a package-level variable:

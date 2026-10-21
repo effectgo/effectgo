@@ -3,7 +3,7 @@ package generics
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 type Page[T any] struct {

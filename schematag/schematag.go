@@ -32,13 +32,13 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/faintghost/effectgo/exhaustive"
-	"github.com/faintghost/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/exhaustive"
+	"github.com/effectgo/effectgo/internal/rtshape"
 )
 
 const (
-	webPath    = "github.com/faintghost/effectgo/rt/web"
-	schemaPath = "github.com/faintghost/effectgo/rt/schema"
+	webPath    = "github.com/effectgo/effectgo/rt/web"
+	schemaPath = "github.com/effectgo/effectgo/rt/schema"
 )
 
 // Analyzer is the schematag analyzer.

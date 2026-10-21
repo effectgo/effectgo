@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 var timeType = reflect.TypeFor[time.Time]()

@@ -5,7 +5,7 @@ package order
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Bad is a 400.

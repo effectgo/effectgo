@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 func parseRules(t *testing.T, name, data string) []stubs.Rule {

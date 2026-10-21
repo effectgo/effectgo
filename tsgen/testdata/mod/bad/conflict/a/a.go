@@ -4,7 +4,7 @@ package a
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Item is one thing of package a.

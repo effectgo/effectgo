@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/internal/stubs"
-	shipped "github.com/faintghost/effectgo/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
+	shipped "github.com/effectgo/effectgo/stubs"
 )
 
 // TestPageIsCurrent fails when the committed page differs from a fresh render,

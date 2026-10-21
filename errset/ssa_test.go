@@ -3,7 +3,7 @@ package errset_test
 import (
 	"testing"
 
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/errset"
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 

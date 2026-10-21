@@ -27,8 +27,8 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
 
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // Route is one registered HTTP route of the analyzed package.

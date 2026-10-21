@@ -7,7 +7,7 @@ package main
 import (
 	"fmt"
 
-	"github.com/faintghost/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/domain"
 )
 
 func main() {

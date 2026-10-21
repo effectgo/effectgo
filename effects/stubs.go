@@ -5,7 +5,7 @@ import (
 	"go/types"
 	"slices"
 
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // Effect stubs. The file format is shared with errset and is parsed by

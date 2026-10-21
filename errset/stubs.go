@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // stubToken is one parsed variant of an errors rule.

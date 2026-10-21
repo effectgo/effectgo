@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 // RouteOption declares additional HTTP boundary contracts.

@@ -3,7 +3,7 @@ package exhaustive_test
 import (
 	"testing"
 
-	"github.com/faintghost/effectgo/exhaustive"
+	"github.com/effectgo/effectgo/exhaustive"
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 

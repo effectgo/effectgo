@@ -7,7 +7,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 var prefix = os.Getenv("API_PREFIX")

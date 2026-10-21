@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/domain"
 )
 
 const mergedDoc = "../testdata/openapi/effectgo-merged.json"

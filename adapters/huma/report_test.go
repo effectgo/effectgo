@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // The classification of variants that reach 500, on synthetic results. The

@@ -3,7 +3,7 @@ title: Architecture
 description: The packages of effectgo, the analyzers and the facts they exchange, the stub pipeline, and how the binary, the plugin and the HTTP adapters fit together.
 ---
 
-effectgo is one Go module, `github.com/faintghost/effectgo`, with one binary (`cmd/effectgo`) and one golangci-lint plugin (`plugin`). Every analysis is a `go/analysis` analyzer, so the same code runs under the multichecker, under `go vet -vettool`, and under golangci-lint.
+effectgo's root Go module, `github.com/effectgo/effectgo`, provides one binary (`cmd/effectgo`) and one golangci-lint plugin (`plugin`). The runtime is a separate, standard-library-only module, `github.com/effectgo/effectgo/rt`; the examples are independent modules too. Every analysis is a `go/analysis` analyzer, so the same code runs under the multichecker, under `go vet -vettool`, and under golangci-lint.
 
 ## Packages
 

@@ -8,9 +8,9 @@ import (
 
 	"github.com/golangci/plugin-module-register/register"
 
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/internal/stubs"
-	"github.com/faintghost/effectgo/mustuse"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/mustuse"
 )
 
 // withStubs isolates the process-wide stub configuration of one test.

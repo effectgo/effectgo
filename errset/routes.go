@@ -28,7 +28,7 @@ import (
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/types/typeutil"
 
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // RouteRule is one route rule: the method, the index of the path argument and

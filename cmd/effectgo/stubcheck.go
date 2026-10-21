@@ -3,8 +3,8 @@ package main
 import (
 	"strings"
 
-	"github.com/faintghost/effectgo/effects"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/effects"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // checkStubs validates, once and before the analyzers run, the stub files that

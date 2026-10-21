@@ -20,7 +20,7 @@ import (
 	"go/token"
 	"go/types"
 
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // varRule gives a status to the variants of one variable that match a branch.

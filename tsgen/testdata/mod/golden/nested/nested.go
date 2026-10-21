@@ -6,7 +6,7 @@ package nested
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Address is used twice by OrderIn, the request.

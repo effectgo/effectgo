@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/faintghost/effectgo/rt/schema"
+	"github.com/effectgo/effectgo/rt/schema"
 )
 
 // ---- fixtures ----

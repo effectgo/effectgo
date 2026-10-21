@@ -21,7 +21,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	shipped "github.com/faintghost/effectgo/stubs"
+	shipped "github.com/effectgo/effectgo/stubs"
 )
 
 // ProjectFile is the name of the stub file that a module keeps at its root.

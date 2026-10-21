@@ -4,7 +4,7 @@ package bodymodes
 
 import (
 	"context"
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 type Input struct {

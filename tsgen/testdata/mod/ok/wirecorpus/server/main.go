@@ -11,7 +11,7 @@ import (
 	"syscall"
 
 	"example.com/tsbad/ok/wirecorpus"
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 func main() {

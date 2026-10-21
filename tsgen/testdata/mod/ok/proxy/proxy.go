@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 type ProxyInput struct {

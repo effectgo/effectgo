@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/faintghost/effectgo/internal/stubs"
-	"github.com/faintghost/effectgo/mustuse"
+	"github.com/effectgo/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/mustuse"
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 

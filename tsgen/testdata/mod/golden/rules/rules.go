@@ -6,7 +6,7 @@ package rules
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // RulesIn is the request body of POST /api/rules.

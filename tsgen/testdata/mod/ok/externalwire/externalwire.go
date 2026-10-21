@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 type SupportedError struct {

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 - 2026-10-22
+
+- **Breaking:** move the Go modules to `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`. Update imports, plugin configuration and pinned source/runtime snapshots when upgrading; earlier tags keep their original module paths.
+- Publish the framework and standalone runtime under the MIT license, including the license in pinned runtime copies.
+- Update runtime type recognition, shipped route stubs, generated-code fixtures and examples to the public namespace.
+- Document public Go installation and pkg.go.dev discovery; add linked Go Reference, release and MIT badges to the README.
+
 ## 0.2.0 - 2026-10-22
 
 - Release `effectgo contract` with schema-version-1 text/JSON reporting for the six native analyzers and Gin/Huma checks, deterministic ordering, native diagnostic exit gates, and explicit adapter coverage limits.

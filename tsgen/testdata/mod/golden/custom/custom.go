@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // Stats counts items; its JSON object has the keys all and sent.

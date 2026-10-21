@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/openapi"
+	"github.com/effectgo/effectgo/openapi"
 )
 
 // The "?" variant (an unclassified error) is 500 unless the errmap maps it, and

@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/tools/go/analysis/analysistest"
 
-	"github.com/faintghost/effectgo/effects"
-	"github.com/faintghost/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/effects"
+	"github.com/effectgo/effectgo/internal/stubs"
 )
 
 // TestMain clears EFFECTGO_STUBS and selects an explicit empty stub file: the

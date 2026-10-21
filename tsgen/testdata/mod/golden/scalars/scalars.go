@@ -6,7 +6,7 @@ package scalars
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 // ScalarsIn is the request body of POST /api/scalars.

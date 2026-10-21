@@ -19,7 +19,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/faintghost/effectgo/internal/dirparse"
+	"github.com/effectgo/effectgo/internal/dirparse"
 )
 
 // Analyzer is the directive analyzer.

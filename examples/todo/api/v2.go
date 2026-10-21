@@ -3,9 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/faintghost/effectgo/examples/todo/domain"
-	"github.com/faintghost/effectgo/examples/todo/httpres"
-	"github.com/faintghost/effectgo/examples/todo/result"
+	"github.com/effectgo/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/httpres"
+	"github.com/effectgo/effectgo/examples/todo/result"
 	"github.com/go-fuego/fuego"
 )
 

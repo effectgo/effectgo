@@ -31,15 +31,15 @@ import (
 
 	"golang.org/x/tools/go/analysis/multichecker"
 
-	"github.com/faintghost/effectgo/directive"
-	"github.com/faintghost/effectgo/effects"
-	"github.com/faintghost/effectgo/errset"
-	"github.com/faintghost/effectgo/exhaustive"
-	"github.com/faintghost/effectgo/internal/stubs"
-	"github.com/faintghost/effectgo/internal/version"
-	"github.com/faintghost/effectgo/mustuse"
-	"github.com/faintghost/effectgo/schematag"
-	"github.com/faintghost/effectgo/signature"
+	"github.com/effectgo/effectgo/directive"
+	"github.com/effectgo/effectgo/effects"
+	"github.com/effectgo/effectgo/errset"
+	"github.com/effectgo/effectgo/exhaustive"
+	"github.com/effectgo/effectgo/internal/stubs"
+	"github.com/effectgo/effectgo/internal/version"
+	"github.com/effectgo/effectgo/mustuse"
+	"github.com/effectgo/effectgo/schematag"
+	"github.com/effectgo/effectgo/signature"
 )
 
 func init() {

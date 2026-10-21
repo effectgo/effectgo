@@ -249,27 +249,27 @@ Each row is one rule. `Line` is the line of the rule in its stub file, where the
 
 17 rules, grouped under 1 package heading(s).
 
-### `github.com/faintghost/effectgo/rt/web`
+### `github.com/effectgo/effectgo/rt/web`
 
 | Target | Verb | Value | Line |
 |---|---|---|---|
-| `github.com/faintghost/effectgo/rt/web.Get` | `route` | `GET; path argument 1; handler argument 2` | 11 |
-| `github.com/faintghost/effectgo/rt/web.Post` | `route` | `POST; path argument 1; handler argument 2` | 12 |
-| `github.com/faintghost/effectgo/rt/web.Put` | `route` | `PUT; path argument 1; handler argument 2` | 13 |
-| `github.com/faintghost/effectgo/rt/web.Patch` | `route` | `PATCH; path argument 1; handler argument 2` | 14 |
-| `github.com/faintghost/effectgo/rt/web.Delete` | `route` | `DELETE; path argument 1; handler argument 2` | 15 |
-| `github.com/faintghost/effectgo/rt/web.New` | `effects` | `pure` | 28 |
-| `github.com/faintghost/effectgo/rt/web.WithMiddleware` | `effects` | `pure` | 29 |
-| `github.com/faintghost/effectgo/rt/web.WithErrorEncoder` | `effects` | `pure` | 30 |
-| `github.com/faintghost/effectgo/rt/web.WithLogger` | `effects` | `pure` | 31 |
-| `github.com/faintghost/effectgo/rt/web.WithPanicHandler` | `effects` | `panic` | 32 |
-| `github.com/faintghost/effectgo/rt/web.WithMaxBody` | `effects` | `panic` | 33 |
-| `github.com/faintghost/effectgo/rt/web.Get` | `effects` | `panic` | 41 |
-| `github.com/faintghost/effectgo/rt/web.Post` | `effects` | `panic` | 42 |
-| `github.com/faintghost/effectgo/rt/web.Put` | `effects` | `panic` | 43 |
-| `github.com/faintghost/effectgo/rt/web.Patch` | `effects` | `panic` | 44 |
-| `github.com/faintghost/effectgo/rt/web.Delete` | `effects` | `panic` | 45 |
-| `github.com/faintghost/effectgo/rt/web.ErrorBody` | `effects` | `pure` | 51 |
+| `github.com/effectgo/effectgo/rt/web.Get` | `route` | `GET; path argument 1; handler argument 2` | 11 |
+| `github.com/effectgo/effectgo/rt/web.Post` | `route` | `POST; path argument 1; handler argument 2` | 12 |
+| `github.com/effectgo/effectgo/rt/web.Put` | `route` | `PUT; path argument 1; handler argument 2` | 13 |
+| `github.com/effectgo/effectgo/rt/web.Patch` | `route` | `PATCH; path argument 1; handler argument 2` | 14 |
+| `github.com/effectgo/effectgo/rt/web.Delete` | `route` | `DELETE; path argument 1; handler argument 2` | 15 |
+| `github.com/effectgo/effectgo/rt/web.New` | `effects` | `pure` | 28 |
+| `github.com/effectgo/effectgo/rt/web.WithMiddleware` | `effects` | `pure` | 29 |
+| `github.com/effectgo/effectgo/rt/web.WithErrorEncoder` | `effects` | `pure` | 30 |
+| `github.com/effectgo/effectgo/rt/web.WithLogger` | `effects` | `pure` | 31 |
+| `github.com/effectgo/effectgo/rt/web.WithPanicHandler` | `effects` | `panic` | 32 |
+| `github.com/effectgo/effectgo/rt/web.WithMaxBody` | `effects` | `panic` | 33 |
+| `github.com/effectgo/effectgo/rt/web.Get` | `effects` | `panic` | 41 |
+| `github.com/effectgo/effectgo/rt/web.Post` | `effects` | `panic` | 42 |
+| `github.com/effectgo/effectgo/rt/web.Put` | `effects` | `panic` | 43 |
+| `github.com/effectgo/effectgo/rt/web.Patch` | `effects` | `panic` | 44 |
+| `github.com/effectgo/effectgo/rt/web.Delete` | `effects` | `panic` | 45 |
+| `github.com/effectgo/effectgo/rt/web.ErrorBody` | `effects` | `pure` | 51 |
 
 ## `stdlib.stubs`
 

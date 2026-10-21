@@ -27,7 +27,7 @@ import (
 
 	"golang.org/x/tools/go/analysis"
 
-	"github.com/faintghost/effectgo/internal/dirparse"
+	"github.com/effectgo/effectgo/internal/dirparse"
 )
 
 // Directive marks an interface or an enum type as sealed.

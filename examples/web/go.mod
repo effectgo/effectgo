@@ -1,7 +1,7 @@
-module github.com/faintghost/effectgo/examples/web
+module github.com/effectgo/effectgo/examples/web
 
 go 1.26
 
-require github.com/faintghost/effectgo/rt v0.0.0
+require github.com/effectgo/effectgo/rt v0.0.0
 
-replace github.com/faintghost/effectgo/rt => ../../rt
+replace github.com/effectgo/effectgo/rt => ../../rt

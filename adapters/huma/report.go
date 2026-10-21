@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/faintghost/effectgo/errset"
+	"github.com/effectgo/effectgo/errset"
 )
 
 // Severities of a finding, most severe first.

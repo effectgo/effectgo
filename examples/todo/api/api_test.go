@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/faintghost/effectgo/examples/todo/domain"
+	"github.com/effectgo/effectgo/examples/todo/domain"
 )
 
 // step is one request in a case. wantBody, if non-empty, is compared as

@@ -3,7 +3,7 @@ package externaloptions
 import (
 	"context"
 
-	"github.com/faintghost/effectgo/rt/web"
+	"github.com/effectgo/effectgo/rt/web"
 )
 
 func Read(context.Context, web.NoInput) (web.NoContent, error) {

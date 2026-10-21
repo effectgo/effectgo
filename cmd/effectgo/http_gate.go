@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	huma "github.com/faintghost/effectgo/adapters/huma"
+	huma "github.com/effectgo/effectgo/adapters/huma"
 )
 
 const httpGateExitCode = 3

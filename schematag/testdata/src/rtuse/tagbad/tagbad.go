@@ -3,7 +3,7 @@
 // name is not checked against the registry (see docs/reference/analyzers.md).
 package tagbad
 
-import "github.com/faintghost/effectgo/rt/schema"
+import "github.com/effectgo/effectgo/rt/schema"
 
 // Bad is decoded with schema.Decode, so every tag is read.
 type Bad struct {
