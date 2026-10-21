@@ -1,4 +1,4 @@
 package version
 
 // Current is the release identifier for the effectgo CLI and runtime contract.
-const Current = "0.1.0"
+const Current = "0.2.0"

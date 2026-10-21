@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 - 2026-10-22
+
+- Release `effectgo contract` with schema-version-1 text/JSON reporting for the six native analyzers and Gin/Huma checks, deterministic ordering, native diagnostic exit gates, and explicit adapter coverage limits.
+- Validate one shared JSON corpus through raw `rt/web` HTTP decoding and freshly generated Effect 4.0.4 clients, including omission/null, nested collections, unknown-key normalization, required fields, and scalar errors.
+- Isolate every discovered CLI, error-set, OpenAPI, signature, and generator test in the complete race-enabled release gate; retain strict TypeScript and HTTP decoder dependency checks.
+- Align the CLI's built-in version with `VERSION`; the release now reports `0.2.0` through `-V=full` instead of the stale `0.1.0` identifier.
+- Publish the contract and release guides through Nimbus, with checked repository source links and explicit source/runtime/binary provenance boundaries.
+
 ## 0.2.0-rc.1 - 2026-10-21
 - Add the candidate `effectgo contract` command with shared text/JSON diagnostics for the six static analyzers and Gin/Huma checks, including coarse rule IDs, native error severity, exit gates, deterministic ordering, and explicit coverage limits.
 - Exercise one shared JSON corpus through raw `rt/web` HTTP decoding and a freshly generated Effect 4.0.4 client, covering omission/null, nested collections, unknown-key normalization, missing required fields, and scalar type errors.
