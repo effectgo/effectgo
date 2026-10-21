@@ -54,8 +54,8 @@ and both HTTP adapters, with exit 3 even under `-fail-on=none`. The HTTP-only fi
 exited 0 under `-fail-on=high` and 3 under `-fail-on=none -fail-unresolved`.
 The web example exited 0 with no diagnostics and two explicitly unresolved routes.
 
-The repaired `scripts/release-check.sh` completed end to end with exit 0 in
-4005.75 seconds. This includes root build/vet, 16 Node checks, all ordinary root
+Before the version-only `v0.2.0` promotion, the repaired `scripts/release-check.sh`
+completed end to end with exit 0 in 4005.75 seconds. This includes root build/vet, 16 Node checks, all ordinary root
 packages, 120 isolated top-level CLI/error-set/OpenAPI/signature/generator tests,
 runtime race tests, all four example modules, generated-file consistency, and
 TypeScript typechecking with strict cross-language dependencies required.
