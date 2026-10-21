@@ -5,17 +5,22 @@ description: "A showcase of what error-set inference enables at the HTTP boundar
 
 This page is a showcase, not the main line of effectgo. The main line is the error set of each function, which the [contract mode](contract-mode.md) uses. An HTTP handler is one place where the error set has a visible consequence: an error that the handler returns is turned into a response, and the response status depends on the error's type. If the set is known, the mapping can be checked, and the response documentation can be derived.
 
-Three commands show this, for three frameworks:
+Four commands show this, for the supported framework checks:
 
 | Command | Framework | Question it answers |
 |---|---|---|
 | `effectgo openapi` | Fuego | which error responses does each route have, and does the OpenAPI document say so? |
 | `effectgo http-huma` | Huma v2 | which errors of each route reach Huma's fallback HTTP 500? |
 | `effectgo http-gin` | Gin | which error variants reach a 5xx response, and does a response body leak error text? |
+| `effectgo http` | Gin and Huma | what does the combined HTTP check find over one package load? |
+
+The unreleased `effectgo contract` command adds the six native analyzers to that shared load and report. Its JSON uses coarse rule IDs (`http.gin` and `http.huma` for these checks); consumers should use the structured fields rather than parse messages. Native findings have severity `error` and always make the command exit 3. See [Contract checks](contract-checks.md) for the full wire schema and exit rules.
+
+The HTTP coverage object counts Gin and Huma collections only. It does not count `rt/web` or OpenAPI routes, and Gin registrations whose handlers or group prefixes cannot be resolved can sit outside the collected set. A zero unresolved count therefore does not prove complete registration coverage. `-coverage=json` exposes the detected boundary and its limit.
+
+Gin mounting is shown only when a project has an actual Gin registration and sink stub. The checked framework example in this repository uses `rt/web` (`web.New`, `web.Get`, and `web.Post`) and the standard library; it is not evidence for a Gin mounting command. See [the example README](../../examples/web/README.md) for the real generation, typecheck, and migration commands.
 
 `effectgo http` runs the Huma and Gin checks over one load, and prints one list. The flags are in [Command line](../reference/cli.md).
-
-What each check does not do is as important as what it does: no runtime behaviour is observed, no request is sent, and no service is started. The findings are static. The evaluation numbers below come from static runs on real services and from manual reading of samples; they are not a claim about production behaviour.
 
 ## Fuego and OpenAPI
 

@@ -54,6 +54,9 @@ func main() {
 		printIdentity()
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "contract" {
+		os.Exit(runContract(os.Args[2:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "openapi" {
 		os.Exit(runOpenAPI(os.Args[2:]))
 	}

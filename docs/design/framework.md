@@ -1,9 +1,9 @@
 ---
-title: Framework (proposal)
-description: How effectgo grows from an analyzer into a development framework: a small runtime for typed HTTP handlers and schemas, the analyzer as its compiler, and generated Effect TS clients with typed errors.
+title: Framework (historical proposal)
+description: "The historical framework proposal and its implementation milestones: typed HTTP handlers, schemas, analyzer checks and generated Effect TS clients."
 ---
 
-Status: **proposal**, 2026-10-15. Nothing here is implemented. The first user is the Go port of novastar-marketing (`/root/pp/novastar/novastar-marketing/go`).
+Historical proposal opened **2026-10-15**, with implementation and acceptance notes added below. The initial proposal described work that was not yet implemented; that opening premise does not describe the current checkout. The first user was the Go port of novastar-marketing (`/root/pp/novastar/novastar-marketing/go`). For the current shared report command and its limits, read [Contract checks](../guide/contract-checks.md); for candidate validation and consumer source/runtime upgrades, read [Releasing](../guide/releasing.md).
 
 ## Why
 

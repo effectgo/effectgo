@@ -8,8 +8,11 @@ go 1.26
 require (
 	github.com/danielgtaylor/huma/v2 v2.37.2
 	github.com/gin-gonic/gin v1.12.0
+	github.com/faintghost/effectgo/rt v0.0.0
 )
 
 replace github.com/danielgtaylor/huma/v2 => ./fakes/huma
 
 replace github.com/gin-gonic/gin => ./fakes/gin
+
+replace github.com/faintghost/effectgo/rt => ../../../../rt

@@ -42,14 +42,16 @@ The site has two builds. The default build (`pnpm build`) is for local use and i
 To build and check the public site:
 
 ```sh
-SITE_URL=https://effectgo-docs.pages.dev pnpm build:public
+SITE_URL=https://effectgo-docs.faintghost.workers.dev pnpm build:public
 pnpm check:public
 ```
 
 - `SITE_URL` is required. The build fails without it. It sets the origin for canonical links, the sitemap and `llms.txt`. Give the origin only (no path).
 - The public build leaves `docs/journal/` out. Its pages, its `llms.txt` entries, its sitemap entries, its search index entries and its Markdown outputs are all absent, and the sidebar has no Journal group.
+- The public build includes [Contract checks](../docs/guide/contract-checks.md) and [Releasing](../docs/guide/releasing.md), their per-page Markdown, and their entries in `llms.txt` and `llms-full.txt`.
 - A link from a published page to a journal page keeps its text and drops the link, in the HTML and in the stored Markdown (`llms-full.txt`, per-page `.md`). In the default build those links stay links.
 - Names in `public-redactions.json` are replaced in every output: page bodies (HTML and Markdown), titles and descriptions (frontmatter), attributes such as `href` and `id`, `llms.txt`, `llms-full.txt` and the search index. The matching is case-insensitive and substring-based, and the longest name wins. To hide another name, add it to that file. The mapping is applied in `src/markdown/docs-links.ts` (the hast plugin and the loader wrapper) and in `src/public-mode.ts`.
+- Local machine paths and private service names in the framework history and releasing guide also use `public-redactions.json`; the repository Markdown keeps its original evidence. Public command examples use placeholder paths that the reader must replace for their environment.
 - `scripts/check-public.mjs` scans every file in `dist/` for a denylist (the redacted names, `VectorSprint`, paths and hosts of the private systems, and `/journal/` in any URL). Compressed files are scanned in their decompressed form too, which covers the Pagefind fragments. It exits 1 and lists each hit with its file and context. The denylist includes every key of `public-redactions.json`. Its only exceptions are the editor guide's VS Code wording "user or workspace settings", "workspace scope" and "in the workspace. Add", which are listed by exact phrase in `ALLOWED_PHRASES`.
 
 A passing check is necessary but not a full review. Read the public pages before deployment.

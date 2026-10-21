@@ -3,30 +3,30 @@ title: Command line
 description: Every effectgo subcommand and flag, exit codes, the differences between standalone, go vet and golangci-lint runs, and how go vet caches results.
 ---
 
-One binary, `effectgo`, runs in four ways:
+One binary, `effectgo`, runs in these ways:
 
 | Way | Command | What runs |
 |---|---|---|
 | standalone | `effectgo ./...` | effects, errset, mustuse, exhaustive, schematag, directive; test files analyzed by default; ends with a summary line |
-| go vet | `go vet -vettool=$(which effectgo) ./...` | the same five analyzers, through `go vet` |
+| go vet | `go vet -vettool=$(which effectgo) ./...` | the same six analyzers, through `go vet` |
 | sig | `effectgo sig ./...` | signatures only |
 | subcommands | `effectgo openapi`, `ts`, `http-gin`, `http-huma`, `http` | the OpenAPI, TypeScript and HTTP checks |
+| shared contract (candidate) | `effectgo contract [patterns]` | the six static analyzers and Gin/Huma checks over one package load |
 
-The golangci-lint plugin is a fifth way; see [Editor integration](../guide/editor.md).
-
-Build the binary from a clone with `go build -o bin/effectgo ./cmd/effectgo` (Go 1.26). For the install route, see [Getting started](../guide/getting-started.md).
+The golangci-lint plugin is another integration; see [Editor integration](../guide/editor.md). The shared contract command was introduced in `v0.2.0-rc.1` with a candidate report schema; the other command behaviors remain unchanged.
 
 ## Subcommands
 
 | Command | Purpose | Output |
 |---|---|---|
-| `effectgo ./...` | diagnostics of the five analyzers | the driver's diagnostics |
+| `effectgo ./...` | diagnostics of the six analyzers | the driver's diagnostics |
 | `effectgo sig ./...` | `Effect<A, E, R>` for every function | one line per function; exit 3 when it printed any (exit 3 is success here, see [Exit codes](#exit-codes)) |
 | `effectgo openapi [-merge spec.json \| -check spec.json] ./...` | error responses of each route | a fragment (JSON), a merged document (JSON), or a drift report (text) |
 | `effectgo ts [-o FILE] [-name NAME] ./...` | the routes of `rt/web` as a TypeScript client (effect/http-api, effect@4.0.4) | the file on stdout, or in `FILE`; a generation error exits 1 with its position |
 | `effectgo http-gin [-json] [-all] [-mappers] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Gin responses against their error sets | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo http-huma [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo http [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | both HTTP checks, one list | text, or one JSON object per finding; optional machine-readable coverage on stderr |
+| `effectgo contract [-format=text\|json] [-all] [-fail-on=…] [-fail-unresolved] [-coverage=json] [patterns]` | shared six-analyzer and Gin/Huma report (candidate) | text or one JSON document; see [Contract checks](../guide/contract-checks.md) |
 
 ## Flags
 
@@ -114,6 +114,10 @@ The output is deterministic. A type that rt cannot describe, a recursive type, t
 
 Coverage JSON is a separate object on stderr. It includes route counts (`routes`, `resolved`, `unresolved`), finding counts, and framework-specific counters; Huma includes variant status counters. When present, `unresolved_routes` carries positions and reasons. Gin only collects registrations whose handler it resolves: non-constant paths and unresolved group prefixes count as unresolved, while variable handlers and wrappers may fall outside the collected route set. A constant empty path is a resolved root route. Gin coverage includes a `limit` message stating this boundary. A zero unresolved count does not prove every registration was collected.
 
+### contract
+
+`effectgo contract [-format=text|json] [-all] [-fail-on=none|high|medium|leak|info] [-fail-unresolved] [-coverage=json] [analyzer flags] [patterns]` defaults to `./...` and loads each package once for the six static analyzers plus Gin/Huma. Text is the default; JSON is one document with `schema_version`, `diagnostics`, `coverage`, and `exit_code`. Each diagnostic has `rule_id`, `analyzer`, `severity`, `position` (`file`, `line`, `column`) and `message`, with optional HTTP `route`, `handler`, `variant`, `status`, and `via`. Native diagnostics use the analyzer name as a coarse rule family, severity `error`, and always cause exit 3; consumers must not parse messages. HTTP IDs are `http.gin` and `http.huma` and retain their existing severities. Coverage reuses the Gin/Huma collections: shared route stubs can expose `rt/web` registrations to Huma, where a missing `errdefault` model is unresolved. It is not a separate proof of complete native or OpenAPI route coverage. See [Contract checks](../guide/contract-checks.md) for the wire example and limits.
+
 ## Exit codes
 
 | Run | 0 | 1 | 2 | 3 |
@@ -168,7 +172,7 @@ It is printed by the standalone run only. It is not printed under `go vet` (the 
 
 | Aspect | Standalone | go vet | golangci-lint plugin |
 |---|---|---|---|
-| Analyzers | all four | all four | all four |
+| Analyzers | all six | all six | all six |
 | Report flags (`-effects.report`, `-errset.witness`, …) | yes | yes | no |
 | Output paths | absolute | relative to the package directory | golangci-lint's (absolute, with the linter name) |
 | Test files | analyzed by default (`-test`) | decided by go vet | on with `run.tests: true` |

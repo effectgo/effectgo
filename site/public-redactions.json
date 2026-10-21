@@ -7,5 +7,10 @@
   "arcteryx-console": "service C",
   "arcteryx-jp": "service C",
   "arcteryx": "service C",
-  "VectorSprint": "a private org"
+  "VectorSprint": "a private org",
+  "/root/pp/go-rust/realworld-eval/heavy.lock": "/path/to/shared-heavy.lock",
+  "shared evaluation workspace": "shared build environment",
+  "/root/pp/novastar/novastar-marketing/go": "/path/to/example-service",
+  "novastar-marketing": "example-service",
+  "novastar": "example-service"
 }

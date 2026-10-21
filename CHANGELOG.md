@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0-rc.1 - 2026-10-21
+- Add the candidate `effectgo contract` command with shared text/JSON diagnostics for the six static analyzers and Gin/Huma checks, including coarse rule IDs, native error severity, exit gates, deterministic ordering, and explicit coverage limits.
+- Exercise one shared JSON corpus through raw `rt/web` HTTP decoding and a freshly generated Effect 4.0.4 client, covering omission/null, nested collections, unknown-key normalization, missing required fields, and scalar type errors.
+- Document the real `examples/web` generation, TypeScript typecheck, Huma migration commands, and the release-candidate validation boundary.
+
 ## Unreleased
 
 ## 0.1.0 - 2026-10-20

@@ -45,6 +45,8 @@ Each diagnostic is reported only when the code is provably at risk. A rule that 
 | write new code with contracts | [Contract mode](guide/contract-mode.md) |
 | run it in VS Code or Neovim | [Editor integration](guide/editor.md) |
 | check HTTP handlers and OpenAPI | [HTTP checks](guide/http-checks.md) |
+| consume the shared static/HTTP report | [Contract checks](guide/contract-checks.md) |
+| release or update a consumer's pinned source/runtime | [Releasing](guide/releasing.md) |
 | look up a directive, a flag or a stub verb | [Reference](reference/directives.md) |
 | understand the design | [Architecture](design/architecture.md), [Decisions](design/decisions.md) |
 | see what it does not check (races, leaks, deadlocks, cancellation) | [What effectgo does not check](guide/what-it-does-not-check.md) |

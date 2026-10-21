@@ -39,7 +39,7 @@ effectgo needs no configuration to start. With no flags and no environment varia
 effectgo ./...
 ```
 
-Two ways to run it, with the same five analyzers:
+Two ways to run it, with the same six analyzers:
 
 | Command | Exit status when there are diagnostics |
 |---|---|
@@ -119,6 +119,8 @@ effectgo -effects.report -errset.report -errset.witness ./...
 ```
 
 See [Command line](../reference/cli.md#flags).
+
+The candidate `effectgo contract` command introduced in `v0.2.0-rc.1` combines the six native analyzers with the Gin and Huma checks and emits a shared text or JSON report. Native diagnostics always use exit 3; the shared report uses exit 1 for load errors and exit 2 for usage errors. See [Contract checks](contract-checks.md).
 
 ## Next steps
 

@@ -2,6 +2,8 @@
 
 Entry point for coding agents. Two readers are covered: an agent using effectgo in a Go project, and an agent changing effectgo itself. The human-readable documentation is in [docs/](docs/index.md); this file points into it and does not repeat it.
 
+For contract reporting read [Contract checks](docs/guide/contract-checks.md); for release or consumer source/runtime upgrades read [Releasing](docs/guide/releasing.md). Both are included in the Nimbus site and its agent Markdown outputs.
+
 ## Part 1: using effectgo in a Go project
 
 effectgo infers the errors (E) and side effects (R) of each function and checks them against contracts written as `//effectgo:` comments. Full reference: [docs/reference/](docs/reference/directives.md). Workflow for new code: [docs/guide/contract-mode.md](docs/guide/contract-mode.md).
@@ -23,7 +25,7 @@ Effect names: `net fs exec env time rand stdio db spawn panic exit global unknow
 
 ### How to run it
 
-- `effectgo ./...`: the five analyzers, zero configuration. Exit 3 means diagnostics.
+- `effectgo ./...`: the six analyzers, zero configuration. Exit 3 means diagnostics.
 - `go vet -vettool=$(which effectgo) ./...`: the same through go vet. Exit 1 means diagnostics.
 - `effectgo sig ./...`: one `Effect<A, E, R>` line per function (exit 3 when printed; the lines go to stderr).
 - Report flags: `-effects.report`, `-effects.witness`, `-errset.report`, `-errset.witness`, `-errset.statuses`. They print information, not diagnostics. `-effects.all` and `-errset.all` print the violations that the root rule hides.
@@ -85,7 +87,8 @@ bash examples/run.sh          # builds bin/effectgo and runs both examples; must
 In this workspace, run `go test` and other heavy commands under the shared lock, with the memory cap:
 
 ```sh
-flock /root/pp/go-rust/realworld-eval/heavy.lock systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 timeout 2400 \
+mkdir -p "$HOME/.cache/effectgo"
+flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 \
   bash -c 'cd DIR && env -u GOROOT GOFLAGS=-buildvcs=false <cmd>'
 ```
 
@@ -110,7 +113,7 @@ Architecture: [docs/design/architecture.md](docs/design/architecture.md).
 
 ### Invariants
 
-- **Zero false positives on the disciplined corpus.** The corpus lives outside the repository (`realworld-eval/corpus/disciplined`, read-only). A change that adds a finding there is a regression unless the corpus marks it as intended. Do not edit the corpus to make a check pass.
+- **Zero false positives.** Preserve accepted cases and intended diagnostics in each analyzer's checked-in `testdata/`. The historical external disciplined corpus is not bundled with this checkout; only claim an external-corpus result when its actual fixture location and replay evidence are available. Do not change accepted inputs to conceal a new finding.
 - **Silence when unproved.** A new rule reports only when the risk is provable. When in doubt, be silent and document the limit.
 - **Determinism.** Output must not depend on scheduling or on cache state. The determinism guard is `cmd/effectgo/determinism_test.go`. Comparisons between runs need the same stub configuration; a difference in stubs is not nondeterminism.
 - **Stdlib detection by layout.** Standard library is decided from the source path under a Go installation root (`internal/goroot`), never from `$GOROOT` or the toolchain. Do not reintroduce environment checks.
