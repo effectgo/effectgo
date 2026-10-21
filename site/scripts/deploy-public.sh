@@ -19,4 +19,4 @@ cp -r dist deploy/public
 
 cd deploy
 pnpm install
-cf deploy "$@"
+pnpm exec cf deploy "$@"
