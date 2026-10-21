@@ -54,11 +54,11 @@ and both HTTP adapters, with exit 3 even under `-fail-on=none`. The HTTP-only fi
 exited 0 under `-fail-on=high` and 3 under `-fail-on=none -fail-unresolved`.
 The web example exited 0 with no diagnostics and two explicitly unresolved routes.
 
-Root build/vet, 16 Node checks, runtime race tests, all four example modules,
-generated-file consistency, and TypeScript typechecking passed. The OpenAPI, CLI,
-generator, and error-set packages passed all 119 top-level tests through the existing
-per-test race isolation runner, with strict cross-language dependencies required.
-The original `release-check.sh` run stopped at the OpenAPI package's default ten-minute
-timeout; the isolated runs and remaining phases completed separately. Its original
-whole-script result remains a timeout.
+The repaired `scripts/release-check.sh` completed end to end with exit 0 in
+4005.75 seconds. This includes root build/vet, 16 Node checks, all ordinary root
+packages, 120 isolated top-level CLI/error-set/OpenAPI/signature/generator tests,
+runtime race tests, all four example modules, generated-file consistency, and
+TypeScript typechecking with strict cross-language dependencies required.
+The initial OpenAPI package timeout is historical evidence; the completed run
+uses the repaired per-test isolation runner.
 

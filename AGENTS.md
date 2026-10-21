@@ -87,7 +87,8 @@ bash examples/run.sh          # builds bin/effectgo and runs both examples; must
 In this workspace, run `go test` and other heavy commands under the shared lock, with the memory cap:
 
 ```sh
-flock /root/pp/go-rust/realworld-eval/heavy.lock systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 timeout 2400 \
+mkdir -p "$HOME/.cache/effectgo"
+flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 \
   bash -c 'cd DIR && env -u GOROOT GOFLAGS=-buildvcs=false <cmd>'
 ```
 
@@ -112,7 +113,7 @@ Architecture: [docs/design/architecture.md](docs/design/architecture.md).
 
 ### Invariants
 
-- **Zero false positives on the disciplined corpus.** The corpus lives outside the repository (`realworld-eval/corpus/disciplined`, read-only). A change that adds a finding there is a regression unless the corpus marks it as intended. Do not edit the corpus to make a check pass.
+- **Zero false positives.** Preserve accepted cases and intended diagnostics in each analyzer's checked-in `testdata/`. The historical external disciplined corpus is not bundled with this checkout; only claim an external-corpus result when its actual fixture location and replay evidence are available. Do not change accepted inputs to conceal a new finding.
 - **Silence when unproved.** A new rule reports only when the risk is provable. When in doubt, be silent and document the limit.
 - **Determinism.** Output must not depend on scheduling or on cache state. The determinism guard is `cmd/effectgo/determinism_test.go`. Comparisons between runs need the same stub configuration; a difference in stubs is not nondeterminism.
 - **Stdlib detection by layout.** Standard library is decided from the source path under a Go installation root (`internal/goroot`), never from `$GOROOT` or the toolchain. Do not reintroduce environment checks.

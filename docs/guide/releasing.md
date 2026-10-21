@@ -30,9 +30,12 @@ bash scripts/release-check.sh
 In the shared evaluation workspace, use the repository's heavy-command lock and memory limit:
 
 ```sh
-flock /root/pp/go-rust/realworld-eval/heavy.lock systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 timeout 2400 \
+mkdir -p "$HOME/.cache/effectgo"
+flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 \
   bash -c 'cd /path/to/effectgo && env -u GOROOT GOFLAGS=-buildvcs=false bash scripts/release-check.sh'
 ```
+
+The reference full-gate run took 4005.75 seconds on this four-CPU host. Retain the per-test timeout; an outer 2400-second cutoff would kill a known passing run. Reuse successful checks only for the exact same relevant source/dependency inputs, and record any checks supplied by exact-commit CI separately from remaining local checks. Documentation-only changes do not require repeating analyzer race tests; validate the documentation build instead.
 
 The script runs these existing consumers:
 
