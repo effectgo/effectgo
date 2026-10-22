@@ -18,14 +18,14 @@ destination: ../../bin    # a checkout path; the binary lands in ./bin (git-igno
 plugins:
   - module: github.com/effectgo/effectgo
     import: github.com/effectgo/effectgo/plugin
-    path: ../..           # the effectgo checkout; replace with `version: v0.3.0` outside it
+    path: ../..           # the effectgo checkout; replace with `version: v0.4.0` outside it
 ```
 
 ```text
 cd examples/editor && golangci-lint custom     # writes <checkout>/bin/custom-gcl
 ```
 
-Outside the effectgo checkout, use `version: v0.3.0` instead of `path` to fetch the public module through the Go proxy. Historical plugin verification used a local checkout. Publishing the module does not establish that a proxy-based custom plugin build or an editor session has been verified.
+Outside the effectgo checkout, use `version: v0.4.0` instead of `path` to fetch the public module through the Go proxy. Historical plugin verification used a local checkout. Publishing the module does not establish that a proxy-based custom plugin build or an editor session has been verified.
 
 ## 2. Enable the plugin in the project
 

@@ -2,12 +2,18 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"flag"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/pprof"
 	"strings"
 	"testing"
+
+	"github.com/effectgo/effectgo/effects"
 )
 
 // The standalone run and go vet, end to end on a scratch module with a test
@@ -176,5 +182,120 @@ func TestStandaloneErrorsAsType(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestStandaloneProfiles(t *testing.T) {
+	bin := buildEffectgo(t)
+	dir := scratchModule(t, true)
+	if err := os.WriteFile(filepath.Join(dir, "add.go"), []byte("package scratch\n\n//effectgo:pure\nfunc Fail() { panic(\"failure\") }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		code int
+	}{
+		{"findings", []string{"./..."}, 3},
+		{"json", []string{"-json", "./..."}, 0},
+		{"load error", []string{"./missing"}, 1},
+		{"stub error", []string{"-stubs=missing.stubs", "./..."}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			profiles := t.TempDir()
+			cpu := filepath.Join(profiles, "cpu.pprof")
+			heap := filepath.Join(profiles, "heap.pprof")
+			args := append([]string{"-test=false", "-cpuprofile", cpu, "-memprofile", heap}, tc.args...)
+			stdout, stderr, code := runIn(t, bin, dir, args...)
+			if code != tc.code {
+				t.Fatalf("exit %d, want %d; stderr:\n%s", code, tc.code, stderr)
+			}
+			if tc.name == "json" {
+				if !json.Valid([]byte(stdout)) || !strings.Contains(stderr, "1 finding") {
+					t.Fatalf("profiling changed native JSON or findings: stdout %q, stderr %q", stdout, stderr)
+				}
+			} else if stdout != "" {
+				t.Errorf("unexpected stdout: %q", stdout)
+			}
+			for _, profile := range []string{cpu, heap} {
+				cmd := exec.CommandContext(t.Context(), "go", "tool", "pprof", "-top", "-symbolize=none", bin, profile)
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Errorf("reading %s: %v\n%s", profile, err, out)
+				}
+			}
+		})
+	}
+
+	for _, profileFlag := range []string{"-cpuprofile", "-memprofile"} {
+		t.Run(profileFlag+" create error", func(t *testing.T) {
+			path := t.TempDir() // A directory cannot be opened as a profile file.
+			stdout, stderr, code := runIn(t, bin, dir, profileFlag, path, "-test=false", "./...")
+			if code != 1 || stdout != "" || !strings.Contains(stderr, path) || strings.Contains(stderr, "analysed") {
+				t.Fatalf("exit %d, stdout %q, stderr %q; want profile creation error before analysis", code, stdout, stderr)
+			}
+		})
+		if _, err := os.Stat("/dev/full"); err == nil {
+			t.Run(profileFlag+" write error", func(t *testing.T) {
+				stdout, stderr, code := runIn(t, bin, dir, profileFlag, "/dev/full", "-test=false", "./...")
+				if code != 1 || stdout != "" || !strings.Contains(stderr, "profile") || !strings.Contains(stderr, "no space left on device") {
+					t.Fatalf("exit %d, stdout %q, stderr %q; want profile write error", code, stdout, stderr)
+				}
+			})
+		}
+	}
+}
+
+func TestStandaloneHelp(t *testing.T) {
+	bin := buildEffectgo(t)
+	dir := t.TempDir()
+	for _, help := range []string{"-h", "-help", "--help"} {
+		stdout, stderr, code := runIn(t, bin, dir, help)
+		if code != 0 || stdout != "" {
+			t.Fatalf("%s: exit %d, stdout %q, stderr %q", help, code, stdout, stderr)
+		}
+		compareFlagSet(t, help, usageFlags(stderr), standaloneFlagSet())
+		for _, name := range []string{"cpuprofile", "memprofile", "test", "json", "c"} {
+			if _, ok := usageFlags(stderr)[name]; !ok {
+				t.Errorf("%s omits -%s:\n%s", help, name, stderr)
+			}
+		}
+	}
+	stdout, stderr, code := runIn(t, bin, dir, "help", "effects")
+	if code != 0 || !strings.Contains(stdout+stderr, effects.Analyzer.Doc) {
+		t.Fatalf("analyzer help: exit %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+}
+
+func TestStandaloneCPUProfileStartError(t *testing.T) {
+	if err := pprof.StartCPUProfile(io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	defer pprof.StopCPUProfile()
+
+	previousFlags, previousStderr := flag.CommandLine, os.Stderr
+	previousTests, previousJSON, previousContext := includeTests, jsonOut, contextLines
+	previousCPU, previousMem := cpuProfile, memProfile
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		flag.CommandLine, os.Stderr = previousFlags, previousStderr
+		includeTests, jsonOut, contextLines = previousTests, previousJSON, previousContext
+		cpuProfile, memProfile = previousCPU, previousMem
+		if err := stderr.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	flag.CommandLine = flag.NewFlagSet("effectgo", flag.ContinueOnError)
+	os.Stderr = stderr
+	path := filepath.Join(t.TempDir(), "cpu.pprof")
+	code := runStandalone([]string{"effectgo", "-cpuprofile", path, "./missing"})
+	out, err := os.ReadFile(stderr.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != 1 || !strings.Contains(string(out), "starting CPU profile") || !strings.Contains(string(out), "already in use") {
+		t.Fatalf("exit %d, stderr %q; want CPU profile startup error", code, out)
 	}
 }

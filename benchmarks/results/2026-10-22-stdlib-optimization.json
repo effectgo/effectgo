@@ -1,0 +1,185 @@
+{
+  "workload": "github.com/google/uuid@v1.6.0 production-source snapshot",
+  "goVersion": "go1.26.10",
+  "platform": "linux/arm64",
+  "GOMAXPROCS": 2,
+  "GOFLAGS": "-buildvcs=false -p=1",
+  "GOMEMLIMIT": "2GiB",
+  "method": "six interleaved rounds alternating before/after order; first sample excluded, five measured rounds; no profile flags during timing",
+  "metrics": {
+    "before": {
+      "warmMedianSeconds": 2.8186173680005595,
+      "warmMaxRssKiB": 477060
+    },
+    "after": {
+      "warmMedianSeconds": 1.2566949220199604,
+      "warmMaxRssKiB": 244508
+    }
+  },
+  "wallReductionPercent": 55.41449022889471,
+  "rssReductionPercent": 48.74690814572591,
+  "originalEntrypoints": {
+    "standaloneMedianSeconds": 3.1924734730273485,
+    "vetCachedMedianSeconds": 0.1680820629990194
+  },
+  "comparison": {
+    "samples": {
+      "before": [
+        {
+          "seconds": 2.9445864150184207,
+          "rss_kib": 460456,
+          "user": 4.21,
+          "sys": 0.41
+        },
+        {
+          "seconds": 2.722638579987688,
+          "rss_kib": 453664,
+          "user": 4.25,
+          "sys": 0.34
+        },
+        {
+          "seconds": 2.8186173680005595,
+          "rss_kib": 445524,
+          "user": 4.24,
+          "sys": 0.32
+        },
+        {
+          "seconds": 2.7252052999974694,
+          "rss_kib": 464116,
+          "user": 4.22,
+          "sys": 0.35
+        },
+        {
+          "seconds": 2.9220515729975887,
+          "rss_kib": 477060,
+          "user": 4.2,
+          "sys": 0.4
+        },
+        {
+          "seconds": 3.0924652949906886,
+          "rss_kib": 463652,
+          "user": 4.37,
+          "sys": 0.43
+        }
+      ],
+      "after": [
+        {
+          "seconds": 1.3422580939950421,
+          "rss_kib": 243816,
+          "user": 1.73,
+          "sys": 0.23
+        },
+        {
+          "seconds": 1.1272896059963387,
+          "rss_kib": 243584,
+          "user": 1.73,
+          "sys": 0.18
+        },
+        {
+          "seconds": 1.2507692560029682,
+          "rss_kib": 239668,
+          "user": 1.83,
+          "sys": 0.18
+        },
+        {
+          "seconds": 1.2566949220199604,
+          "rss_kib": 237728,
+          "user": 1.79,
+          "sys": 0.2
+        },
+        {
+          "seconds": 1.7244184619921725,
+          "rss_kib": 244508,
+          "user": 1.83,
+          "sys": 0.23
+        },
+        {
+          "seconds": 1.284791601006873,
+          "rss_kib": 244268,
+          "user": 1.69,
+          "sys": 0.26
+        }
+      ]
+    },
+    "semantic_checks": [
+      {
+        "directory": "benchmarks/corpus",
+        "args": [
+          "-json",
+          "./..."
+        ],
+        "identical": true,
+        "exit": 0
+      },
+      {
+        "directory": "benchmarks/corpus",
+        "args": [
+          "contract",
+          "-format=json",
+          "./..."
+        ],
+        "identical": true,
+        "exit": 3
+      },
+      {
+        "directory": "examples/web",
+        "args": [
+          "-test=false",
+          "-json",
+          "./..."
+        ],
+        "identical": true,
+        "exit": 0
+      },
+      {
+        "directory": "examples/web",
+        "args": [
+          "ts",
+          "-name",
+          "contacts",
+          "./..."
+        ],
+        "identical": true,
+        "exit": 0
+      },
+      {
+        "directory": "examples/layers",
+        "args": [
+          "-json",
+          "./..."
+        ],
+        "identical": true,
+        "exit": 0
+      },
+      {
+        "directory": "examples/todo",
+        "args": [
+          "-json",
+          "./..."
+        ],
+        "identical": true,
+        "exit": 0
+      }
+    ],
+    "status": "passed"
+  },
+  "binarySha256": {
+    "before": "49435ff6d1cf031bc8d96f6d65a82a95562486033bc3e1e5dba2c1535acec7b8",
+    "after": "88f003617448214fadf47b7ced788a28ced897ad458239cf5f333568d59ecd9b"
+  },
+  "patch": {
+    "file": "errset/errset.go",
+    "description": "Return typed empty result for layout-verified standard-library packages before SSA/stub/fact inference; callers already use stdlib stubs or opaque values."
+  },
+  "profiles": {
+    "beforeSampledAllocMiB": 828.47,
+    "afterSampledAllocMiB": 331.05,
+    "files": [
+      "cli-before.cpu",
+      "cli-before.heap",
+      "cli-after.cpu",
+      "cli-after.heap"
+    ],
+    "nextObservedHotspot": "go/packages loading and go/types checking, not yet optimized"
+  }
+}

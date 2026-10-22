@@ -1,0 +1,31 @@
+name: Routine checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      # site has lockfile v9 and no packageManager field; keep pnpm explicit.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10.11.0'
+      - run: pnpm --dir site install --frozen-lockfile
+      - run: bash scripts/check.sh

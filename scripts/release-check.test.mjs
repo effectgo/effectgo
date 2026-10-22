@@ -12,6 +12,8 @@ function candidate(t) {
     mkdirSync(path.join(root, dir), { recursive: true })
   }
   copyFileSync(new URL("./release-check.sh", import.meta.url), path.join(root, "scripts/release-check.sh"))
+  copyFileSync(new URL("./check-env.sh", import.meta.url), path.join(root, "scripts/check-env.sh"))
+  copyFileSync(new URL("./check.sh", import.meta.url), path.join(root, "scripts/check.sh"))
   const deps = { effect: "4.0.4", "@effect/platform-node": "4.0.4" }
   const dev = { typescript: "7.0.2", tsx: "4.23.15" }
   const manifest = { dependencies: deps, devDependencies: dev }
@@ -30,8 +32,9 @@ function candidate(t) {
   symlinkSync("/usr/bin/dirname", path.join(root, "tools/dirname"))
   const commands = {
     go: `if [ "$*" = 'env GOVERSION' ]; then printf '%s\\n' "\${TEST_GO_VERSION:-go1.26.9}"; exit; fi
-[ "\${EFFECTGO_STRICT_CROSS_LANGUAGE:-}" = 1 ] || exit 98
+[ "\${TEST_REQUIRE_STRICT:-1}" = 0 ] || [ "\${EFFECTGO_STRICT_CROSS_LANGUAGE:-}" = 1 ] || exit 98
 printf 'go %s %s\\n' "\${PWD#"$TEST_ROOT"}" "$*" >> "$TEST_LOG"
+printf 'env %s|%s|%s|%s\\n' "$GOMAXPROCS" "$GOMEMLIMIT" "$GOFLAGS" "$GOWORK" >> "$TEST_LOG"
 [ "$*" != "\${TEST_FAIL_GO:-}" ]`,
     npm: `printf 'npm %s\\n' "$*" >> "$TEST_LOG"
 [ "$*" != "\${TEST_FAIL_NPM:-}" ]`,
@@ -39,6 +42,10 @@ printf 'go %s %s\\n' "\${PWD#"$TEST_ROOT"}" "$*" >> "$TEST_LOG"
 printf 'node %s\n' "$*" >> "$TEST_LOG"
 [ "$*" != "\${TEST_FAIL_NODE:-}" ]`,
     bash: `printf 'bash %s\\n' "$*" >> "$TEST_LOG"`,
+    python3: `printf 'python3 %s\\n' "$*" >> "$TEST_LOG"
+[ "$*" != "\${TEST_FAIL_PYTHON:-}" ]`,
+    pnpm: `printf 'pnpm %s\\n' "$*" >> "$TEST_LOG"
+[ "$*" != "\${TEST_FAIL_PNPM:-}" ]`,
   }
   for (const [name, body] of Object.entries(commands)) {
     writeFileSync(path.join(root, "tools", name), "#!/bin/sh\n" + body + "\n", { mode: 0o755 })
@@ -46,8 +53,8 @@ printf 'node %s\n' "$*" >> "$TEST_LOG"
   return {
     root,
     ts,
-    run(overrides = {}) {
-      const result = spawnSync("/bin/bash", [path.join(root, "scripts/release-check.sh")], {
+    run(overrides = {}, script = "release-check.sh") {
+      const result = spawnSync("/bin/bash", [path.join(root, "scripts", script)], {
         cwd: tmpdir(),
         encoding: "utf8",
         env: { ...process.env, PATH: path.join(root, "tools"), TEST_ROOT: root, TEST_LOG: path.join(root, "commands"), TEST_NODE: process.execPath, ...overrides },
@@ -59,7 +66,7 @@ printf 'node %s\n' "$*" >> "$TEST_LOG"
 }
 
 
-for (const missing of ["node", "npm"]) {
+for (const missing of ["node", "npm", "python3"]) {
   test(`release check fails before Go checks when ${missing} is missing`, t => {
     const fixture = candidate(t)
     unlinkSync(path.join(fixture.root, "tools", missing))
@@ -106,4 +113,40 @@ test("release check propagates a decoder or tsc failure", async t => {
       assert.doesNotMatch(result.output, /all checks passed/)
     })
   }
+})
+
+test("release gate bounds Go children while preserving caller options", t => {
+  const fixture = candidate(t)
+  const result = fixture.run({ GOMAXPROCS: "", GOMEMLIMIT: "", GOFLAGS: "-buildvcs=false -p=8" })
+  assert.equal(result.status, 0, result.output)
+  assert.match(fixture.commands(), /env 2\|2GiB\|-buildvcs=false -p=8 -p=1\|off/)
+  assert.match(fixture.commands(), /python3 scripts\/benchmark_test\.py/)
+  assert.match(fixture.commands(), /node scripts\/test-isolated\.mjs --root/)
+})
+
+test("release gate preserves explicit memory settings and propagates parser failures", t => {
+  const fixture = candidate(t)
+  const result = fixture.run({ GOMAXPROCS: "1", GOMEMLIMIT: "1GiB" })
+  assert.equal(result.status, 0, result.output)
+  assert.match(fixture.commands(), /env 1\|1GiB\|/)
+  const failed = fixture.run({ TEST_FAIL_PYTHON: "scripts/benchmark_test.py" })
+  assert.notEqual(failed.status, 0)
+  assert.doesNotMatch(failed.output, /all checks passed/)
+})
+
+test("routine check runs all inexpensive gates and propagates a public scan failure", t => {
+  const fixture = candidate(t)
+  const env = { TEST_REQUIRE_STRICT: "0", GOMAXPROCS: "", GOMEMLIMIT: "", GOFLAGS: "-buildvcs=false -p=8" }
+  const result = fixture.run(env, "check.sh")
+  assert.equal(result.status, 0, result.output)
+  const commands = fixture.commands()
+  assert.match(commands, /env 2\|2GiB\|-buildvcs=false -p=8 -p=1\|off/)
+  assert.match(commands, /python3 scripts\/benchmark_test\.py/)
+  for (const task of ["lint:docs", "build:public", "check:public"]) {
+    assert.ok(commands.includes("pnpm --dir site run " + task))
+  }
+  assert.doesNotMatch(commands, /node scripts\/test-isolated\.mjs --root/)
+  const failed = fixture.run({ ...env, TEST_FAIL_PNPM: "--dir site run check:public" }, "check.sh")
+  assert.notEqual(failed.status, 0)
+  assert.doesNotMatch(failed.output, /all routine checks passed/)
 })

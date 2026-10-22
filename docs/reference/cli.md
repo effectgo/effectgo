@@ -53,11 +53,24 @@ Each `-errset.engine` value is accepted by the subcommands too.
 
 ### Driver flags
 
-The multichecker adds its own flags, for example `-json` (the driver's JSON diagnostics, not the HTTP schema), `-c`, `-fix` and `-diff`. effectgo does not implement fixes: `-fix` has nothing to apply.
+The default CLI lists its accepted flags with `effectgo -h`, `-help` or `--help`. Use `effectgo help [analyzer]` for the multichecker's analyzer documentation.
 
-The analyzer enable flags (`-effects`, `-errset`, `-mustuse`, `-exhaustive`, `-directive`) are the driver's. `-signature` enables the signature analyzer in the standalone binary; under `sig` it is already the only one.
+| Standalone flag | Default | Meaning |
+|---|---|---|
+| `-test` | true | analyze test files too; `-test=false` skips them |
+| `-json` | false | print native driver diagnostics as JSON on stdout; the summary remains on stderr |
+| `-c=N` | `-1` | print `N` lines of source context around diagnostics; the default prints none |
+| `-cpuprofile=file` | empty | record a CPU profile, including package loading and analysis |
+| `-memprofile=file` | empty | write a heap profile after analysis and a garbage collection |
 
-The standalone run is not the multichecker, so it accepts a smaller set of driver flags: `-test`, `-json` (the diagnostics as JSON on stdout), `-c` (lines of context), and the analyzer flags. `-fix`, `-diff`, `-debug`, `-cpuprofile`, `-memprofile` and `-trace` are not accepted there (exit 2). They still work under `go vet`, which runs the multichecker.
+The standalone run also accepts the analyzer flags above. Profiles are flushed when the run returns, including when it reports findings or encounters a load, stub or analysis error. A profile creation, start or write error goes to stderr and exits 1. Inspect the files with `go tool pprof`, for example:
+
+```sh
+effectgo -cpuprofile=cpu.pprof -memprofile=heap.pprof ./...
+go tool pprof -top ./effectgo cpu.pprof
+```
+
+`sig` and the `go vet` tool path use the multichecker, which adds driver flags such as `-fix`, `-diff`, `-debug`, `-trace`, `-tags` and analyzer enable flags. These flags are not accepted by the standalone run (exit 2). effectgo does not implement fixes, so `-fix` has nothing to apply. `sig` runs only the signature analyzer; the standalone and vet modes run the six analyzers listed above.
 
 ### sig
 
@@ -122,7 +135,7 @@ Coverage JSON is a separate object on stderr. It includes route counts (`routes`
 
 | Run | 0 | 1 | 2 | 3 |
 |---|---|---|---|---|
-| standalone `effectgo ./...` | no diagnostics | a run error (the packages do not load, a malformed stub file) | a usage error: an unknown flag, or a flag after the package patterns (see [Flags after the package patterns](#flags-after-the-package-patterns)) | diagnostics were reported |
+| standalone `effectgo ./...` | no diagnostics | a run error (package loading, malformed stubs or profiling) | a usage error: an unknown flag, or a flag after the package patterns (see [Flags after the package patterns](#flags-after-the-package-patterns)) | diagnostics were reported |
 | `go vet -vettool=…` | no diagnostics | diagnostics were reported (go vet's convention) | — | — |
 | `effectgo sig` | — | a run error | a usage error, as above | a signature was printed. This is a success, not a diagnostic: a script that tests for a non-zero exit must accept 3 |
 | `effectgo openapi` | success | `-check` found a missing code, or the run failed | usage error | — |

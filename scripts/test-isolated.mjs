@@ -8,6 +8,9 @@ import { join } from 'node:path';
 // process per discovered test bounds that memory without selecting a subset.
 const packages = process.argv.slice(2);
 assert(packages.length > 0, 'usage: node scripts/test-isolated.mjs PACKAGE...');
+process.env.GOMAXPROCS ||= '2';
+process.env.GOMEMLIMIT ||= '2GiB';
+process.env.GOFLAGS = `${process.env.GOFLAGS ? process.env.GOFLAGS + ' ' : ''}-p=1`;
 const directory = mkdtempSync(join(tmpdir(), 'effectgo-race-'));
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: 'inherit', ...options });

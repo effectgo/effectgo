@@ -1350,6 +1350,10 @@ type pkgState struct {
 }
 
 func run(pass *analysis.Pass) (any, error) {
+	if isStd(pass.Fset, pass.Pkg) {
+		// Standard-library calls use stubs or opaque errors, never body facts.
+		return Result{}, nil
+	}
 	p := &pkgState{pass: pass, work: map[*types.Func]*work{}, contracts: map[*types.Func][]Variant{}, statusDecls: map[*types.Func]int{}, errmaps: map[*types.Func]*ErrmapFact{}, litSets: map[*ast.FuncLit]FuncErrors{}, ssaUnits: map[*fnUnit]*ssaUnit{}}
 	switch engineFlag {
 	case engineAST:

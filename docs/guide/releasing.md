@@ -5,11 +5,11 @@ description: "Run the complete Go, runtime and Effect TypeScript release gate, t
 
 Run `scripts/release-check.sh` for changes to analyzer, generator, runtime, test tooling, or dependency inputs. It checks the current checkout and exits on the first failure; it does not install tools, change dependency versions, commit, tag, push or publish. For a release changing only version declarations and documentation, reuse the recorded full pass for unchanged implementation/dependency inputs, run the complete CLI race-test package, check the actual version and behavior of both release binaries, and validate documentation. Record the source diff and distinguish reused evidence from checks executed for the release.
 
-Current stable release: `v0.3.0` ([GitHub Release](https://github.com/effectgo/effectgo/releases/tag/v0.3.0)). This pre-v1 release changes the canonical module path to `github.com/effectgo/effectgo`; applications must update imports and module requirements deliberately. Consumer locks must identify the exact tag, source tree digest, runtime manifest, and validated binary. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them. Historical tags remain unchanged.
+Current stable release: `v0.4.0` ([GitHub Release](https://github.com/effectgo/effectgo/releases/tag/v0.4.0)). The canonical module paths remain `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`, introduced in v0.3.0. Consumer locks must identify the exact tag, source tree digest, runtime manifest, and validated binary. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them. Historical tags remain unchanged.
 
 ## Prepare the toolchain
 
-Use Go **1.26.x**, Node.js **22 or newer** with `fetch` and `File`, and npm. Race tests also require the Go race detector's supported platform and C toolchain. Keep the committed versions in `examples/web/ts/package.json` and `package-lock.json`: Effect and `@effect/platform-node` **4.0.4**, TypeScript **7.0.2**, and tsx **4.23.15**. A global `tsc` or dependencies installed in another project do not satisfy the gate.
+Use Go **1.26.x**, Node.js **22 or newer** with `fetch` and `File`, Python **3**, and npm. Routine documentation checks also require pnpm **10.11.0** (the site uses lockfile version 9 and has no `packageManager` field). Race tests require the Go race detector's supported platform and C toolchain. Keep the committed versions in `examples/web/ts/package.json` and `package-lock.json`: Effect and `@effect/platform-node` **4.0.4**, TypeScript **7.0.2**, and tsx **4.23.15**. A global `tsc` or dependencies installed in another project do not satisfy the gate.
 
 Install the example's locked dependencies explicitly before checking a candidate:
 
@@ -18,6 +18,10 @@ npm ci --prefix examples/web/ts
 ```
 
 The gate never runs `npm install`, `npx` or a global package install. Missing Node.js/npm, missing or mismatched package metadata, a missing compiler, or lockfile drift produce a nonzero exit with a repair command. Review an intentional dependency update before regenerating its lockfile; Effect remains pinned to 4.0.4.
+
+For routine feedback, install the site with `pnpm --dir site install --frozen-lockfile`, then run `bash scripts/check.sh`. This runs the Node tooling tests, Python benchmark parser regression, root Go build/vet, documentation lint, public build and public-output scan. `SITE_URL` defaults to the documented public origin and can be overridden. Pull requests and pushes to `main` run this routine check in `.github/workflows/check.yml`; they do not run the complete analyzer race suite. Keep the full gate below as a separate manual check.
+
+Both check scripts default `GOMAXPROCS=2` and `GOMEMLIMIT=2GiB` when unset, preserve explicit values, and append `-p=1` to caller `GOFLAGS` so other options survive while Go package work stays serial. The isolated runner applies the same limits when invoked directly. These are process defaults, not an aggregate memory cap: concurrent package execution previously exhausted a 6 GiB scope, while serial package work with these settings passed. Preserve the external scope and shared lock on this host.
 
 ## Run the gate
 
@@ -35,13 +39,13 @@ flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G 
   bash -c 'cd /path/to/effectgo && env -u GOROOT GOFLAGS=-buildvcs=false bash scripts/release-check.sh'
 ```
 
-The reference full-gate run took 4005.75 seconds on this four-CPU host. Retain the per-test timeout; an outer 2400-second cutoff would kill a known passing run. Reuse successful checks only for the exact same relevant source/dependency inputs, and record any checks supplied by exact-commit CI separately from remaining local checks. Documentation-only changes do not require repeating analyzer race tests; validate the documentation build instead.
+Historical full-gate runs took roughly 67–72 minutes on this four-CPU host. Retain the per-test timeout; an outer 2400-second cutoff would kill a known passing run. Reuse successful checks only for the exact same relevant source/dependency inputs, and record any checks supplied by exact-commit CI separately from remaining local checks. Documentation-only changes do not require repeating analyzer race tests; run the routine check instead.
 
 The script runs these existing consumers:
 
 | Area | Checks |
 |---|---|
-| Release tooling | `node --test scripts/release-check.test.mjs scripts/source-tools.test.mjs scripts/test-isolated.test.mjs` |
+| Release tooling | Node release/source/isolated-runner regressions and `python3 scripts/benchmark_test.py` (real benchmark parser regression) |
 | Root module | `go build ./...`, `go vet ./...`, `node scripts/test-isolated.mjs --root` (all root tests with `-race`) |
 | Runtime module (`rt/`) | `go vet ./...`, `go test -race ./... -count=1` |
 | Separate example modules | `go vet ./...` and `go test ./... -count=1` in `examples/layers`, `todo`, `editor` and `web` |
@@ -78,7 +82,7 @@ node /path/to/app/scripts/effectgo-source.mjs binary /path/to/effectgo/bin/effec
 
 The updater verifies the old runtime before replacing its owned files and copies the verifier without application-specific changes. It records exact source/runtime inventories and hashes, retains the runtime's MIT `LICENSE` in the pinned copy, and checks the runtime `SOURCE.json` descriptor against the lock. Extra Go/stub build inputs and symbolic links are rejected. Binary inputs must have the declared Linux ELF64 architecture; their hashes are recorded, so release preparation must also run the native CLI and compare its version. Cross-built binaries require their target-platform smoke check before promotion.
 
-An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.3.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
+An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.4.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
 
 Tagging, publishing artifacts and changing application locks are separate, explicit release actions. This check produces no release and provides no deployment or production signoff.
 
@@ -86,17 +90,17 @@ Tagging, publishing artifacts and changing application locks are separate, expli
 
 The repository is public at `https://github.com/effectgo/effectgo`. Keep the approved MIT license text in both root `LICENSE` and `rt/LICENSE`, including in the release revision and runtime source pins. pkg.go.dev uses recognized license files to decide whether to display package documentation; without a recognized license it shows limited information. Public source access alone is insufficient for durable proxy caching when no suitable license is detected ([pkg.go.dev license policy](https://pkg.go.dev/license-policy), [Go module services FAQ](https://proxy.golang.org/)).
 
-1. After review and the release checks, publish root tag `v0.3.0` and nested-module tag `rt/v0.3.0` for the same approved source revision. The `rt/` prefix belongs to the Git tag; callers still request `github.com/effectgo/effectgo/rt@v0.3.0`. Root module archives exclude nested modules, so release both independently. Never move historical tags ([version-to-commit mapping](https://go.dev/ref/mod#vcs-version), [module directories](https://go.dev/ref/mod#vcs-dir)).
+1. After review and the release checks, publish root tag `v0.4.0` and nested-module tag `rt/v0.4.0` for the same approved source revision. The `rt/` prefix belongs to the Git tag; callers still request `github.com/effectgo/effectgo/rt@v0.4.0`. Root module archives exclude nested modules, so release both independently. Never move historical tags ([version-to-commit mapping](https://go.dev/ref/mod#vcs-version), [module directories](https://go.dev/ref/mod#vcs-dir)).
 2. Once the tags are public, request both versions through the public proxy and record successful downloads from a fresh module cache:
 
    ```sh
-   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/@v/v0.3.0.info
-   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/rt/@v/v0.3.0.info
+   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/@v/v0.4.0.info
+   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/rt/@v/v0.4.0.info
    GOMODCACHE="$(mktemp -d)" GOWORK=off GOPROXY=https://proxy.golang.org \
-     go mod download -json github.com/effectgo/effectgo@v0.3.0 github.com/effectgo/effectgo/rt@v0.3.0
+     go mod download -json github.com/effectgo/effectgo@v0.4.0 github.com/effectgo/effectgo/rt@v0.4.0
    ```
 
    Keep the download JSON as evidence, remove the temporary cache afterward, and separately record the public CLI install and version smoke check. A warm local cache does not establish that the public proxy served a version. Requesting a tag before pushing it can leave a negative cache entry for up to 30 minutes ([adding a package](https://pkg.go.dev/about#adding-a-package), [proxy protocol](https://go.dev/ref/mod#goproxy-protocol), [module downloads](https://go.dev/ref/mod#go-mod-download), [proxy FAQ](https://proxy.golang.org/)).
-3. pkg.go.dev monitors the public module index. Visit the [root module](https://pkg.go.dev/github.com/effectgo/effectgo@v0.3.0) and [runtime module](https://pkg.go.dev/github.com/effectgo/effectgo/rt@v0.3.0); if either is missing, use **Request** on its page. Confirm the version and license display after indexing. A GitHub Release or proxy response does not itself prove documentation is visible, and indexing has no fixed completion deadline in the documented procedure ([adding a package](https://pkg.go.dev/about#adding-a-package)).
+3. pkg.go.dev monitors the public module index. Visit the [root module](https://pkg.go.dev/github.com/effectgo/effectgo@v0.4.0) and [runtime module](https://pkg.go.dev/github.com/effectgo/effectgo/rt@v0.4.0); if either is missing, use **Request** on its page. Confirm the version and license display after indexing. A GitHub Release or proxy response does not itself prove documentation is visible, and indexing has no fixed completion deadline in the documented procedure ([adding a package](https://pkg.go.dev/about#adding-a-package)).
 
 This is the publication procedure, not a record that it has run. Record observed download, install, documentation, plugin-build and editor checks separately; success in one route does not establish the others.

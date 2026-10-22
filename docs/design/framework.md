@@ -39,7 +39,7 @@ A shared dependency model across the two languages (Effect `Layer` and `Context.
 
 ### A separate module, standard library only
 
-The runtime lives in `github.com/effectgo/effectgo/rt`, its own module in this repository, so that importing it does not pull `golang.org/x/tools` into an application's `go.sum`. It depends on the standard library only. Add it to an application with `go get github.com/effectgo/effectgo/rt@v0.3.0`.
+The runtime lives in `github.com/effectgo/effectgo/rt`, its own module in this repository, so that importing it does not pull `golang.org/x/tools` into an application's `go.sum`. It depends on the standard library only. Add it to an application with `go get github.com/effectgo/effectgo/rt@v0.4.0`.
 
 ## The runtime
 

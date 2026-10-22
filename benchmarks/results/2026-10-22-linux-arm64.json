@@ -1,0 +1,862 @@
+{
+  "go_version": "go1.26.10",
+  "platform": "Linux-6.12.95+deb13-arm64-aarch64-with-glibc2.41",
+  "machine": "aarch64",
+  "cpu_count": 4,
+  "gomaxprocs": 2,
+  "samples": 5,
+  "public_module": {
+    "Path": "github.com/google/uuid",
+    "Version": "v1.6.0",
+    "Info": "<RUN_OUTPUT>/modules/cache/download/github.com/google/uuid/@v/v1.6.0.info",
+    "GoMod": "<RUN_OUTPUT>/modules/cache/download/github.com/google/uuid/@v/v1.6.0.mod",
+    "Zip": "<RUN_OUTPUT>/modules/cache/download/github.com/google/uuid/@v/v1.6.0.zip",
+    "Dir": "<RUN_OUTPUT>/modules/github.com/google/uuid@v1.6.0",
+    "Sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+    "GoModSum": "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=",
+    "Origin": {
+      "VCS": "git",
+      "URL": "https://github.com/google/uuid",
+      "Hash": "0f11ee6918f41a04c201eceeadf612a377bc7fbc",
+      "Ref": "refs/tags/v1.6.0"
+    }
+  },
+  "public_source_go_files": {
+    "dce.go": "6a4b89e7f6165a673e76f00bebaabf8d0d7eb4356a672c6cb771d95a45fb2695",
+    "doc.go": "0b286e2af61ede9f58d2455781ea254284c477b7fce2447aab3203992cc51f9f",
+    "hash.go": "afe975c3f3e8b9a972c66165f06e978cc5c2f8ea5a4809dae4c46b4cfebbadce",
+    "marshal.go": "933eb226d049268e17809fd37f777c650b9ec8cb3fa988534b792610a64dcc43",
+    "node.go": "73a93d192ca24078e0f93b8c1675e13adb442421252d3974d697b0821c4832cf",
+    "node_js.go": "334b6ac9f50339341696319aaf9b912ea8007d0aacf0e909a48a0bb02d982d6d",
+    "node_net.go": "78e274b465de8da8690f4ab06281f41025b142c1d093e337fda1d6726b35662b",
+    "null.go": "791638f42d54fcf07ac752df6b2df92593f7da308f944465e2cda443dc3346cf",
+    "sql.go": "29281b11e8f97f1ddf73d087854cb401ba42a87c4f59ce45fc69763a4d927f2f",
+    "time.go": "e07999a07de5b667dd1dd5792b544ea933e7e839eca03b3469527f86a8bc2881",
+    "util.go": "755f50afafb13dd89ae6177da7eb6dc31ae650ece2f9ba52821021e9f8de044e",
+    "uuid.go": "0edec8e34c6b6fe0db31b71a29069a09ed832e3fd04ee0175916b58f2b60e5c1",
+    "version1.go": "38a2c229a2aad4bb72d45529304f210b1f31e8ef60bbd2605690a10f0d8a8242",
+    "version4.go": "f252aeb4028659d83cbf7b037d4524f7c9b76cde1fdca1f6f7de310dab6f4dcd",
+    "version6.go": "013cc9f4a9e606746d38d53f8e651b9222f5042fde567484588ec1d7a0c54905",
+    "version7.go": "8002748cc22a032c3782b42f7653a947189b8566c50d246b4a3beb2e075f8d62"
+  },
+  "tests_excluded": true,
+  "method": "fresh GOCACHE/XDG per tool; one cold run, one warmup, rotated warm rounds; no filesystem cache flush",
+  "tools": {
+    "effectgo": {
+      "configuration": {
+        "name": "effectgo",
+        "install": "github.com/effectgo/effectgo/cmd/effectgo@v0.3.0",
+        "args": [
+          "-json",
+          "./..."
+        ],
+        "format": "analysis",
+        "exit_codes": [
+          0,
+          3
+        ],
+        "binary_sha256": "30d35ced0795add7eef0bbb18853566cb714f590406215c580850bca62375ae2"
+      },
+      "command": [
+        "<RUN_OUTPUT>/bin/effectgo",
+        "-json",
+        "./..."
+      ],
+      "accuracy": {
+        "seconds": 2.508430663991021,
+        "user_seconds": 2.95,
+        "sys_seconds": 0.36,
+        "max_rss_kib": 338300,
+        "exit_code": 0,
+        "findings": [
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/enum_exhaustiveness/bad/bad.go",
+            "line": 13,
+            "rule": "exhaustive",
+            "message": "missing cases in switch on State: Complete"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/error_contract/bad/bad.go",
+            "line": 11,
+            "rule": "errset",
+            "message": "Lookup may return bad.ErrBusy, not in its //effectgo:errors contract"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/ignored_error/bad/bad.go",
+            "line": 6,
+            "rule": "mustuse",
+            "message": "result of os.Remove is discarded; handle it or assign to _"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/mustuse_value/bad/bad.go",
+            "line": 18,
+            "rule": "mustuse",
+            "message": "result of (*example.com/effectgo-bench/mustuse_value/bad.Issuer).Issue is discarded: bad.Receipt is //effectgo:mustuse; handle it or assign to _"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/pure_transitive/bad/bad.go",
+            "line": 10,
+            "rule": "effects",
+            "message": "Stamp is declared //effectgo:pure but has effect time via Stamp → clock.Now → time.Now"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/sealed_types/bad/bad.go",
+            "line": 18,
+            "rule": "exhaustive",
+            "message": "missing cases in type switch on Node: Number"
+          }
+        ]
+      },
+      "score": {
+        "cases": [
+          {
+            "case": "ignored_error",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "enum_exhaustiveness",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "pure_transitive",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "error_contract",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "mustuse_value",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "sealed_types",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "nil_guard",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "typed_nil",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "printf_format",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          }
+        ],
+        "detected": 6,
+        "applicable": 6,
+        "controls_with_findings": 0,
+        "other_findings": []
+      },
+      "cold": {
+        "seconds": 5.813590037985705,
+        "user_seconds": 5.76,
+        "sys_seconds": 1.13,
+        "max_rss_kib": 479908,
+        "exit_code": 0,
+        "findings": []
+      },
+      "warm": [
+        {
+          "seconds": 2.679854525020346,
+          "user_seconds": 4.14,
+          "sys_seconds": 0.32,
+          "max_rss_kib": 435212,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 3.1544191270077135,
+          "user_seconds": 4.24,
+          "sys_seconds": 0.44,
+          "max_rss_kib": 433032,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 3.266051274986239,
+          "user_seconds": 4.41,
+          "sys_seconds": 0.46,
+          "max_rss_kib": 480088,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 3.196502798993606,
+          "user_seconds": 4.21,
+          "sys_seconds": 0.46,
+          "max_rss_kib": 443904,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 3.2708719369838946,
+          "user_seconds": 4.62,
+          "sys_seconds": 0.46,
+          "max_rss_kib": 478492,
+          "exit_code": 0,
+          "findings": []
+        }
+      ],
+      "warm_median_seconds": 3.196502798993606
+    },
+    "go-vet": {
+      "configuration": {
+        "name": "go-vet",
+        "args": [
+          "vet",
+          "-json",
+          "./..."
+        ],
+        "format": "analysis",
+        "exit_codes": [
+          0,
+          1
+        ]
+      },
+      "command": [
+        "go",
+        "vet",
+        "-json",
+        "./..."
+      ],
+      "accuracy": {
+        "seconds": 1.8603058729786426,
+        "user_seconds": 1.73,
+        "sys_seconds": 0.55,
+        "max_rss_kib": 108584,
+        "exit_code": 0,
+        "findings": [
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/printf_format/bad/bad.go",
+            "line": 6,
+            "rule": "printf",
+            "message": "fmt.Printf format %d has arg value of wrong type string"
+          }
+        ]
+      },
+      "score": {
+        "cases": [
+          {
+            "case": "ignored_error",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "enum_exhaustiveness",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "pure_transitive",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "error_contract",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "mustuse_value",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "sealed_types",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "nil_guard",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "typed_nil",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "printf_format",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          }
+        ],
+        "detected": 1,
+        "applicable": 1,
+        "controls_with_findings": 0,
+        "other_findings": []
+      },
+      "cold": {
+        "seconds": 19.228272175998427,
+        "user_seconds": 23.55,
+        "sys_seconds": 3.54,
+        "max_rss_kib": 265800,
+        "exit_code": 0,
+        "findings": []
+      },
+      "warm": [
+        {
+          "seconds": 0.12252047800575383,
+          "user_seconds": 0.1,
+          "sys_seconds": 0.04,
+          "max_rss_kib": 26124,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.10646844501025043,
+          "user_seconds": 0.08,
+          "sys_seconds": 0.05,
+          "max_rss_kib": 24616,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.13176740001654252,
+          "user_seconds": 0.09,
+          "sys_seconds": 0.05,
+          "max_rss_kib": 25936,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.11941650399239734,
+          "user_seconds": 0.08,
+          "sys_seconds": 0.06,
+          "max_rss_kib": 24424,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.15025788400089368,
+          "user_seconds": 0.1,
+          "sys_seconds": 0.05,
+          "max_rss_kib": 27668,
+          "exit_code": 0,
+          "findings": []
+        }
+      ],
+      "warm_median_seconds": 0.12252047800575383
+    },
+    "staticcheck": {
+      "configuration": {
+        "name": "staticcheck",
+        "install": "honnef.co/go/tools/cmd/staticcheck@v0.8.2",
+        "args": [
+          "-f=json",
+          "./..."
+        ],
+        "format": "analysis",
+        "exit_codes": [
+          0,
+          1
+        ],
+        "binary_sha256": "e6ac1df3ff41be0fdb5afd237b23b04424fefb89b150da970b0add98bacda65d"
+      },
+      "command": [
+        "<RUN_OUTPUT>/bin/staticcheck",
+        "-f=json",
+        "./..."
+      ],
+      "accuracy": {
+        "seconds": 2.2498068459972274,
+        "user_seconds": 2.63,
+        "sys_seconds": 0.38,
+        "max_rss_kib": 211740,
+        "exit_code": 1,
+        "findings": [
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/printf_format/bad/bad.go",
+            "line": 6,
+            "rule": "SA5009",
+            "message": "Printf format %d has arg #1 of wrong type string"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/typed_nil/bad/bad.go",
+            "line": 10,
+            "rule": "SA4023",
+            "message": "this comparison is never true"
+          }
+        ]
+      },
+      "score": {
+        "cases": [
+          {
+            "case": "ignored_error",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "enum_exhaustiveness",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "pure_transitive",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "error_contract",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "mustuse_value",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "sealed_types",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "nil_guard",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "typed_nil",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "printf_format",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          }
+        ],
+        "detected": 2,
+        "applicable": 2,
+        "controls_with_findings": 0,
+        "other_findings": []
+      },
+      "cold": {
+        "seconds": 22.46060561799095,
+        "user_seconds": 26.62,
+        "sys_seconds": 3.28,
+        "max_rss_kib": 287928,
+        "exit_code": 0,
+        "findings": []
+      },
+      "warm": [
+        {
+          "seconds": 0.15702359500573948,
+          "user_seconds": 0.12,
+          "sys_seconds": 0.06,
+          "max_rss_kib": 25664,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.14438049800810404,
+          "user_seconds": 0.12,
+          "sys_seconds": 0.05,
+          "max_rss_kib": 23456,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.15813479997450486,
+          "user_seconds": 0.12,
+          "sys_seconds": 0.06,
+          "max_rss_kib": 22712,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.16381522599840537,
+          "user_seconds": 0.07,
+          "sys_seconds": 0.11,
+          "max_rss_kib": 23416,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.2059142179787159,
+          "user_seconds": 0.13,
+          "sys_seconds": 0.08,
+          "max_rss_kib": 22656,
+          "exit_code": 0,
+          "findings": []
+        }
+      ],
+      "warm_median_seconds": 0.15813479997450486
+    },
+    "errcheck": {
+      "configuration": {
+        "name": "errcheck",
+        "install": "github.com/kisielk/errcheck@v1.30.0",
+        "args": [
+          "./..."
+        ],
+        "format": "text",
+        "exit_codes": [
+          0,
+          1
+        ],
+        "binary_sha256": "0b23e682839c004b41afeb58c1bbf33eb979ac09b9eef04279506809869e1638"
+      },
+      "command": [
+        "<RUN_OUTPUT>/bin/errcheck",
+        "./..."
+      ],
+      "accuracy": {
+        "seconds": 0.1176971759996377,
+        "user_seconds": 0.06,
+        "sys_seconds": 0.07,
+        "max_rss_kib": 20544,
+        "exit_code": 1,
+        "findings": [
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/ignored_error/bad/bad.go",
+            "line": 6,
+            "rule": "errcheck",
+            "message": "os.Remove(path)"
+          }
+        ]
+      },
+      "score": {
+        "cases": [
+          {
+            "case": "ignored_error",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "enum_exhaustiveness",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "pure_transitive",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "error_contract",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "mustuse_value",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "sealed_types",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "nil_guard",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "typed_nil",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "printf_format",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          }
+        ],
+        "detected": 1,
+        "applicable": 1,
+        "controls_with_findings": 0,
+        "other_findings": []
+      },
+      "cold": {
+        "seconds": 18.79205678901053,
+        "user_seconds": 22.15,
+        "sys_seconds": 3.11,
+        "max_rss_kib": 268148,
+        "exit_code": 0,
+        "findings": []
+      },
+      "warm": [
+        {
+          "seconds": 0.1239626850001514,
+          "user_seconds": 0.14,
+          "sys_seconds": 0.02,
+          "max_rss_kib": 24012,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.11806513799820095,
+          "user_seconds": 0.09,
+          "sys_seconds": 0.07,
+          "max_rss_kib": 23492,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.14644702701480128,
+          "user_seconds": 0.11,
+          "sys_seconds": 0.06,
+          "max_rss_kib": 24180,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.1453813019907102,
+          "user_seconds": 0.11,
+          "sys_seconds": 0.07,
+          "max_rss_kib": 23052,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 0.14486738000414334,
+          "user_seconds": 0.13,
+          "sys_seconds": 0.04,
+          "max_rss_kib": 26112,
+          "exit_code": 0,
+          "findings": []
+        }
+      ],
+      "warm_median_seconds": 0.14486738000414334
+    },
+    "exhaustive": {
+      "configuration": {
+        "name": "exhaustive",
+        "install": "github.com/nishanths/exhaustive/cmd/exhaustive@v0.16.1",
+        "args": [
+          "-check=switch,typeswitch",
+          "./..."
+        ],
+        "format": "text",
+        "exit_codes": [
+          0,
+          3
+        ],
+        "binary_sha256": "c3d2165e2004377de6253ac7867c92f88130019cb0ed194f099ab002eb4cbaef"
+      },
+      "command": [
+        "<RUN_OUTPUT>/bin/exhaustive",
+        "-check=switch,typeswitch",
+        "./..."
+      ],
+      "accuracy": {
+        "seconds": 0.9751865610014647,
+        "user_seconds": 1.26,
+        "sys_seconds": 0.2,
+        "max_rss_kib": 201352,
+        "exit_code": 3,
+        "findings": [
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/enum_exhaustiveness/bad/bad.go",
+            "line": 13,
+            "rule": "exhaustive",
+            "message": "missing cases in expression switch: Complete"
+          },
+          {
+            "file": "<SOURCE_ROOT>/benchmarks/corpus/sealed_types/bad/bad.go",
+            "line": 18,
+            "rule": "exhaustive",
+            "message": "missing cases in type switch: *Number"
+          }
+        ]
+      },
+      "score": {
+        "cases": [
+          {
+            "case": "ignored_error",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "enum_exhaustiveness",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "pure_transitive",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "error_contract",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "mustuse_value",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "sealed_types",
+            "applicable": true,
+            "bad": true,
+            "good": false
+          },
+          {
+            "case": "nil_guard",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "typed_nil",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          },
+          {
+            "case": "printf_format",
+            "applicable": false,
+            "bad": false,
+            "good": false
+          }
+        ],
+        "detected": 2,
+        "applicable": 2,
+        "controls_with_findings": 0,
+        "other_findings": []
+      },
+      "cold": {
+        "seconds": 2.614469267980894,
+        "user_seconds": 2.91,
+        "sys_seconds": 0.72,
+        "max_rss_kib": 281136,
+        "exit_code": 0,
+        "findings": []
+      },
+      "warm": [
+        {
+          "seconds": 1.1290073819982354,
+          "user_seconds": 1.74,
+          "sys_seconds": 0.18,
+          "max_rss_kib": 276656,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 1.0953091490082443,
+          "user_seconds": 1.64,
+          "sys_seconds": 0.19,
+          "max_rss_kib": 279500,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 1.4406179610232357,
+          "user_seconds": 1.88,
+          "sys_seconds": 0.29,
+          "max_rss_kib": 275212,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 1.3104141280055046,
+          "user_seconds": 1.81,
+          "sys_seconds": 0.23,
+          "max_rss_kib": 283888,
+          "exit_code": 0,
+          "findings": []
+        },
+        {
+          "seconds": 1.2444869480095804,
+          "user_seconds": 1.7,
+          "sys_seconds": 0.21,
+          "max_rss_kib": 281660,
+          "exit_code": 0,
+          "findings": []
+        }
+      ],
+      "warm_median_seconds": 1.2444869480095804
+    }
+  },
+  "status": "complete",
+  "inputs": {
+    "frameworkRelease": "v0.3.0",
+    "frameworkCommit": "bf2b7f4c500a0fcb604a275eaec53a49631ce755",
+    "files": {
+      "benchmarks/corpus/enum_exhaustiveness/bad/bad.go": "bf78b9e2d6d52cba5ce0ef40496c7a02e2df5c1a2fdadbb7b2a03ca7f80ffedf",
+      "benchmarks/corpus/enum_exhaustiveness/good/good.go": "99edb99cb96bac493ae124cc785b4a8d44481b4a878fa091df5053515fd5b2bd",
+      "benchmarks/corpus/error_contract/bad/bad.go": "2d7cc0f1d5d992297114dccfe64181afef549b4f55989fe5ac3dc82522e35b91",
+      "benchmarks/corpus/error_contract/good/good.go": "eeb8046c320109c7d4ce362aa5f3a872818caec98aa56a8fe8c085b55f502d65",
+      "benchmarks/corpus/go.mod": "0cd19626b5656f984434be2e9b2dd54af2dede4b98717e250ef764d84c5dd971",
+      "benchmarks/corpus/ignored_error/bad/bad.go": "48f5139798c982e6e49f65e2c0a24a875f17ebb606176fe34e20ddd8df1ab2cf",
+      "benchmarks/corpus/ignored_error/good/good.go": "199eb7815d474056c90c74249e6976e9673c041a063f60b52850760c8d9a82e2",
+      "benchmarks/corpus/mustuse_value/bad/bad.go": "51c03e09039e62039ce9f06ddbcd9336d09f15c2feeccd925904a7f2bf7f6d1a",
+      "benchmarks/corpus/mustuse_value/good/good.go": "706c42ecbecd8abebb0d17a9e490d1053cb666047ab91284327a5d7c9e13a524",
+      "benchmarks/corpus/nil_guard/bad/bad.go": "8a8fe429cd328b263a70e6ea960ea79a130b178875eb87e17038f9253a246706",
+      "benchmarks/corpus/nil_guard/good/good.go": "08161ecbed4358d99dcfd3de950589ca66938db3d61b7cfb5d06f27109ce0f66",
+      "benchmarks/corpus/printf_format/bad/bad.go": "86c3e67cd860f165d185705c196248ed667747ef1a47e74565658eb61a2800d0",
+      "benchmarks/corpus/printf_format/good/good.go": "17fa4fd30608f28d83d5f90074b8b24612bed38b2df547a297d286cfd4232921",
+      "benchmarks/corpus/pure_transitive/bad/bad.go": "6aedf24362fb05f2b771c25deb7fdb0ffa23509f4fcd8d071cd8f9e42aa898d3",
+      "benchmarks/corpus/pure_transitive/clock/clock.go": "2dcecb0587b96e5588e06bfae1189944eb67479470e404241101e7cd2aaeb3f3",
+      "benchmarks/corpus/pure_transitive/good/good.go": "b2f59399b8e05b458b007d6f3abba0ee48e445d40d60bd7db7a648492407eb45",
+      "benchmarks/corpus/sealed_types/bad/bad.go": "41d856612d2c311ee45fbfb5cbc423076540ed4e7b6bc186c2ce3ee363ace23b",
+      "benchmarks/corpus/sealed_types/good/good.go": "c365ed847ebd3a4497f6e1136a8d96011352572db162ea7fbe28738fbb301dba",
+      "benchmarks/corpus/typed_nil/bad/bad.go": "1aafb0fcd8b13181869aef63189345dadc9b3f6c727cc49e428bc02308038866",
+      "benchmarks/corpus/typed_nil/good/good.go": "c2337f9395332cf91c052fc9a7a72f8d2f357921eb4316c4c97881484bbc7439",
+      "benchmarks/toolchain.json": "ec2eb43df5bd487f46533b2c7845dbb8723cd089e6b933995b08ba8a6832a89c",
+      "scripts/benchmark.py": "90c570c312189b3f3d6bc9bd6491de83210183fe394b9329a3ae62eb654ef5ab",
+      "scripts/benchmark_test.py": "02cd0e6c21f6c908524973803f55423860a8043e7caf20b6e1667233ff170373"
+    }
+  },
+  "externalMemoryCapBytes": 6442450944
+}

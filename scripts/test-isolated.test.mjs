@@ -11,9 +11,12 @@ test('isolated runner discovers every test and propagates a real test failure', 
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
   writeFileSync(join(cwd, 'go.mod'), 'module example.com/isolated\n\ngo 1.26\n');
   writeFileSync(join(cwd, 'suite_test.go'), `package isolated
-import ("os"; "testing")
+import ("os"; "strings"; "testing")
 var state bool
-func TestFirst(t *testing.T) { if state { t.Fatal("shared process") }; state = true }
+func TestFirst(t *testing.T) {
+ if os.Getenv("GOMAXPROCS") != "2" || os.Getenv("GOMEMLIMIT") != "2GiB" || !strings.HasSuffix(os.Getenv("GOFLAGS"), "-buildvcs=false -p=8 -p=1") { t.Fatal("missing resource limits or lost caller flags") }
+ if state { t.Fatal("shared process") }; state = true
+}
 func TestSecond(t *testing.T) {
  if state { t.Fatal("shared process") }; state = true
  if os.Getenv("FAIL_SECOND") == "1" { t.Fatal("consumer-visible failure") }
@@ -23,7 +26,7 @@ func TestSecond(t *testing.T) {
   for (const fail of [false, true]) {
     const result = spawnSync(process.execPath, [runner, '.'], {
       cwd, encoding: 'utf8', timeout: 120000,
-      env: { ...process.env, GOWORK: 'off', FAIL_SECOND: fail ? '1' : '0' },
+      env: { ...process.env, GOWORK: 'off', GOMAXPROCS: '', GOMEMLIMIT: '', GOFLAGS: '-buildvcs=false -p=8', FAIL_SECOND: fail ? '1' : '0' },
     });
     const output = result.stdout + result.stderr;
     if (fail) {

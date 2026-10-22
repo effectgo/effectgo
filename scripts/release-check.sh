@@ -4,9 +4,10 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
+source "$root/scripts/check-env.sh"
 
 fail() { printf 'release-check: %s\n' "$*" >&2; exit 1; }
-for tool in go node npm; do
+for tool in go node npm python3; do
   command -v "$tool" >/dev/null 2>&1 || fail "$tool is required; install the documented toolchain first"
 done
 case "$(go env GOVERSION)" in
@@ -43,7 +44,7 @@ if (typeof fetch !== "function" || typeof File !== "function") fail("Node.js mus
 NODE
 
 export EFFECTGO_STRICT_CROSS_LANGUAGE=1
-export GOWORK=off
+python3 scripts/benchmark_test.py
 # The candidate must be checked afresh, including every real decoder and tsc test.
 node --test scripts/release-check.test.mjs scripts/source-tools.test.mjs scripts/test-isolated.test.mjs
 go build ./...

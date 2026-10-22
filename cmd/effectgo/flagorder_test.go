@@ -177,6 +177,8 @@ func TestFlagAfterPatterns(t *testing.T) {
 			"effectgo: flag -effects.report after the package patterns; flags must come before them: effectgo -effects.report ./..."},
 		{[]string{"./...", "-stubs", "x.stubs", "-json"},
 			"effectgo: flags -stubs, -json after the package patterns; flags must come before them: effectgo -stubs x.stubs -json ./..."},
+		{[]string{"./...", "-cpuprofile", "cpu.pprof", "-memprofile", "heap.pprof"},
+			"effectgo: flags -cpuprofile, -memprofile after the package patterns; flags must come before them: effectgo -cpuprofile cpu.pprof -memprofile heap.pprof ./..."},
 		{[]string{"./...", "-nosuch"},
 			"effectgo: flag -nosuch after the package patterns, and effectgo does not define -nosuch"},
 		{[]string{"sig", "./", "-errset.statuses"},

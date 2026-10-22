@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"go/types"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -25,7 +29,7 @@ import (
 // follows them. This run uses the checker API that the subcommands use, prints
 // the diagnostics the way the multichecker does (text on stderr, or -json on
 // stdout), and ends with the summary line on stderr. The go vet invocations
-// (-flags, -V, a .cfg file) and -help still go through the multichecker.
+// (-flags, -V, a .cfg file) and analyzer help still use the multichecker.
 
 // standaloneAnalyzers are the analyzers of the standalone run. signature runs
 // only under effectgo sig.
@@ -35,6 +39,8 @@ var (
 	includeTests bool
 	jsonOut      bool
 	contextLines int
+	cpuProfile   string
+	memProfile   string
 )
 
 // registerStandaloneFlags adds the driver's flags and the analyzers' flags to
@@ -44,7 +50,14 @@ func registerStandaloneFlags() {
 	flag.BoolVar(&includeTests, "test", true, "analyze the test files too, as go vet does; -test=false skips them")
 	flag.BoolVar(&jsonOut, "json", false, "print the diagnostics as JSON on stdout (the driver's format, not the HTTP schema)")
 	flag.IntVar(&contextLines, "c", -1, "print this many lines of source context around each diagnostic")
+	flag.StringVar(&cpuProfile, "cpuprofile", "", "write a CPU profile to `file`")
+	flag.StringVar(&memProfile, "memprofile", "", "write a heap profile to `file` after analysis")
 	bindAnalyzerFlags(flag.CommandLine)
+	flag.CommandLine.Usage = func() {
+		fmt.Fprintln(flag.CommandLine.Output(), "usage: effectgo [flags] packages")
+		fmt.Fprintln(flag.CommandLine.Output(), "For analyzer help, run: effectgo help [analyzer]")
+		flag.CommandLine.PrintDefaults()
+	}
 }
 
 // bindAnalyzerFlags shares the analyzers' native flags across CLI drivers.
@@ -59,14 +72,52 @@ func bindAnalyzerFlags(fs *flag.FlagSet) {
 // runStandalone runs the standalone analysis over the patterns in args (os.Args)
 // and returns the exit code: 0 for no findings, 1 for a load or analysis error,
 // 3 when diagnostics were reported (see docs/reference/cli.md).
-func runStandalone(args []string) int {
+func runStandalone(args []string) (exit int) {
 	registerStandaloneFlags()
 	if err := flag.CommandLine.Parse(args[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 	if err := checkFlagOrder("", flag.CommandLine, args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo: creating CPU profile: %v\n", err)
+			return 1
+		}
+		// StopCPUProfile cannot report write errors; the buffer retains them
+		// until Flush, after the profile writer has stopped.
+		w := bufio.NewWriter(f)
+		if err := pprof.StartCPUProfile(w); err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo: starting CPU profile: %v\n", errors.Join(err, f.Close()))
+			return 1
+		}
+		defer func() {
+			pprof.StopCPUProfile()
+			if err := errors.Join(w.Flush(), f.Close()); err != nil {
+				fmt.Fprintf(os.Stderr, "effectgo: writing CPU profile: %v\n", err)
+				exit = 1
+			}
+		}()
+	}
+	if memProfile != "" {
+		f, err := os.Create(memProfile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "effectgo: creating heap profile: %v\n", err)
+			return 1
+		}
+		defer func() {
+			runtime.GC()
+			if err := errors.Join(pprof.WriteHeapProfile(f), f.Close()); err != nil {
+				fmt.Fprintf(os.Stderr, "effectgo: writing heap profile: %v\n", err)
+				exit = 1
+			}
+		}()
 	}
 	// After the flag check: a flag written after the patterns would otherwise
 	// be read as a pattern, and its value as a stub or a directory.
@@ -89,7 +140,6 @@ func runStandalone(args []string) int {
 		fmt.Fprintf(os.Stderr, "effectgo: %v matched no packages\n", patterns)
 		return 1
 	}
-	exit := 0
 	if n := packages.PrintErrors(initial); n > 0 {
 		exit = 1 // reported, but the analysis still runs, as in the multichecker
 	}

@@ -73,24 +73,15 @@ Each lesson is a mistake a first-time user made with effectgo, and the page that
 
 ### Build and test
 
-From the repository root (Go 1.26):
+Run `bash scripts/check.sh` for routine feedback: tool regressions, benchmark parser regression, root build/vet and public documentation checks. CI runs this on pull requests and pushes to main. Install the site's committed lockfile with `pnpm --dir site install --frozen-lockfile` first.
 
-```sh
-go build ./...
-go vet ./...
-go test ./... -count=1
-bash examples/run.sh          # builds bin/effectgo and runs both examples; must exit 0
-```
+Before release or after analyzer, generator, runtime or dependency changes, read [Releasing](docs/guide/releasing.md) and run `bash scripts/release-check.sh`. It discovers every root test, preserves strict cross-language checks and covers the separate runtime/example modules; the routine check is not full release evidence.
 
-`examples/todo`, `examples/layers` and `examples/editor` are separate modules; run their tests from their own directories. `examples/run.sh` is the acceptance script: it prints the expected diagnostics, so compare its output after a change.
+Both scripts use [scripts/check-env.sh](scripts/check-env.sh) for bounded Go defaults and enforce serial package work while retaining other caller `GOFLAGS`. In this shared workspace, serialize heavy commands with the shared lock and 6 GiB scope described in the releasing guide.
 
-In this workspace, run `go test` and other heavy commands under the shared lock, with the memory cap:
+For performance changes or benchmark interpretation, read [Benchmarks](docs/guide/benchmarks.md) and use [scripts/benchmark.py](scripts/benchmark.py). The intentional-fault corpus is a nested module, excluded from root `go ./...`.
 
-```sh
-mkdir -p "$HOME/.cache/effectgo"
-flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 \
-  bash -c 'cd DIR && env -u GOROOT GOFLAGS=-buildvcs=false <cmd>'
-```
+`examples/run.sh` prints expected diagnostics; assess its exit status and compare output after analyzer changes. Separate example modules are covered by the full release gate.
 
 ### Repository layout
 

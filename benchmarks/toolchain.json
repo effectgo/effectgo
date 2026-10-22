@@ -1,0 +1,22 @@
+{
+  "go_version": "go1.26.10",
+  "public_module": "github.com/google/uuid@v1.6.0",
+  "tools": [
+    {"name":"effectgo","install":"github.com/effectgo/effectgo/cmd/effectgo@v0.3.0","args":["-json","./..."],"format":"analysis","exit_codes":[0,3]},
+    {"name":"go-vet","args":["vet","-json","./..."],"format":"analysis","exit_codes":[0,1]},
+    {"name":"staticcheck","install":"honnef.co/go/tools/cmd/staticcheck@v0.8.2","args":["-f=json","./..."],"format":"analysis","exit_codes":[0,1]},
+    {"name":"errcheck","install":"github.com/kisielk/errcheck@v1.30.0","args":["./..."],"format":"text","exit_codes":[0,1]},
+    {"name":"exhaustive","install":"github.com/nishanths/exhaustive/cmd/exhaustive@v0.16.1","args":["-check=switch,typeswitch","./..."],"format":"text","exit_codes":[0,3]}
+  ],
+  "cases": {
+    "ignored_error":{"effectgo":["mustuse"],"errcheck":["errcheck"]},
+    "enum_exhaustiveness":{"effectgo":["exhaustive"],"exhaustive":["exhaustive"]},
+    "pure_transitive":{"effectgo":["effects"]},
+    "error_contract":{"effectgo":["errset"]},
+    "mustuse_value":{"effectgo":["mustuse"]},
+    "sealed_types":{"effectgo":["exhaustive"],"exhaustive":["exhaustive"]},
+    "nil_guard":{},
+    "typed_nil":{"staticcheck":["SA4023"]},
+    "printf_format":{"staticcheck":["SA5009"],"go-vet":["printf"]}
+  }
+}

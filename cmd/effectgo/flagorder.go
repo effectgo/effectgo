@@ -201,6 +201,8 @@ func standaloneFlagSet() *flag.FlagSet {
 	fs.Bool("test", true, "")
 	fs.Bool("json", false, "")
 	fs.Int("c", -1, "")
+	fs.String("cpuprofile", "", "")
+	fs.String("memprofile", "", "")
 	fs.String("stubs", "", "")
 	for _, a := range standaloneAnalyzers {
 		a.Flags.VisitAll(func(f *flag.Flag) {

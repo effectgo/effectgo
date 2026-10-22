@@ -97,7 +97,7 @@ func main() {
 // isHelpInvocation reports whether args ask for the help of the analyzers,
 // which the multichecker prints.
 func isHelpInvocation(args []string) bool {
-	return len(args) > 1 && (args[1] == "help" || args[1] == "-help" || args[1] == "--help" || args[1] == "-h")
+	return len(args) > 1 && args[1] == "help"
 }
 
 // printIdentity answers "effectgo -V=full", which go vet runs to get a tool ID.

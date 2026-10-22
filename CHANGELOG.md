@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 - 2026-10-22
+
+- Skip standard-library error-body inference before SSA construction while preserving the existing stub/opaque contract. On the measured UUID workload, warm standalone median time decreased by 55.4% and maximum RSS by 48.7%; these are workload-specific observations.
+- Support standalone CPU/heap profiles and make default CLI help list accepted flags; flush profiles on findings and error exits.
+- Add bounded check defaults, a routine check entry point and PR/main CI; include the benchmark parser regression in routine and full release checks.
+- Add a reproducible comparison against Go vet, Staticcheck, errcheck and exhaustive, with paired fixtures, pinned tool versions and explicit applicability/cache limits.
+
 ## 0.3.0 - 2026-10-22
 
 - **Breaking:** move the Go modules to `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`. Update imports, plugin configuration and pinned source/runtime snapshots when upgrading; earlier tags keep their original module paths.
@@ -20,7 +27,6 @@
 - Exercise one shared JSON corpus through raw `rt/web` HTTP decoding and a freshly generated Effect 4.0.4 client, covering omission/null, nested collections, unknown-key normalization, missing required fields, and scalar type errors.
 - Document the real `examples/web` generation, TypeScript typecheck, Huma migration commands, and the release-candidate validation boundary.
 
-## Unreleased
 
 ## 0.1.0 - 2026-10-20
 

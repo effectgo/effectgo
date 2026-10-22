@@ -128,7 +128,7 @@ These are findings of the example modules, kept on purpose so that the examples 
 - **[verified]** File scope (`lintOnSave: file`) is broken for multi-file packages: a single file does not type-check alone (`undefined: WithTx`). Use package scope.
 - **[by reading]** Relative `stubs` paths in the plugin settings resolve against the module root of the working directory, not against the config file.
 - **[verified]** The zero configuration loads all five shipped stub files. Results differ from a `stdlib.stubs`-only run.
-- **[by reading]** Historical plugin checks used a local checkout while the repository was private. The current public route uses `version: v0.3.0` in `.custom-gcl.yml`; publication and a successful CLI download do not prove a Go-proxy custom plugin build or an editor session.
+- **[by reading]** Historical plugin checks used a local checkout while the repository was private. The current public route uses `version: v0.4.0` in `.custom-gcl.yml`; publication and a successful CLI download do not prove a Go-proxy custom plugin build or an editor session.
 - **[verified]** The plugin reports only the five analyzers' diagnostics. The report flags, witnesses and the HTTP subcommands are not available in the editor.
 - **[by reading]** Editors were not run. The VS Code settings, the problem matcher, Neovim's working directory and Windows paths were not observed.
 
@@ -136,7 +136,7 @@ These are findings of the example modules, kept on purpose so that the examples 
 
 The items that are deliberately left for later, with the reason and the evidence, are in the [backlog](backlog.md).
 
-- No CI configuration, no fix suggestions, no `-fix`.
+- Routine CI runs build/vet, tooling regressions and documentation checks; the full release gate remains separate. No fix suggestions or `-fix` implementation.
 - No per-instantiation effect facts for generics.
 - No handler checks for `v1` and `v2` of the todo example; only the annotated `v3` handlers are checked.
 - Historical `go install` from the private repository was not run because the build environment lacked access. The current public install command is documented in [Getting started](../guide/getting-started.md#install); historical results are not evidence for that route.

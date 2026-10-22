@@ -10,7 +10,7 @@ This page takes you from nothing installed to a first diagnostic. It assumes a G
 Install the CLI from the public module at the current stable version:
 
 ```sh
-go install github.com/effectgo/effectgo/cmd/effectgo@v0.3.0
+go install github.com/effectgo/effectgo/cmd/effectgo@v0.4.0
 ```
 
 `go install` puts the binary in `$GOBIN`, or in `$GOPATH/bin` when `GOBIN` is not set (verified with `GOBIN` pointed at a scratch directory). Make sure that directory is on your `PATH`. If you do not want it installed, build a local copy instead:
@@ -22,7 +22,7 @@ go build -o bin/effectgo ./cmd/effectgo
 Applications using the runtime add its separate module from their own module root:
 
 ```sh
-go get github.com/effectgo/effectgo/rt@v0.3.0
+go get github.com/effectgo/effectgo/rt@v0.4.0
 ```
 
 To work from source, clone `https://github.com/effectgo/effectgo` and run `go install ./cmd/effectgo` in the checkout. The public module route replaces the historical private-repository setup; it needs no `GOPRIVATE` or repository credentials. Release download and indexing checks are described in [Releasing effectgo](releasing.md#publish-the-go-modules-and-documentation).
