@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "renames": [
+    { "since": "v0.3.0", "from": "github.com/faintghost/effectgo/rt", "to": "github.com/effectgo/effectgo/rt" },
+    { "since": "v0.3.0", "from": "github.com/faintghost/effectgo", "to": "github.com/effectgo/effectgo" }
+  ]
+}
