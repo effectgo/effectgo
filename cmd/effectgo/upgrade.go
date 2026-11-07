@@ -157,7 +157,7 @@ func (u upgradeTools) upgrade(app, tag string) error {
 		pinArgs = append(pinArgs, "--binary", platform.lock+"="+binary)
 	}
 	source := filepath.Join(work, "source")
-	if err := u.run(work, nil, "git", "clone", "--quiet", "--depth=1", "--branch", tag, "--", u.repository, source); err != nil {
+	if err := u.run(work, nil, "git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth=1", "--branch", tag, "--", u.repository, source); err != nil {
 		return fmt.Errorf("obtain tagged source: %w", err)
 	}
 	version, err := os.ReadFile(filepath.Join(source, "VERSION"))
@@ -186,7 +186,7 @@ func (u upgradeTools) upgrade(app, tag string) error {
 	if err != nil {
 		return err
 	}
-	if err := migrateUpgradeVerifierCalls(files); err != nil {
+	if err := reportUpgradeChecklist(u.out, app, files); err != nil {
 		return err
 	}
 	env := []string{"GOWORK=off", "EFFECTGO_BIN=" + filepath.Join(work, "effectgo-"+u.platform), "EFFECTGO_DIR="}
@@ -231,7 +231,7 @@ func (u upgradeTools) upgrade(app, tag string) error {
 			}
 		}
 	}
-	fmt.Fprintf(u.out, "Upgraded to %s; tidied %d Go modules; regenerated %d contract scripts; %d clients changed. Review the application diff before committing.\n", tag, len(modules), len(scripts), changed)
+	fmt.Fprintf(u.out, "Upgraded to %s; tidied %d Go modules; regenerated %d contract scripts; %d clients changed. Review the application diff and the post-upgrade checklist above before committing.\n", tag, len(modules), len(scripts), changed)
 	return nil
 }
 
@@ -551,19 +551,22 @@ func finishUpgradeRuntime(app string, old map[string]string) error {
 
 var upgradeRuntimeCall = regexp.MustCompile(`(effectgo-source\.mjs["']?[ \t]+)runtime\b`)
 
-func migrateUpgradeVerifierCalls(files []string) error {
+func reportUpgradeChecklist(out io.Writer, app string, files []string) error {
+	fmt.Fprintln(out, "Post-upgrade checklist: review runtime snapshot references and replace obsolete effectgo-source.mjs runtime calls with tooling; matching consumer files are not edited automatically.")
 	for _, path := range files {
-		if filepath.Ext(path) != ".sh" {
-			continue
-		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		updated := upgradeRuntimeCall.ReplaceAll(data, []byte("${1}tooling"))
-		if !bytes.Equal(data, updated) {
-			if err := os.WriteFile(path, updated, 0o755); err != nil {
-				return err
+		relative, err := filepath.Rel(app, path)
+		if err != nil {
+			return err
+		}
+		lineNumber := 0
+		for line := range strings.SplitSeq(string(data), "\n") {
+			lineNumber++
+			if strings.Contains(line, "third_party/effectgo-rt") || upgradeRuntimeCall.MatchString(line) {
+				fmt.Fprintf(out, "%s:%d: %s\n", filepath.ToSlash(relative), lineNumber, strings.TrimSpace(line))
 			}
 		}
 	}

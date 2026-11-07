@@ -30,13 +30,13 @@ domain/todo.go:31:6: Normalize is declared //effectgo:pure but has effect time v
 With Go 1.26 or newer:
 
 ```sh
-go install github.com/effectgo/effectgo/cmd/effectgo@v0.5.0
+go install github.com/effectgo/effectgo/cmd/effectgo@v0.5.1
 ```
 
 The backend runtime is a separate, standard-library-only module:
 
 ```sh
-go get github.com/effectgo/effectgo/rt@v0.5.0
+go get github.com/effectgo/effectgo/rt@v0.5.1
 ```
 
 See the [runtime API](https://pkg.go.dev/github.com/effectgo/effectgo/rt/web). Both modules are public; no repository credentials or effectgo-specific `GOPRIVATE` setting are required.
@@ -52,10 +52,10 @@ From v0.3.0, Go imports use `github.com/effectgo/effectgo`. Earlier tags retain 
 - `effectgo ts -name NAME ./...` writes the TypeScript client of the `rt/web` routes (effect/http-api).
 - `effectgo contract` provides one shared text or JSON report for the six static analyzers and HTTP checks. See [Contract checks](docs/guide/contract-checks.md) and [the CLI reference](docs/reference/cli.md#contract).
 
-The stable release is `v0.5.0`; its shared contract report uses JSON `schema_version: 1`. Adapter route counts retain their documented coverage limits.
+The stable release is `v0.5.1`; its shared contract report uses JSON `schema_version: 1`. Adapter route counts retain their documented coverage limits.
 Release validation: install the locked example dependencies, then run `bash scripts/release-check.sh`; see [releasing](docs/guide/releasing.md). Generated-client compilation and HTTP decoding are mandatory at this gate.
 
-To upgrade an existing application's pinned generator and runtime, run `go run github.com/effectgo/effectgo/cmd/effectgo@v0.5.0 upgrade /path/to/app --to v0.5.0`. This verifies release binaries, installs the launcher, migrates the runtime to a normal Go module requirement and regenerates contracts. For manual source pinning, run `node scripts/pin-source.mjs /path/to/app --release v0.5.0` only from the clean tagged release. See [the upgrade reference](docs/reference/cli.md#upgrade).
+To upgrade an existing application's pinned generator and runtime, run `go run github.com/effectgo/effectgo/cmd/effectgo@v0.5.1 upgrade /path/to/app --to v0.5.1`. This verifies release binaries, installs the launcher, migrates the runtime to a normal Go module requirement and regenerates contracts. Review the checklist of remaining runtime snapshot and verifier references. Regenerate after upgrading from v0.5.0 to remove source digests from generated clients. For manual source pinning, run `node scripts/pin-source.mjs /path/to/app --release v0.5.1` only from the clean tagged release. See [the upgrade reference](docs/reference/cli.md#upgrade).
 
 ## Documentation
 
