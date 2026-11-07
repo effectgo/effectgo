@@ -152,6 +152,8 @@ For regeneration, `scripts/api-contract.sh generate` is the aggregate convention
 
 The v0.2.0 runtime migration rejects locally modified lock-owned runtime files before changing the application. After pinning, it removes the old and newly pinned runtime inventories, their owned files under `backend/third_party/effectgo-rt`, and `SOURCE.json`; unrelated files are preserved. A post-upgrade checklist lists remaining `third_party/effectgo-rt` and `effectgo-source.mjs runtime` references with file and line numbers before regeneration. Update these application-owned Dockerfile, task and script references manually; upgrade does not rewrite them. A contract script that still invokes the removed runtime verifier can fail regeneration after the checklist is printed. Historical target tags retain their own launcher behavior; tags predating automatic release downloads can still need `EFFECTGO_BIN` or `EFFECTGO_DIR` for later generator invocations.
 
+The checklist scans text files regardless of filename or extension, including root and nested Dockerfiles, Taskfiles and Markdown docs. It skips VCS metadata, dependency and build directories, binary files, `effectgo.lock.json`, the managed `scripts/effectgo.sh` and `scripts/effectgo-source.mjs` launchers, the vendored verifier and generated effectgo TypeScript clients.
+
 The final client summary compares generated TypeScript files with their bytes at the start of this invocation and prints Git's added/removed line counts for each changed client. Review the full application diff, including dependency and OpenAPI changes, before committing. Upgrade edits the application in place; a dependency or generation failure leaves the completed edits available for inspection and repair.
 ### contract fingerprint
 
