@@ -14,19 +14,24 @@ type Collected struct {
 	Results  []Result
 	Packages []string
 	Module   string
+	Inputs   *SourceInputs
 }
 
 // Collect loads the packages of the patterns in dir (the working directory when
 // empty), runs the tsgen analyzer on them, and gathers the results.
 func Collect(dir string, patterns ...string) (Collected, error) {
 	var c Collected
-	cfg := &packages.Config{Mode: packages.LoadAllSyntax | packages.NeedModule, Dir: dir}
+	cfg := &packages.Config{Mode: packages.LoadAllSyntax | packages.NeedModule | packages.NeedEmbedFiles, Dir: dir}
 	pkgs, err := packages.Load(cfg, patterns...)
 	if err != nil {
 		return c, err
 	}
 	if packages.PrintErrors(pkgs) > 0 {
 		return c, fmt.Errorf("the packages do not load")
+	}
+	c.Inputs, err = collectSourceInputs(dir, pkgs)
+	if err != nil {
+		return c, err
 	}
 	graph, err := checker.Analyze([]*analysis.Analyzer{Analyzer}, pkgs, nil)
 	if err != nil {

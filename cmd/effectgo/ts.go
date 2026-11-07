@@ -56,5 +56,5 @@ func generateTS(patterns []string, api string) (string, error) {
 	if api == "" {
 		api = path.Base(c.Module)
 	}
-	return tsgen.Generate(c.Results, api, c.Module, c.Packages)
+	return c.Generate(api)
 }

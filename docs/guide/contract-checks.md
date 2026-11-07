@@ -47,6 +47,21 @@ The shared command uses exit 0 when there are no native findings and no selected
 
 For real generator and migration commands, see the [framework example](https://github.com/effectgo/effectgo/blob/main/examples/web/README.md). It shows `effectgo ts`, `go test` for the migration contract, and the `rt/web` mounting API. Gin mounting is documented only where a project provides an actual Gin registration; this example uses `rt/web` and does not establish a Gin mounting command.
 
+## Generated-client freshness
+
+`effectgo ts` embeds a SHA-256 fingerprint of the analyzed routes and reachable DTO schemas, including field names, types, schema rules, error variants and response statuses. Source positions and package traversal order do not affect that fingerprint. It also embeds a versioned source-input manifest for a cheap freshness gate:
+
+```sh
+effectgo contract fingerprint --check
+effectgo contract fingerprint --check ts/api.gen.ts
+```
+
+Run from the generating Go module. With no file arguments the command discovers generated TypeScript files beneath the current directory, skipping dependency directories and nested Go modules. `-o FILE` selects one generated file; positional files support checking several clients. Without `--check`, the command verifies freshness and prints each current source-input digest. Exit 0 means every selected client is current; exit 1 means stale or missing metadata, no generated clients, or an input/read error; exit 2 means invalid usage. Older clients need one regeneration to acquire the metadata.
+
+The check reads source files and invokes `go env` for build configuration. It never loads packages, runs analyzers, emits TypeScript, formats files or rewrites clients. It checks a conservative source-input digest against the analyzed baseline rather than repeating error-set analysis. Production Go and native source files, file additions/deletions, module/workspace files, embedded inputs, local replacement modules and stub inputs participate. Module files pin versioned dependencies. Unrelated production source edits can therefore require regeneration even when the resulting wire contract is unchanged; test-only edits do not.
+
+Manifest paths are relative to the generating module, so moving a checkout with its local replacements preserves the fingerprint. Machine Go versions and default OS/architecture values do not enter the digest. Source-file selection does: platform/build-tag changes that select different files invalidate the baseline conservatively. Source-selection flags such as `-tags`, `-modfile` and `-overlay`, their referenced file contents, the effectgo release and the Effect target also participate. Flags such as `-p`, `-buildvcs` and `-trimpath` do not invalidate identical contracts. The full `effectgo contract` report remains the separate analyzer gate.
+
 ## Local validation
 
 The real combined fixture produced 11 diagnostics spanning all six native rule families

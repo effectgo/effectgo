@@ -58,6 +58,9 @@ type contractCoverage struct {
 }
 
 func runContract(args []string) int {
+	if len(args) > 0 && args[0] == "fingerprint" {
+		return runContractFingerprint(args[1:])
+	}
 	fs := flag.NewFlagSet("effectgo contract", flag.ContinueOnError)
 	format := fs.String("format", "text", "report format: text or json (schema_version 1)")
 	all := fs.Bool("all", false, "also include informational HTTP findings")

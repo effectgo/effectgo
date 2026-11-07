@@ -29,6 +29,7 @@ The golangci-lint plugin is another integration; see [Editor integration](../gui
 | `effectgo http [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | both HTTP checks, one list | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo contract [-format=text\|json] [-all] [-fail-on=…] [-fail-unresolved] [-coverage=json] [patterns]` | shared six-analyzer and Gin/Huma report | text or one JSON document; see [Contract checks](../guide/contract-checks.md) |
 | `effectgo upgrade APP --to vX.Y.Z` | upgrade an existing consumer to a public-module release | progress, generated-client line counts and a final summary; see [upgrade](#upgrade) |
+| `effectgo contract fingerprint [--check] [-o FILE] [FILES...]` | verify generated clients against their recorded contract inputs | source-input digests, or silent success with `--check`; stale inputs exit 1 |
 
 ## Flags
 
@@ -150,6 +151,9 @@ For regeneration, `scripts/api-contract.sh generate` is the aggregate convention
 The v0.2.0 runtime migration rejects locally modified lock-owned runtime files before changing the application. After pinning, it removes the old and newly pinned runtime inventories, their owned files under `backend/third_party/effectgo-rt`, and `SOURCE.json`; unrelated files are preserved. Recognized shell calls to `effectgo-source.mjs runtime` become `tooling` checks. Historical target tags retain their own launcher behavior; tags predating automatic release downloads can still need `EFFECTGO_BIN` or `EFFECTGO_DIR` for later generator invocations.
 
 The final client summary compares generated TypeScript files with their bytes at the start of this invocation and prints Git's added/removed line counts for each changed client. Review the full application diff, including dependency and OpenAPI changes, before committing. Upgrade edits the application in place; a dependency or generation failure leaves the completed edits available for inspection and repair.
+### contract fingerprint
+
+`effectgo contract fingerprint --check` discovers generated TypeScript files in the current module, or checks files given with `-o FILE` or positional arguments. It verifies the source-input manifest embedded by `effectgo ts` without package loading, analyzer execution, TypeScript generation or formatting. Without `--check` it verifies the same inputs and prints their current SHA-256 digests. Exit 1 includes stale clients, old clients without metadata, no generated files and input errors; usage errors exit 2. See [Generated-client freshness](../guide/contract-checks.md#generated-client-freshness) for conservative invalidation and build/checkout portability.
 
 ## Exit codes
 
