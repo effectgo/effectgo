@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { digest, inventory, verifySource } from './verify-source.mjs';
@@ -44,11 +44,8 @@ if (release) {
   assert.equal(git('rev-parse', `${release}^{commit}`), commit, 'release tag differs from source HEAD');
   assert.equal(git('status', '--porcelain', '--untracked-files=normal'), '', 'release source must be clean');
 }
-verifySource(root, 'runtime');
-const old = JSON.parse(readFileSync(resolve(root, 'effectgo.lock.json'), 'utf8'));
 const hashes = (base, paths) => Object.fromEntries(paths.sort().map((path) => [path, digest(resolve(base, path))]));
 const generatorFiles = hashes(source, inventory(source));
-const runtimeFiles = hashes(resolve(source, 'rt'), inventory(resolve(source, 'rt')).filter((path) => !path.endsWith('_test.go')));
 const tree = createHash('sha256').update(JSON.stringify(generatorFiles)).digest('hex');
 const lock = {
   effect: '4.0.4',
@@ -59,26 +56,9 @@ const lock = {
   ...(release ? { release_tag: release } : {}),
   source_tree_digest_format: 'sha256(JSON.stringify(generator_files with sorted paths))',
   generator_files: generatorFiles,
-  runtime_files: runtimeFiles,
   tooling_files: { 'verify-source.mjs': digest(resolve(source, 'scripts/verify-source.mjs')) },
   binaries,
 };
-const runtimeRoot = resolve(root, 'backend/third_party/effectgo-rt');
-for (const path of Object.keys(old.runtime_files)) {
-  if (!Object.hasOwn(runtimeFiles, path)) rmSync(resolve(runtimeRoot, path));
-}
-for (const path of Object.keys(runtimeFiles)) {
-  mkdirSync(dirname(resolve(runtimeRoot, path)), { recursive: true });
-  copyFileSync(resolve(source, 'rt', path), resolve(runtimeRoot, path));
-}
-writeFileSync(resolve(runtimeRoot, 'SOURCE.json'), JSON.stringify({
-  upstream_commit: commit,
-  source_tree_sha256: tree,
-  snapshot_kind: lock.snapshot_kind,
-  effectgo_version: version,
-  ...(release ? { release_tag: release } : {}),
-  files: runtimeFiles,
-}, null, 2) + '\n');
 const tooling = resolve(root, 'scripts/vendor/effectgo');
 mkdirSync(tooling, { recursive: true });
 copyFileSync(resolve(source, 'scripts/verify-source.mjs'), resolve(tooling, 'verify-source.mjs'));
@@ -91,6 +71,5 @@ verifySource(root, ...process.argv.slice(2));
 `);
 writeFileSync(resolve(root, 'effectgo.lock.json'), JSON.stringify(lock, null, 2) + '\n');
 verifySource(root, 'tooling');
-verifySource(root, 'runtime');
 verifySource(root, 'source', source);
 console.log(`Pinned effectgo ${version} (${lock.snapshot_kind}) tree=${tree} in ${root}`);

@@ -39,26 +39,17 @@ export function verifySource(root, mode, directory) {
     }
     return;
   }
-  assert(mode === 'runtime' || mode === 'source', 'usage: verify-source.mjs APP_ROOT runtime|source|binary|tooling [path]');
-  const base = mode === 'runtime' ? resolve(root, 'backend/third_party/effectgo-rt') : resolve(directory);
-  const files = mode === 'runtime' ? lock.runtime_files : lock.generator_files;
+  assert.equal(mode, 'source', 'usage: verify-source.mjs APP_ROOT source|binary|tooling [path]');
+  const base = resolve(directory);
+  const files = lock.generator_files;
   assert.deepEqual(inventory(base).sort(), Object.keys(files).sort(), `effectgo ${mode} build input inventory drift`);
   for (const [path, hash] of Object.entries(files)) {
     assert.equal(digest(resolve(base, path)), hash, `effectgo ${mode} source drift: ${path}`);
-  }
-  if (mode === 'runtime') {
-    const source = JSON.parse(readFileSync(resolve(base, 'SOURCE.json'), 'utf8'));
-    assert.equal(source.upstream_commit, lock.upstream_commit, 'effectgo runtime source commit drift');
-    assert.equal(source.source_tree_sha256, lock.source_tree_sha256, 'effectgo runtime source tree drift');
-    assert.equal(source.snapshot_kind, lock.snapshot_kind, 'effectgo runtime snapshot kind drift');
-    assert.equal(source.effectgo_version, lock.effectgo_version, 'effectgo runtime version drift');
-    assert.equal(source.release_tag, lock.release_tag, 'effectgo runtime release tag drift');
-    assert.deepEqual(source.files, lock.runtime_files, 'effectgo runtime source manifest drift');
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const [root, mode, directory] = process.argv.slice(2);
-  assert(root, 'usage: verify-source.mjs APP_ROOT runtime|source|binary|tooling [path]');
+  assert(root, 'usage: verify-source.mjs APP_ROOT source|binary|tooling [path]');
   verifySource(resolve(root), mode, directory);
 }
