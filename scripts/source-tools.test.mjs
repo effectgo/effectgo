@@ -44,6 +44,13 @@ test('pin and verify reject modified, additional, linked and inconsistent build 
   symlinkSync(resolve(copiedSource, 'go.mod'), resolve(copiedSource, 'linked.go'));
   assert.throws(() => verifySource(root, 'source', copiedSource));
   rmSync(resolve(copiedSource, 'linked.go'));
+  const moduleMap = resolve(copiedSource, 'cmd/effectgo/module-path-map.json');
+  const moduleMapBytes = readFileSync(moduleMap);
+  assert.equal(lock.generator_files['cmd/effectgo/module-path-map.json'], digest(moduleMap));
+  writeFileSync(moduleMap, '{"schema_version": 999}\n');
+  assert.throws(() => verifySource(root, 'source', copiedSource));
+  writeFileSync(moduleMap, moduleMapBytes);
+  verifySource(root, 'source', copiedSource);
   writeFileSync(resolve(copiedSource, 'extra.go'), 'package extra');
   assert.throws(() => verifySource(root, 'source', copiedSource));
   for (const [elfClass, machine] of [[1, 183], [2, 62]]) {

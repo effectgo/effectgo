@@ -12,6 +12,7 @@ One binary, `effectgo`, runs in these ways:
 | sig | `effectgo sig ./...` | signatures only |
 | subcommands | `effectgo openapi`, `ts`, `http-gin`, `http-huma`, `http` | the OpenAPI, TypeScript and HTTP checks |
 | shared contract | `effectgo contract [patterns]` | the six static analyzers and Gin/Huma checks over one package load |
+| consumer upgrade | `effectgo upgrade APP --to vX.Y.Z` | verifies release binaries, repins the consumer, migrates module paths and regenerates its contracts |
 
 The golangci-lint plugin is another integration; see [Editor integration](../guide/editor.md). The shared contract command is released in `v0.2.0` with JSON `schema_version: 1`; the other command behaviors remain unchanged.
 
@@ -27,6 +28,7 @@ The golangci-lint plugin is another integration; see [Editor integration](../gui
 | `effectgo http-huma [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | Huma routes whose errors reach HTTP 500 | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo http [-json] [-all] [-fail-on=SEVERITY] [-fail-unresolved] [-coverage=json] ./...` | both HTTP checks, one list | text, or one JSON object per finding; optional machine-readable coverage on stderr |
 | `effectgo contract [-format=text\|json] [-all] [-fail-on=…] [-fail-unresolved] [-coverage=json] [patterns]` | shared six-analyzer and Gin/Huma report | text or one JSON document; see [Contract checks](../guide/contract-checks.md) |
+| `effectgo upgrade APP --to vX.Y.Z` | upgrade an existing consumer to a public-module release | progress, generated-client line counts and a final summary; see [upgrade](#upgrade) |
 
 ## Flags
 
@@ -131,6 +133,24 @@ Coverage JSON is a separate object on stderr. It includes route counts (`routes`
 
 `effectgo contract [-format=text|json] [-all] [-fail-on=none|high|medium|leak|info] [-fail-unresolved] [-coverage=json] [analyzer flags] [patterns]` defaults to `./...` and loads each package once for the six static analyzers plus Gin/Huma. Text is the default; JSON is one document with `schema_version`, `diagnostics`, `coverage`, and `exit_code`. Each diagnostic has `rule_id`, `analyzer`, `severity`, `position` (`file`, `line`, `column`) and `message`, with optional HTTP `route`, `handler`, `variant`, `status`, and `via`. Native diagnostics use the analyzer name as a coarse rule family, severity `error`, and always cause exit 3; consumers must not parse messages. HTTP IDs are `http.gin` and `http.huma` and retain their existing severities. Coverage reuses the Gin/Huma collections: shared route stubs can expose `rt/web` registrations to Huma, where a missing `errdefault` model is unresolved. It is not a separate proof of complete native or OpenAPI route coverage. See [Contract checks](../guide/contract-checks.md) for the wire example and limits.
 
+### upgrade
+
+```sh
+effectgo upgrade /path/to/app --to v0.4.0
+```
+
+The application must already have `effectgo.lock.json`, at least one Go module, and a contract script. The command requires Linux arm64 or amd64, Git, Node.js, Go, Bash, and the application's own generation tools. Targets use an exact stable tag `vX.Y.Z`, starting at `v0.3.0`.
+
+Upgrade downloads both `effectgo-linux-arm64` and `effectgo-linux-amd64` from the target GitHub Release, verifies each against its unique entry in `SHA256SUMS`, and clones the exact source tag. It invokes that tag's `scripts/pin-source.mjs` with both verified binaries; Linux amd64 is recorded under Node's `linux-x64` lock key. The native verified binary is used for regeneration, overriding `EFFECTGO_BIN` and `EFFECTGO_DIR` for that invocation.
+
+`cmd/effectgo/module-path-map.json` ships a cumulative, schema-version-1 list of `since`, `from` and `to` module renames. The tagged map takes precedence; for historical tags without a map, upgrade uses its embedded map, filtered by the target version. The v0.3.0 entries migrate `github.com/faintghost/effectgo` and its `/rt` module to `github.com/effectgo/effectgo`. Upgrade rewrites Go imports, application stubs and plugin configuration, removes runtime replacements, requires the public runtime at the target version, and runs `go mod tidy` in each application Go module with `GOWORK=off`.
+
+For regeneration, `scripts/api-contract.sh generate` is the aggregate convention. If it exists, it owns all contracts. Otherwise upgrade runs every `scripts/*-contract.sh generate` in filename order. These existing scripts retain responsibility for their package lists, formatting, OpenAPI outputs and other application-specific generation. A missing contract script is an error before repinning.
+
+The v0.2.0 runtime migration rejects locally modified lock-owned runtime files before changing the application. After pinning, it removes the old and newly pinned runtime inventories, their owned files under `backend/third_party/effectgo-rt`, and `SOURCE.json`; unrelated files are preserved. Recognized shell calls to `effectgo-source.mjs runtime` become `tooling` checks. Historical target tags retain their own launcher behavior; tags predating automatic release downloads can still need `EFFECTGO_BIN` or `EFFECTGO_DIR` for later generator invocations.
+
+The final client summary compares generated TypeScript files with their bytes at the start of this invocation and prints Git's added/removed line counts for each changed client. Review the full application diff, including dependency and OpenAPI changes, before committing. Upgrade edits the application in place; a dependency or generation failure leaves the completed edits available for inspection and repair.
+
 ## Exit codes
 
 | Run | 0 | 1 | 2 | 3 |
@@ -140,6 +160,7 @@ Coverage JSON is a separate object on stderr. It includes route counts (`routes`
 | `effectgo sig` | — | a run error | a usage error, as above | a signature was printed. This is a success, not a diagnostic: a script that tests for a non-zero exit must accept 3 |
 | `effectgo openapi` | success | `-check` found a missing code, or the run failed | usage error | — |
 | `http`, `http-gin`, `http-huma` | the run completed with no selected gate violation | a load or analysis error | usage error, including an invalid gate value | selected `-fail-on` severity or `-fail-unresolved` coverage policy was violated |
+| `effectgo upgrade` | pinning, migration, tidy and regeneration completed | a download, source, migration or application tool failed | invalid arguments or a target older than v0.3.0 | — |
 
 The HTTP checks report their findings and exit 0 by default. `-fail-on` and `-fail-unresolved` opt into exit 3 as a gate; `-coverage=json` only changes the coverage stream and does not itself fail the run. The `openapi -check` exit 1 is the separate OpenAPI gate.
 
