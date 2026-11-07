@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/effectgo/effectgo/internal/rtshape"
+	"github.com/effectgo/effectgo/internal/version"
 )
 
 // Fingerprint identifies the analyzed routes and DTO schemas, independently of
@@ -43,7 +44,7 @@ func Fingerprint(results []Result) string {
 	}
 	slices.Sort(records)
 	records = slices.Compact(records)
-	return fmt.Sprintf("%x", sha256.Sum256([]byte("effectgo-contract-v1\n"+strings.Join(records, "\n"))))
+	return fmt.Sprintf("%x", sha256.Sum256([]byte("effectgo-contract-v2\n"+version.Current+"\n"+Target+"\n"+strings.Join(records, "\n"))))
 }
 
 func fingerprintType(enc *json.Encoder, typ *rtshape.Type, seen map[*rtshape.Type]bool) {

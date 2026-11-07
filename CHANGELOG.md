@@ -5,7 +5,7 @@
 - Fetch and verify pinned release binaries from the generated consumer launcher, caching downloads while preserving binary and source overrides.
 - Consume the public runtime with a normal Go module requirement; source pinning no longer writes runtime snapshots or manifests, and offline vendoring is opt-in through `go mod vendor`.
 - Add `effectgo upgrade APP --to vX.Y.Z` to verify release binaries, repin consumers from tagged source, migrate legacy module paths and runtime replacements to the public runtime module, regenerate application contracts and summarize generated-client changes.
-- Embed analyzed route/DTO fingerprints and source-input manifests in generated TypeScript clients; add `effectgo contract fingerprint --check` to reject stale clients without package analysis, generation or formatting.
+- Embed analyzed route/DTO fingerprints and source-input analysis caches in generated TypeScript clients; add `effectgo contract fingerprint --check` to reject changed contracts while accepting unrelated code, comments and formatting, without generating or rewriting clients.
 
 ## 0.4.0 - 2026-10-22
 

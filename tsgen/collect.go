@@ -33,6 +33,8 @@ func Collect(dir string, patterns ...string) (Collected, error) {
 	if err != nil {
 		return c, err
 	}
+	c.Inputs.Version = 2
+	c.Inputs.Patterns = append([]string(nil), patterns...)
 	graph, err := checker.Analyze([]*analysis.Analyzer{Analyzer}, pkgs, nil)
 	if err != nil {
 		return c, err

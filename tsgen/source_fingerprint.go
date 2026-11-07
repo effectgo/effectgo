@@ -20,8 +20,8 @@ import (
 
 const inputsPrefix = "// effectgo-inputs: "
 
-// SourceInputs records the conservative inputs to an analyzed contract. Roots
-// are local modules; versioned dependencies are pinned by go.mod and go.sum.
+// SourceInputs caches the source identity of an analyzed contract. A changed
+// source identity requires analysis, not regeneration, when the contract agrees.
 // Paths are relative to the generating module, including local replacements.
 type SourceInputs struct {
 	Version  int      `json:"version"`
@@ -29,6 +29,7 @@ type SourceInputs struct {
 	Digest   string   `json:"digest"`
 	Roots    []string `json:"roots"`
 	Files    []string `json:"files"`
+	Patterns []string `json:"patterns"`
 }
 
 func collectSourceInputs(dir string, pkgs []*packages.Package) (*SourceInputs, error) {
@@ -325,8 +326,8 @@ func (c Collected) Generate(api string) (string, error) {
 	return first + "\n" + inputsPrefix + string(body) + "\n" + rest, nil
 }
 
-// CheckFingerprint reads the embedded manifest and hashes its current source
-// inputs. It never loads packages, runs analyzers, generates TS or formats files.
+// CheckFingerprint verifies the analyzed contract. Identical source inputs take
+// the fast path; changed inputs are analyzed without generating or rewriting TS.
 func CheckFingerprint(root string, generated []byte) (string, error) {
 	var inputs SourceInputs
 	found := false
@@ -342,15 +343,23 @@ func CheckFingerprint(root string, generated []byte) (string, error) {
 			found = true
 		}
 	}
-	if !found || inputs.Version != 1 || len(inputs.Roots) == 0 || len(contract) != 64 || contract != inputs.Contract {
+	if !found || inputs.Version != 2 || len(inputs.Roots) == 0 || len(inputs.Patterns) == 0 || len(contract) != 64 || contract != inputs.Contract {
 		return "", fmt.Errorf("missing or unsupported contract fingerprint; regenerate with effectgo ts")
 	}
 	digest, err := inputs.current(root)
 	if err != nil {
 		return "", err
 	}
-	if digest != inputs.Digest {
-		return digest, fmt.Errorf("stale contract fingerprint; regenerate with effectgo ts")
+	if digest == inputs.Digest {
+		return contract, nil
 	}
-	return digest, nil
+	collected, err := Collect(root, inputs.Patterns...)
+	if err != nil {
+		return "", fmt.Errorf("stale contract fingerprint; cannot analyze current contract: %w", err)
+	}
+	current := Fingerprint(collected.Results)
+	if current != contract {
+		return current, fmt.Errorf("stale contract fingerprint; regenerate with effectgo ts")
+	}
+	return current, nil
 }
