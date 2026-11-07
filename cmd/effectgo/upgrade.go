@@ -71,11 +71,11 @@ func runUpgrade(args []string) int {
 		return 2
 	}
 	tools := upgradeTools{
-		client: &http.Client{Timeout: 5 * time.Minute},
+		client:     &http.Client{Timeout: 5 * time.Minute},
 		releaseURL: "https://github.com/effectgo/effectgo/releases/download",
 		repository: "https://github.com/effectgo/effectgo.git",
-		platform: runtime.GOOS + "-" + runtime.GOARCH,
-		out: os.Stdout,
+		platform:   runtime.GOOS + "-" + runtime.GOARCH,
+		out:        os.Stdout,
 	}
 	tools.run = func(dir string, env []string, name string, args ...string) error {
 		cmd := exec.Command(name, args...)
@@ -590,4 +590,3 @@ func upgradeClients(app string, files []string) (map[string][]byte, error) {
 	}
 	return clients, nil
 }
-
