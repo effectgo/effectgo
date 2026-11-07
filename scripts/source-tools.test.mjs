@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,4 +73,49 @@ test('pin and verify reject modified, additional, linked and inconsistent build 
     writeFileSync(binary, bytes);
     assert.throws(() => execFileSync(process.execPath, [resolve(source, 'scripts/pin-source.mjs'), root, '--binary', `linux-arm64=${binary}`], { stdio: 'pipe' }));
   }
+});
+
+test('generated launcher downloads, caches and verifies the pinned release with overrides', (t) => {
+  const root = mkdtempSync(resolve(tmpdir(), 'effectgo-launcher-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const runtime = resolve(root, 'backend/third_party/effectgo-rt');
+  mkdirSync(runtime, { recursive: true });
+  const baseline = { upstream_commit: 'baseline', source_tree_sha256: 'baseline', snapshot_kind: 'fixture', files: {} };
+  writeFileSync(resolve(runtime, 'SOURCE.json'), JSON.stringify(baseline));
+  writeFileSync(resolve(root, 'effectgo.lock.json'), JSON.stringify({ ...baseline, runtime_files: {}, binaries: {} }));
+  execFileSync(process.execPath, [resolve(source, 'scripts/pin-source.mjs'), root]);
+  const lockPath = resolve(root, 'effectgo.lock.json');
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  const binary = resolve(root, 'release-binary');
+  writeFileSync(binary, '#!/usr/bin/env bash\nprintf "release:%s\\n" "$*"\n');
+  chmodSync(binary, 0o755);
+  lock.release_tag = `v${lock.effectgo_version}`;
+  lock.binaries[`${process.platform}-${process.arch}`] = digest(binary);
+  writeFileSync(lockPath, JSON.stringify(lock));
+  const descriptorPath = resolve(runtime, 'SOURCE.json');
+  writeFileSync(descriptorPath, JSON.stringify({ ...JSON.parse(readFileSync(descriptorPath, 'utf8')), release_tag: lock.release_tag }));
+  const stubs = resolve(root, 'stubs');
+  mkdirSync(stubs);
+  const curl = resolve(stubs, 'curl');
+  writeFileSync(curl, '#!/usr/bin/env bash\nset -eu\nprintf "%s\\n" "$*" >> "$DOWNLOAD_LOG"\nwhile [[ "$1" != -o ]]; do shift; done\ncp "$RELEASE_BINARY" "$2"\n');
+  chmodSync(curl, 0o755);
+  const log = resolve(root, 'downloads');
+  const env = { ...process.env, PATH: `${stubs}:${process.env.PATH}`, EFFECTGO_CACHE_DIR: resolve(root, 'cache'), EFFECTGO_BIN: '', EFFECTGO_DIR: '', DOWNLOAD_LOG: log, RELEASE_BINARY: binary };
+  const launch = (extra = {}) => execFileSync('bash', [resolve(root, 'scripts/effectgo.sh'), 'ts', '--help'], { env: { ...env, ...extra }, encoding: 'utf8', stdio: 'pipe' });
+  assert.equal(launch(), 'release:ts --help\n');
+  const download = readFileSync(log, 'utf8');
+  const arch = process.arch === 'x64' ? 'amd64' : 'arm64';
+  assert(download.includes(`https://github.com/effectgo/effectgo/releases/download/${lock.release_tag}/effectgo-linux-${arch}`));
+  assert.equal(launch(), 'release:ts --help\n');
+  assert.equal(readFileSync(log, 'utf8'), download, 'cache hit must not download');
+  const cached = resolve(env.EFFECTGO_CACHE_DIR, lock.release_tag, `effectgo-linux-${arch}`);
+  writeFileSync(cached, '#!/usr/bin/env bash\necho tampered\n');
+  assert.throws(() => launch(), /binary differs/);
+  assert.equal(launch({ EFFECTGO_BIN: binary }), 'release:ts --help\n');
+  assert.equal(readFileSync(log, 'utf8'), download);
+  rmSync(cached);
+  writeFileSync(binary, '#!/usr/bin/env bash\necho corrupt download\n');
+  assert.throws(() => launch(), /binary differs/);
+  assert.equal(existsSync(cached), false);
+  assert.equal(existsSync(`${cached}.part`), false);
 });
