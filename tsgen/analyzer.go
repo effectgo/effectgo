@@ -74,6 +74,7 @@ type Route struct {
 	Pattern         string // the Go pattern, e.g. /api/contacts/{id}
 	Group           string // lower camel case: the receiver type, or the package name
 	Name            string // lower camel case: the handler name
+	Handler         string // fully qualified function or receiver method binding
 	Pos             string
 	In              *rtshape.Shape // nil for web.NoInput
 	Out             *rtshape.Shape // nil for web.NoContent
@@ -179,6 +180,7 @@ func (st *state) route(call *ast.CallExpr, rule errset.RouteRule) {
 	}
 	r.Name = lowerCamel(fn.Name())
 	r.Group = lowerCamel(groupName(fn))
+	r.Handler = fn.FullName()
 
 	in, out := types.Unalias(sig.Params().At(1).Type()), types.Unalias(sig.Results().At(0).Type())
 	noInput := isNamed(in, webPath, "NoInput")

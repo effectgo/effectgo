@@ -61,6 +61,14 @@ cd examples/web
 
 `examples/run.sh` checks that the committed file matches the generator, and fails when it does not.
 
+For a fast freshness gate after generation, run from this example's Go module:
+
+```sh
+../../bin/effectgo contract fingerprint --check ts/api.gen.ts
+```
+
+The generated file records its analyzed routes/DTO hash and conservative source inputs. The check hashes current inputs without generating, formatting or rerunning analyzers. DTO, route, module and local-runtime edits require regeneration; unrelated production source changes may also invalidate the baseline. See [Generated-client freshness](../../docs/guide/contract-checks.md#generated-client-freshness).
+
 The unreleased shared checker uses the same built binary. From this example directory:
 
 ```sh
