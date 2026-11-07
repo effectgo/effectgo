@@ -5,17 +5,17 @@ description: "Run the complete Go, runtime and Effect TypeScript release gate, t
 
 Run `scripts/release-check.sh` for changes to analyzer, generator, runtime, test tooling, or dependency inputs. It checks the current checkout and exits on the first failure; it does not install tools, change dependency versions, commit, tag, push or publish. For a release changing only version declarations and documentation, reuse the recorded full pass for unchanged implementation/dependency inputs, run the complete CLI race-test package, check the actual version and behavior of both release binaries, and validate documentation. Record the source diff and distinguish reused evidence from checks executed for the release.
 
-Current stable release: `v0.5.0` ([GitHub Release](https://github.com/effectgo/effectgo/releases/tag/v0.5.0)). The canonical module paths remain `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`, introduced in v0.3.0. Consumer locks identify the exact generator tag, source tree digest and validated binary; `go.mod` and `go.sum` pin and verify the public runtime module. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them. Historical tags remain unchanged.
+Current stable release: `v0.5.1` ([GitHub Release](https://github.com/effectgo/effectgo/releases/tag/v0.5.1)). The canonical module paths remain `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`, introduced in v0.3.0. Consumer locks identify the exact generator tag, source tree digest and validated binary; `go.mod` and `go.sum` pin and verify the public runtime module. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them. Historical tags remain unchanged.
 
 ## Upgrade a v0.4.0 application
 
-After publishing and verifying v0.5.0, bootstrap the new upgrader from the public module:
+After publishing and verifying v0.5.1, bootstrap the new upgrader from the public module:
 
 ```sh
-go run github.com/effectgo/effectgo/cmd/effectgo@v0.5.0 upgrade /path/to/app --to v0.5.0
+go run github.com/effectgo/effectgo/cmd/effectgo@v0.5.1 upgrade /path/to/app --to v0.5.1
 ```
 
-The v0.4.0 binary has no `upgrade` command. The new command verifies release binaries, updates the generator lock and launcher, replaces the runtime snapshot and local `replace` with the public runtime requirement at v0.5.0, runs `go mod tidy` and regenerates application contracts. It requires an existing source lock and contract generation scripts; review the resulting application diff before committing. Publishing the framework does not run this command in consumer repositories. See [the CLI upgrade reference](../reference/cli.md#upgrade).
+The v0.4.0 binary has no `upgrade` command. The new command verifies release binaries, updates the generator lock and launcher, replaces the runtime snapshot and local `replace` with the public runtime requirement at v0.5.1, runs `go mod tidy` and regenerates application contracts. It requires an existing source lock and contract generation scripts; review the resulting application diff and the checklist of remaining runtime snapshot/verifier references before committing. Regenerate after upgrading from v0.5.0 to remove source digests from generated clients. Publishing the framework does not run this command in consumer repositories. See [the CLI upgrade reference](../reference/cli.md#upgrade).
 
 ## Prepare the toolchain
 
@@ -41,12 +41,12 @@ From the repository root:
 bash scripts/release-check.sh
 ```
 
-In the shared evaluation workspace, use the repository's heavy-command lock and memory limit:
+In a shared build environment, use the host's heavy-command runner so every project shares the same lock. This host uses `/run/lock/heavy-test.lock`; `HEAVY_RUN_LOCK` overrides it. Retain the 6 GiB cap:
 
 ```sh
-mkdir -p "$HOME/.cache/effectgo"
-flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 \
-  bash -c 'cd /path/to/effectgo && env -u GOROOT GOFLAGS=-buildvcs=false bash scripts/release-check.sh'
+HEAVY_RUN_LOCK="${HEAVY_RUN_LOCK:-/run/lock/heavy-test.lock}" HEAVY_RUN_MEMORY_MAX=6G \
+  bash /path/to/shared/scripts/heavy-run.sh \
+  env -u GOROOT GOFLAGS=-buildvcs=false bash scripts/release-check.sh
 ```
 
 Historical full-gate runs took roughly 67–72 minutes on this four-CPU host. Retain the per-test timeout; an outer 2400-second cutoff would kill a known passing run. Reuse successful checks only for the exact same relevant source/dependency inputs, and record any checks supplied by exact-commit CI separately from remaining local checks. Documentation-only changes do not require repeating analyzer race tests; run the routine check instead.
@@ -95,13 +95,13 @@ The updater copies the verifier and launcher without application-specific change
 Consume the runtime as a normal module, without a local `replace`:
 
 ```sh
-go get github.com/effectgo/effectgo/rt@v0.5.0
+go get github.com/effectgo/effectgo/rt@v0.5.1
 go mod tidy
 ```
 
 Keep the resulting `go.mod` and `go.sum` under version control. Fully offline consumers can explicitly run `go mod vendor` and build with `-mod=vendor`; vendoring is opt-in and uses Go's standard mechanism. When migrating a legacy snapshot, remove its runtime `replace`, its owned `backend/third_party/effectgo-rt` files and `SOURCE.json`, and replace shell checks of `effectgo-source.mjs runtime` with `tooling`. Pinning alone leaves an existing snapshot untouched.
 
-An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.5.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
+An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.5.1` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
 
 Pinning also installs `scripts/effectgo.sh`. With no override, it downloads the lock's release binary into `${EFFECTGO_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/effectgo/releases}/<tag>/effectgo-linux-<arch>` and verifies the pinned digest before executing it. Cached files are verified on every invocation; tampered files fail instead of being executed. `EFFECTGO_BIN` selects a validated binary and `EFFECTGO_DIR` selects validated source. Untagged source pins require one of these overrides.
 
@@ -111,17 +111,17 @@ Tagging, publishing artifacts and changing application locks are separate, expli
 
 The repository is public at `https://github.com/effectgo/effectgo`. Keep the approved MIT license text in both root `LICENSE` and `rt/LICENSE`, including in the release revision and runtime source pins. pkg.go.dev uses recognized license files to decide whether to display package documentation; without a recognized license it shows limited information. Public source access alone is insufficient for durable proxy caching when no suitable license is detected ([pkg.go.dev license policy](https://pkg.go.dev/license-policy), [Go module services FAQ](https://proxy.golang.org/)).
 
-1. After review and the release checks, publish root tag `v0.5.0` and nested-module tag `rt/v0.5.0` for the same approved source revision. The `rt/` prefix belongs to the Git tag; callers still request `github.com/effectgo/effectgo/rt@v0.5.0`. Root module archives exclude nested modules, so release both independently. Never move historical tags ([version-to-commit mapping](https://go.dev/ref/mod#vcs-version), [module directories](https://go.dev/ref/mod#vcs-dir)).
+1. After review and the release checks, publish root tag `v0.5.1` and nested-module tag `rt/v0.5.1` for the same approved source revision. The `rt/` prefix belongs to the Git tag; callers still request `github.com/effectgo/effectgo/rt@v0.5.1`. Root module archives exclude nested modules, so release both independently. Never move historical tags ([version-to-commit mapping](https://go.dev/ref/mod#vcs-version), [module directories](https://go.dev/ref/mod#vcs-dir)).
 2. Once the tags are public, request both versions through the public proxy and record successful downloads from a fresh module cache:
 
    ```sh
-   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/@v/v0.5.0.info
-   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/rt/@v/v0.5.0.info
+   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/@v/v0.5.1.info
+   curl -fsS https://proxy.golang.org/github.com/effectgo/effectgo/rt/@v/v0.5.1.info
    GOMODCACHE="$(mktemp -d)" GOWORK=off GOPROXY=https://proxy.golang.org \
-     go mod download -json github.com/effectgo/effectgo@v0.5.0 github.com/effectgo/effectgo/rt@v0.5.0
+     go mod download -json github.com/effectgo/effectgo@v0.5.1 github.com/effectgo/effectgo/rt@v0.5.1
    ```
 
    Keep the download JSON as evidence, remove the temporary cache afterward, and separately record the public CLI install and version smoke check. A warm local cache does not establish that the public proxy served a version. Requesting a tag before pushing it can leave a negative cache entry for up to 30 minutes ([adding a package](https://pkg.go.dev/about#adding-a-package), [proxy protocol](https://go.dev/ref/mod#goproxy-protocol), [module downloads](https://go.dev/ref/mod#go-mod-download), [proxy FAQ](https://proxy.golang.org/)).
-3. pkg.go.dev monitors the public module index. Visit the [root module](https://pkg.go.dev/github.com/effectgo/effectgo@v0.5.0) and [runtime module](https://pkg.go.dev/github.com/effectgo/effectgo/rt@v0.5.0); if either is missing, use **Request** on its page. Confirm the version and license display after indexing. A GitHub Release or proxy response does not itself prove documentation is visible, and indexing has no fixed completion deadline in the documented procedure ([adding a package](https://pkg.go.dev/about#adding-a-package)).
+3. pkg.go.dev monitors the public module index. Visit the [root module](https://pkg.go.dev/github.com/effectgo/effectgo@v0.5.1) and [runtime module](https://pkg.go.dev/github.com/effectgo/effectgo/rt@v0.5.1); if either is missing, use **Request** on its page. Confirm the version and license display after indexing. A GitHub Release or proxy response does not itself prove documentation is visible, and indexing has no fixed completion deadline in the documented procedure ([adding a package](https://pkg.go.dev/about#adding-a-package)).
 
 This is the publication procedure, not a record that it has run. Record observed download, install, documentation, plugin-build and editor checks separately; success in one route does not establish the others.

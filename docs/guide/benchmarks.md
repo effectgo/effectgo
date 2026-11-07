@@ -52,8 +52,8 @@ Requirements: Go **1.26.10**, Python **3**, and GNU `/usr/bin/time` on Linux (`a
 
 ```sh
 python3 scripts/benchmark_test.py
-mkdir -p "$HOME/.cache/effectgo"
-flock "$HOME/.cache/effectgo/heavy.lock" systemd-run --scope -q -p MemoryMax=6G -p MemorySwapMax=0 \
+HEAVY_RUN_LOCK="${HEAVY_RUN_LOCK:-/run/lock/heavy-test.lock}" HEAVY_RUN_MEMORY_MAX=6G \
+  bash /path/to/shared/scripts/heavy-run.sh \
   python3 scripts/benchmark.py --output /tmp/effectgo-comparison --samples 5
 ```
 
