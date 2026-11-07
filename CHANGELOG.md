@@ -1,11 +1,23 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 - 2026-11-07
 
 - Fetch and verify pinned release binaries from the generated consumer launcher, caching downloads while preserving binary and source overrides.
 - Consume the public runtime with a normal Go module requirement; source pinning no longer writes runtime snapshots or manifests, and offline vendoring is opt-in through `go mod vendor`.
 - Add `effectgo upgrade APP --to vX.Y.Z` to verify release binaries, repin consumers from tagged source, migrate legacy module paths and runtime replacements to the public runtime module, regenerate application contracts and summarize generated-client changes.
 - Embed analyzed route/DTO fingerprints and source-input analysis caches in generated TypeScript clients; add `effectgo contract fingerprint --check` to reject changed contracts while accepting unrelated code, comments and formatting, without generating or rewriting clients.
+
+### Upgrade from v0.4.0
+
+Run the new upgrader against the application root (the v0.4.0 binary does not include this command):
+
+```sh
+go run github.com/effectgo/effectgo/cmd/effectgo@v0.5.0 upgrade /path/to/app --to v0.5.0
+```
+
+The application needs its existing `effectgo.lock.json` and contract generation scripts. Upgrade verifies both release binaries against `SHA256SUMS`, repins the generator and launcher, replaces the legacy runtime snapshot and local `replace` with a plain `require github.com/effectgo/effectgo/rt v0.5.0`, runs `go mod tidy`, and regenerates contracts. Review the application diff before committing. Applications without a source lock can use `go get github.com/effectgo/effectgo/rt@v0.5.0` and `go install github.com/effectgo/effectgo/cmd/effectgo@v0.5.0` directly.
+
+Regeneration installs the new fingerprint metadata. `effectgo contract fingerprint --check` takes the source-hash fast path when inputs are unchanged and falls back to analysis after edits; unrelated changes pass without regeneration. Local web-example measurements were 0.04 seconds and 2.28 seconds respectively.
 
 ## 0.4.0 - 2026-10-22
 

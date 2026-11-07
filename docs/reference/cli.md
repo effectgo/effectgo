@@ -137,8 +137,10 @@ Coverage JSON is a separate object on stderr. It includes route counts (`routes`
 ### upgrade
 
 ```sh
-effectgo upgrade /path/to/app --to v0.4.0
+effectgo upgrade /path/to/app --to v0.5.0
 ```
+
+To bootstrap an upgrade from v0.4.0, whose binary does not include `upgrade`, run `go run github.com/effectgo/effectgo/cmd/effectgo@v0.5.0 upgrade /path/to/app --to v0.5.0`.
 
 The application must already have `effectgo.lock.json`, at least one Go module, and a contract script. The command requires Linux arm64 or amd64, Git, Node.js, Go, Bash, and the application's own generation tools. Targets use an exact stable tag `vX.Y.Z`, starting at `v0.3.0`.
 
