@@ -32,7 +32,7 @@ effectgo_release_binary() {
 effectgo_prepare() {
   local root
   root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  node "$root/scripts/effectgo-source.mjs" runtime
+  node "$root/scripts/effectgo-source.mjs" tooling || return 2
   if [[ -z "${EFFECTGO_BIN:-}" && -z "${EFFECTGO_DIR:-}" ]]; then
     EFFECTGO_BIN="$(effectgo_release_binary "$root")" || return 2
   fi

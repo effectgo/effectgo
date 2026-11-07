@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Fetch and verify pinned release binaries from the generated consumer launcher, caching downloads while preserving binary and source overrides.
+- Consume the public runtime with a normal Go module requirement; source pinning no longer writes runtime snapshots or manifests, and offline vendoring is opt-in through `go mod vendor`.
 
 ## 0.4.0 - 2026-10-22
 

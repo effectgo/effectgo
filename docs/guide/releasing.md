@@ -1,11 +1,11 @@
 ---
 title: Releasing effectgo
-description: "Run the complete Go, runtime and Effect TypeScript release gate, then bind reviewed source and runtime snapshots to the candidate."
+description: "Run the complete Go, runtime and Effect TypeScript release gate, then pin reviewed generator source and binaries for consumers."
 ---
 
 Run `scripts/release-check.sh` for changes to analyzer, generator, runtime, test tooling, or dependency inputs. It checks the current checkout and exits on the first failure; it does not install tools, change dependency versions, commit, tag, push or publish. For a release changing only version declarations and documentation, reuse the recorded full pass for unchanged implementation/dependency inputs, run the complete CLI race-test package, check the actual version and behavior of both release binaries, and validate documentation. Record the source diff and distinguish reused evidence from checks executed for the release.
 
-Current stable release: `v0.4.0` ([GitHub Release](https://github.com/effectgo/effectgo/releases/tag/v0.4.0)). The canonical module paths remain `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`, introduced in v0.3.0. Consumer locks must identify the exact tag, source tree digest, runtime manifest, and validated binary. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them. Historical tags remain unchanged.
+Current stable release: `v0.4.0` ([GitHub Release](https://github.com/effectgo/effectgo/releases/tag/v0.4.0)). The canonical module paths remain `github.com/effectgo/effectgo` and `github.com/effectgo/effectgo/rt`, introduced in v0.3.0. Consumer locks identify the exact generator tag, source tree digest and validated binary; `go.mod` and `go.sum` pin and verify the public runtime module. Applications retain their independently validated pins until an explicit consumer upgrade; publishing this release does not repin or redeploy them. Historical tags remain unchanged.
 
 ## Prepare the toolchain
 
@@ -69,18 +69,27 @@ A targeted run diagnoses a failure; the complete release gate must still pass af
 
 Update `VERSION` and the corresponding `CHANGELOG.md` entry deliberately. Record the candidate source revision, platform, commands and exit statuses alongside the release review. Changes to implementation, test tooling, or dependencies require the full gate; version-only promotion follows the evidence-reuse boundary above.
 
-Use the [source pinning tools](https://github.com/effectgo/effectgo/blob/main/scripts/verify-source.mjs) to validate the actual consumer lock, generator source, runtime snapshot and optional generator binary. Their [behavior tests](https://github.com/effectgo/effectgo/blob/main/scripts/source-tools.test.mjs) run in the gate. Keep each application's source/runtime lock tied to the exact candidate it consumes; a successful gate in this checkout does not itself update or validate a different application's installed snapshot.
+Use the [source pinning tools](https://github.com/effectgo/effectgo/blob/main/scripts/verify-source.mjs) to validate the consumer lock, generator source and optional generator binary. Their [behavior tests](https://github.com/effectgo/effectgo/blob/main/scripts/source-tools.test.mjs) run in the gate. Runtime integrity belongs to the Go module checksum machinery; a successful gate in this checkout does not itself update or validate a consumer.
 
 From the checked framework source, update an existing application with:
 
 ```sh
 node scripts/pin-source.mjs /path/to/app --binary linux-arm64=bin/effectgo
-node /path/to/app/scripts/effectgo-source.mjs runtime
+node /path/to/app/scripts/effectgo-source.mjs tooling
 node /path/to/app/scripts/effectgo-source.mjs source /path/to/effectgo
 node /path/to/app/scripts/effectgo-source.mjs binary /path/to/effectgo/bin/effectgo
 ```
 
-The updater verifies the old runtime before replacing its owned files and copies the verifier without application-specific changes. It records exact source/runtime inventories and hashes, retains the runtime's MIT `LICENSE` in the pinned copy, and checks the runtime `SOURCE.json` descriptor against the lock. Extra Go/stub build inputs and symbolic links are rejected. Binary inputs must have the declared Linux ELF64 architecture; their hashes are recorded, so release preparation must also run the native CLI and compare its version. Cross-built binaries require their target-platform smoke check before promotion.
+The updater copies the verifier and launcher without application-specific changes and records exact generator source inventories and hashes. It does not copy runtime files or write `runtime_files` or `SOURCE.json`. Extra Go/stub build inputs and symbolic links are rejected. Binary inputs must have the declared Linux ELF64 architecture; their hashes are recorded, so release preparation must also run the native CLI and compare its version. Cross-built binaries require their target-platform smoke check before promotion.
+
+Consume the runtime as a normal module, without a local `replace`:
+
+```sh
+go get github.com/effectgo/effectgo/rt@v0.4.0
+go mod tidy
+```
+
+Keep the resulting `go.mod` and `go.sum` under version control. Fully offline consumers can explicitly run `go mod vendor` and build with `-mod=vendor`; vendoring is opt-in and uses Go's standard mechanism. When migrating a legacy snapshot, remove its runtime `replace`, its owned `backend/third_party/effectgo-rt` files and `SOURCE.json`, and replace shell checks of `effectgo-source.mjs runtime` with `tooling`. Pinning alone leaves an existing snapshot untouched.
 
 An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.4.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
 

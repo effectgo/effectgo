@@ -58,11 +58,6 @@ test('pin and verify reject modified, additional, linked and inconsistent build 
 test('generated launcher downloads, caches and verifies the pinned release with overrides', (t) => {
   const root = mkdtempSync(resolve(tmpdir(), 'effectgo-launcher-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const runtime = resolve(root, 'backend/third_party/effectgo-rt');
-  mkdirSync(runtime, { recursive: true });
-  const baseline = { upstream_commit: 'baseline', source_tree_sha256: 'baseline', snapshot_kind: 'fixture', files: {} };
-  writeFileSync(resolve(runtime, 'SOURCE.json'), JSON.stringify(baseline));
-  writeFileSync(resolve(root, 'effectgo.lock.json'), JSON.stringify({ ...baseline, runtime_files: {}, binaries: {} }));
   execFileSync(process.execPath, [resolve(source, 'scripts/pin-source.mjs'), root]);
   const lockPath = resolve(root, 'effectgo.lock.json');
   const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
@@ -72,8 +67,6 @@ test('generated launcher downloads, caches and verifies the pinned release with 
   lock.release_tag = `v${lock.effectgo_version}`;
   lock.binaries[`${process.platform}-${process.arch}`] = digest(binary);
   writeFileSync(lockPath, JSON.stringify(lock));
-  const descriptorPath = resolve(runtime, 'SOURCE.json');
-  writeFileSync(descriptorPath, JSON.stringify({ ...JSON.parse(readFileSync(descriptorPath, 'utf8')), release_tag: lock.release_tag }));
   const stubs = resolve(root, 'stubs');
   mkdirSync(stubs);
   const curl = resolve(stubs, 'curl');
