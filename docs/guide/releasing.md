@@ -84,6 +84,8 @@ The updater verifies the old runtime before replacing its owned files and copies
 
 An untagged source records `snapshot_kind: "release-candidate"`. Use `--release v0.4.0` only from the clean checkout whose HEAD matches that tag and `VERSION`; this records `snapshot_kind: "release"`. The source-tree digest remains a separate identity from the version and commit. Re-generate and check each consumer's contracts after pinning; application auth, query conversion, CI policies and deployment remain application-owned.
 
+Pinning also installs `scripts/effectgo.sh`. With no override, it downloads the lock's release binary into `${EFFECTGO_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/effectgo/releases}/<tag>/effectgo-linux-<arch>` and verifies the pinned digest before executing it. Cached files are verified on every invocation; tampered files fail instead of being executed. `EFFECTGO_BIN` selects a validated binary and `EFFECTGO_DIR` selects validated source. Untagged source pins require one of these overrides.
+
 Tagging, publishing artifacts and changing application locks are separate, explicit release actions. This check produces no release and provides no deployment or production signoff.
 
 ## Publish the Go modules and documentation

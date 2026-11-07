@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fetch and verify pinned release binaries from the generated consumer launcher, caching downloads while preserving binary and source overrides.
+
 ## 0.4.0 - 2026-10-22
 
 - Skip standard-library error-body inference before SSA construction while preserving the existing stub/opaque contract. On the measured UUID workload, warm standalone median time decreased by 55.4% and maximum RSS by 48.7%; these are workload-specific observations.

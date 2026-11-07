@@ -82,6 +82,7 @@ writeFileSync(resolve(runtimeRoot, 'SOURCE.json'), JSON.stringify({
 const tooling = resolve(root, 'scripts/vendor/effectgo');
 mkdirSync(tooling, { recursive: true });
 copyFileSync(resolve(source, 'scripts/verify-source.mjs'), resolve(tooling, 'verify-source.mjs'));
+copyFileSync(resolve(source, 'scripts/effectgo.sh'), resolve(root, 'scripts/effectgo.sh'));
 writeFileSync(resolve(root, 'scripts/effectgo-source.mjs'), `import { fileURLToPath } from 'node:url';
 import { verifySource } from './vendor/effectgo/verify-source.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
